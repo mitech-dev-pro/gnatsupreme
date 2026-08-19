@@ -12,15 +12,23 @@ const api = axios.create({
   withCredentials: true,
 });
 
-let accessToken: string | null = null;
+let staffAccessToken: string | null = null;
+let memberAccessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
-  accessToken = token;
+  staffAccessToken = token;
+}
+
+export function setMemberAccessToken(token: string | null) {
+  memberAccessToken = token;
 }
 
 api.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+  const isMemberRequest =
+    config.url?.startsWith("/member-auth") || config.url?.startsWith("/member-portal");
+  const token = isMemberRequest ? memberAccessToken : staffAccessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });

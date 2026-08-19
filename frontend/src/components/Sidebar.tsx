@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 type NavSubItem = {
   label: string;
   target: string;
+  to?: string;
 };
 
 type NavGroup = {
@@ -23,7 +24,7 @@ const membersGroup: NavGroup = {
     </svg>
   ),
   items: [
-    { label: "All Members", target: "all" },
+    { label: "All Members", target: "all", to: "/members" },
     { label: "Add Member", target: "add" },
     { label: "Upload Members", target: "upload" },
     { label: "Pending Approvals", target: "pending" },
@@ -102,7 +103,10 @@ type SidebarProps = {
 };
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const [membersExpanded, setMembersExpanded] = useState(false);
+  const location = useLocation();
+  const [membersExpanded, setMembersExpanded] = useState(() =>
+    location.pathname.startsWith("/members"),
+  );
 
   return (
     <>
@@ -184,16 +188,34 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 membersExpanded ? "max-h-60" : "max-h-0"
               }`}
             >
-              {membersGroup.items.map((item) => (
-                <span
-                  key={item.target}
-                  className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
-                >
-                  <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
-                  {item.label}
-                  <span className={navSoonBadge}>Soon</span>
-                </span>
-              ))}
+              {membersGroup.items.map((item) =>
+                item.to ? (
+                  <NavLink
+                    key={item.target}
+                    to={item.to}
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
+                        isActive
+                          ? "bg-white/8 font-semibold text-white"
+                          : "text-[#9aa2c4] hover:bg-white/6 hover:text-white"
+                      }`
+                    }
+                  >
+                    <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
+                    {item.label}
+                  </NavLink>
+                ) : (
+                  <span
+                    key={item.target}
+                    className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
+                  >
+                    <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
+                    {item.label}
+                    <span className={navSoonBadge}>Soon</span>
+                  </span>
+                ),
+              )}
             </div>
           </div>
 

@@ -41,6 +41,13 @@ enum FileCategory {
   OTHER
 }
 
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -51,60 +58,65 @@ model Region {
 }
 
 model District {
-  id        Int      @id @default(autoincrement())
-  name      String
-  regionId  Int
-  region    Region   @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  users     User[]
-  members   Member[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                Int              @id @default(autoincrement())
+  name              String
+  regionId          Int
+  region            Region           @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  users             User[]
+  members           Member[]
+  outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
+  incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@unique([regionId, name])
   @@index([regionId])
 }
 
 model User {
-  id             Int            @id @default(autoincrement())
-  fullName       String
-  email          String         @unique
-  passwordHash   String
-  role           UserRole
-  isActive       Boolean        @default(true)
-  regionId       Int?
-  districtId     Int?
-  region         Region?        @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district       District?      @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdMembers Member[]       @relation("MemberCreatedBy")
-  refreshTokens  RefreshToken[]
-  uploadedFiles  StoredFile[]
-  auditLogs      AuditLog[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                 Int              @id @default(autoincrement())
+  fullName           String
+  email              String           @unique
+  passwordHash       String
+  role               UserRole
+  isActive           Boolean          @default(true)
+  regionId           Int?
+  districtId         Int?
+  region             Region?          @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district           District?        @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers     Member[]         @relation("MemberCreatedBy")
+  refreshTokens      RefreshToken[]
+  uploadedFiles      StoredFile[]
+  auditLogs          AuditLog[]
+  requestedTransfers MemberTransfer[] @relation("TransferRequestedBy")
+  reviewedTransfers  MemberTransfer[] @relation("TransferReviewedBy")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   @@index([regionId])
   @@index([districtId])
 }
 
 model Member {
-  id              Int           @id @default(autoincrement())
-  controllerId    String        @unique
+  id              Int              @id @default(autoincrement())
+  controllerId    String           @unique
   fullName        String
-  dateOfBirth     DateTime?     @db.Date
-  ghanaCardId     String?       @unique
+  dateOfBirth     DateTime?        @db.Date
+  ghanaCardId     String?          @unique
   phone           String?
   school          String
-  status          MemberStatus  @default(PENDING)
-  report20Matched Boolean       @default(false)
+  status          MemberStatus     @default(PENDING)
+  report20Matched Boolean          @default(false)
   districtId      Int
   createdById     Int?
-  district        District      @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdBy       User?         @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  district        District         @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdBy       User?            @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   spouse          Spouse?
   beneficiaries   Beneficiary[]
   files           StoredFile[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  transfers       MemberTransfer[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([districtId])
   @@index([status])
@@ -199,4 +211,32 @@ model AuditLog {
   @@index([regionId])
   @@index([districtId])
   @@index([createdAt])
+}
+
+model MemberTransfer {
+  id             Int            @id @default(autoincrement())
+  memberId       Int
+  member         Member         @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  fromDistrictId Int
+  fromDistrict   District       @relation("TransferFromDistrict", fields: [fromDistrictId], references: [id], onDelete: Restrict)
+  toDistrictId   Int
+  toDistrict     District       @relation("TransferToDistrict", fields: [toDistrictId], references: [id], onDelete: Restrict)
+  requestedById  Int
+  requestedBy    User           @relation("TransferRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedById   Int?
+  reviewedBy     User?          @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  status         TransferStatus @default(PENDING)
+  activeKey      String?        @unique
+  reason         String
+  reviewNote     String?
+  requestedAt    DateTime       @default(now())
+  reviewedAt     DateTime?
+  effectiveAt    DateTime?
+  updatedAt      DateTime       @updatedAt
+
+  @@index([memberId])
+  @@index([fromDistrictId])
+  @@index([toDistrictId])
+  @@index([status])
+  @@index([requestedAt])
 }

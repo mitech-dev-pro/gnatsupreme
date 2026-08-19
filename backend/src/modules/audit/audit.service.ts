@@ -2,6 +2,7 @@ import type { Request } from "express";
 
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { logger } from "../../lib/logger.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
 type AuditInput = {
@@ -42,6 +43,6 @@ export async function recordAudit(input: AuditInput) {
       },
     });
   } catch (error) {
-    console.error("Audit log write failed:", error);
+    logger.error({ err: error, action: input.action, entityType: input.entityType }, "Audit log write failed");
   }
 }

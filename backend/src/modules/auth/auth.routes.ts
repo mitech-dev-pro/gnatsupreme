@@ -3,6 +3,7 @@ import { Router, type Request, type Response } from "express";
 
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
+import { logger } from "../../lib/logger.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { loginRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
 import { loginSchema } from "./auth.schemas.js";
@@ -111,7 +112,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
       },
     });
   } catch (error) {
-    console.error("Login failed:", error);
+    logger.error({ err: error }, "Staff login failed");
     response.status(500).json({ success: false, message: "Unable to sign in" });
   }
 });
@@ -186,7 +187,7 @@ authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
       },
     });
   } catch (error) {
-    console.error("Token refresh failed:", error);
+    logger.error({ err: error }, "Staff token refresh failed");
     response.status(500).json({ success: false, message: "Unable to refresh session" });
   }
 });
@@ -211,7 +212,7 @@ authRouter.post("/logout", async (request, response) => {
     });
     response.status(200).json({ success: true, message: "Signed out successfully" });
   } catch (error) {
-    console.error("Logout failed:", error);
+    logger.error({ err: error }, "Staff logout failed");
     response.status(500).json({ success: false, message: "Unable to sign out" });
   }
 });

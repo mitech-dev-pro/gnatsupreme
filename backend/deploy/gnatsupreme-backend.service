@@ -1,0 +1,25 @@
+[Unit]
+Description=GNAT Supreme Care API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gnatsupreme
+Group=gnatsupreme
+WorkingDirectory=/opt/gnatsupreme/backend
+EnvironmentFile=/etc/gnatsupreme/backend.env
+ExecStartPre=/usr/bin/npm run migrate:deploy
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gnatsupreme/uploads
+
+[Install]
+WantedBy=multi-user.target

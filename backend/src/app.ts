@@ -2,8 +2,12 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import swaggerUi from "swagger-ui-express";
 
 import { env } from "./config/env.js";
+import { openApiDocument } from "./docs/openapi.js";
+import { logger, requestLogger } from "./lib/logger.js";
+import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { prisma } from "./lib/prisma.js";
 import { apiRateLimiter } from "./middleware/rate-limit.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
@@ -27,6 +31,13 @@ import { memberNotificationRouter } from "./modules/notifications/member-notific
 import { publicSettingsRouter, settingsRouter } from "./modules/settings/settings.routes.js";
 
 export const app = express();
+
+app.use(requestLogger);
+
+if (env.API_DOCS_ENABLED) {
+  app.get("/api/openapi.json", (_request, response) => response.json(openApiDocument));
+  app.use("/api/docs", helmet({ contentSecurityPolicy: false }), swaggerUi.serve, swaggerUi.setup(openApiDocument));
+}
 
 if (env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
@@ -82,7 +93,7 @@ app.get("/api/health", async (_request, response) => {
       database: "connected",
     });
   } catch (error) {
-    console.error("Database health check failed:", error);
+    logger.error({ err: error }, "Database health check failed");
 
     response.status(503).json({
       success: false,
@@ -91,3 +102,6 @@ app.get("/api/health", async (_request, response) => {
     });
   }
 });
+
+app.use(notFoundHandler);
+app.use(errorHandler);

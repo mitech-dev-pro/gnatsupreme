@@ -65,22 +65,42 @@ export default function MemberHome() {
   return (
     <div className="h-screen overflow-y-auto bg-[#f4f6fa] px-5 py-8 sm:px-10">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-              Welcome, {member?.fullName}
-            </h1>
-            <div className="text-[12.5px] text-[#5b6472]">
-              Controller ID {member?.controllerId}
+        <div className="mb-7 flex flex-col gap-5 rounded-[14px] border border-[#e5e9f0] bg-white px-5 py-4 shadow-[0_5px_18px_rgba(30,39,97,0.06)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <img
+              src="/brand/gnat-logo.png?v=1"
+              alt="GNAT"
+              className="h-14 w-24 shrink-0 object-contain"
+            />
+            <div className="h-10 w-px bg-[#e5e9f0]" />
+            <div>
+              <h1 className="text-[22px] font-extrabold text-[#1e2761]">
+                Welcome, {member?.fullName}
+              </h1>
+              <div className="text-[12.5px] text-[#5b6472]">
+                Controller ID {member?.controllerId}
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-[9px] border border-[#e5e9f0] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9]"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center justify-between gap-4 sm:justify-end">
+            <div className="text-right">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#7a8190]">
+                Underwritten by
+              </div>
+              <img
+                src="/brand/milife-logo.png?v=1"
+                alt="miLife Insurance"
+                className="mt-1 h-7 w-20 object-contain"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9]"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
         {loading ? (

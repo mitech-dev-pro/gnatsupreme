@@ -17,6 +17,8 @@ const environmentSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   REFRESH_COOKIE_NAME: z.string().min(1).default("gnat_refresh_token"),
   FRONTEND_ORIGIN: z.string().url(),
+  UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
 });
 
 const result = environmentSchema.safeParse(process.env);

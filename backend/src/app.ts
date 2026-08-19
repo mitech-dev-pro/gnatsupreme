@@ -20,6 +20,8 @@ import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { reportRouter } from "./modules/reports/report.routes.js";
 import { benefitRouter } from "./modules/benefits/benefit.routes.js";
 import { changeRequestRouter, memberWorkflowRouter } from "./modules/workflows/workflow.routes.js";
+import { memberAuthRouter } from "./modules/member-auth/member-auth.routes.js";
+import { memberPortalRouter } from "./modules/member-portal/member-portal.routes.js";
 
 export const app = express();
 
@@ -60,6 +62,8 @@ app.use("/api/reports", reportRouter);
 app.use("/api/benefits", benefitRouter);
 app.use("/api/members", memberWorkflowRouter);
 app.use("/api/change-requests", changeRequestRouter);
+app.use("/api/member-auth", memberAuthRouter);
+app.use("/api/member-portal", memberPortalRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

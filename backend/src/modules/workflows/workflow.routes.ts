@@ -66,6 +66,27 @@ memberWorkflowRouter.get("/:id/workflow", async (request, response) => {
   response.json({ success: true, data: events });
 });
 
+memberWorkflowRouter.post("/:id/verify-phone", async (request, response) => {
+  const params = workflowMemberParamsSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid member ID" });
+    return;
+  }
+  const actor = user(response);
+  const existing = await accessibleMember(params.data.id, actor);
+  if (!existing) {
+    response.status(404).json({ success: false, message: "Member not found" });
+    return;
+  }
+  if (!existing.phone) {
+    response.status(409).json({ success: false, message: "Add a phone number before verifying it" });
+    return;
+  }
+  const member = await prisma.member.update({ where: { id: existing.id }, data: { phoneVerifiedAt: new Date() } });
+  await recordAudit({ request, actor, action: "MEMBER_PHONE_VERIFIED", entityType: "MEMBER", entityId: member.id, description: `Verified the member phone number for ${member.fullName}`, afterData: { phoneVerifiedAt: member.phoneVerifiedAt }, regionId: existing.district.regionId, districtId: existing.districtId });
+  response.json({ success: true, data: { id: member.id, phoneVerifiedAt: member.phoneVerifiedAt } });
+});
+
 memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
   const params = workflowMemberParamsSchema.safeParse(request.params);
   if (!params.success) {
@@ -224,7 +245,10 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
   }
   if (body.data.action === "APPROVE") {
     await prisma.$transaction(async (transaction) => {
-      if (item.type === "MEMBER_DETAILS") await transaction.member.update({ where: { id: item.memberId }, data: memberDetailsChangeSchema.parse(item.proposedData) });
+      if (item.type === "MEMBER_DETAILS") {
+        const data = memberDetailsChangeSchema.parse(item.proposedData);
+        await transaction.member.update({ where: { id: item.memberId }, data: { ...data, ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone ? { phoneVerifiedAt: null } : {}) } });
+      }
       if (item.type === "SPOUSE") {
         const data = spouseSchema.parse(item.proposedData);
         await transaction.spouse.upsert({ where: { memberId: item.memberId }, update: data, create: { ...data, memberId: item.memberId } });

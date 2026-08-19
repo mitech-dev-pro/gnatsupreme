@@ -231,7 +231,12 @@ memberRouter.patch("/:id", async (request, response) => {
 
   const member = await prisma.member.update({
     where: { id: existing.id },
-    data: body.data,
+    data: {
+      ...body.data,
+      ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
+        ? { phoneVerifiedAt: null }
+        : {}),
+    },
     include: memberInclude,
   });
   await recordAudit({

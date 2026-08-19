@@ -187,6 +187,7 @@ model Member {
   dateOfBirth      DateTime?                 @db.Date
   ghanaCardId      String?                   @unique
   phone            String?
+  phoneVerifiedAt  DateTime?
   school           String
   status           MemberStatus              @default(PENDING)
   report20Matched  Boolean                   @default(false)
@@ -203,6 +204,8 @@ model Member {
   bulkImportRows   MemberBulkImportRow[]
   workflowEvents   MemberWorkflowEvent[]
   changeRequests   MemberChangeRequest[]
+  otpChallenges    MemberOtpChallenge[]
+  memberSessions   MemberSession[]
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -250,6 +253,38 @@ model RefreshToken {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+model MemberOtpChallenge {
+  id          Int       @id @default(autoincrement())
+  publicToken String    @unique
+  memberId    Int
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  otpHash     String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([memberId, createdAt])
+  @@index([expiresAt])
+}
+
+model MemberSession {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  memberId  Int
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  @@index([memberId])
   @@index([expiresAt])
 }
 

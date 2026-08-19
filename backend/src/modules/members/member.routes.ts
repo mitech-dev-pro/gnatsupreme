@@ -98,7 +98,7 @@ memberRouter.get("/", async (request, response) => {
     prisma.member.findMany({
       where,
       include: memberInclude,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),

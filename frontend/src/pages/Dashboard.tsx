@@ -1,213 +1,98 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
+import "./Dashboard.css";
 
 type DashboardData = {
-  members: {
-    total: number;
-    active: number;
-    pending: number;
-    flagged: number;
-    returned: number;
-    removed: number;
-  };
+  members: { total: number; active: number; pending: number; flagged: number; returned: number; removed: number };
   coverage: { spouses: number; beneficiaries: number };
-  report20: {
-    matchedMembers: number;
-    unmatchedMembers: number;
-    matchRate: number;
-    latestImport: { reportMonth: string; status: string } | null;
-  };
+  report20: { matchedMembers: number; unmatchedMembers: number; matchRate: number; latestImport: { reportMonth: string; status: string } | null };
   transfers: { pending: number };
   claims: Record<string, number>;
   enrollmentGrowth: { month: string; count: number }[];
-  recentActivity: {
-    id: number;
-    action: string;
-    description: string;
-    createdAt: string;
-    actor: { id: number; fullName: string } | null;
-  }[];
+  recentActivity: { id: number; action: string; description: string; createdAt: string; actor: { id: number; fullName: string } | null }[];
 };
 
-function StatCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  accent?: string;
-}) {
-  return (
-    <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-4">
-      <div className="text-[11.5px] font-semibold text-[#5b6472]">{label}</div>
-      <div
-        className="mt-1.5 text-[22px] font-extrabold"
-        style={{ color: accent ?? "#1e2761" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
+const icons = {
+  members: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+  active: <><path d="M20 6 9 17l-5-5"/></>,
+  pending: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+  flagged: <><path d="M5 22V4m0 0h11l-2 4 2 4H5"/></>,
+};
+
+function Icon({ children }: { children: ReactNode }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 }
 
-function monthLabel(month: string) {
-  const [year, m] = month.split("-");
-  const date = new Date(Number(year), Number(m) - 1, 1);
-  return date.toLocaleDateString(undefined, { month: "short" });
+function Metric({ label, value, icon, tone }: { label: string; value: number; icon: ReactNode; tone: string }) {
+  return <article className="dash-metric"><div className={`dash-metric__icon ${tone}`}><Icon>{icon}</Icon></div><div><p>{label}</p><strong>{value.toLocaleString()}</strong></div></article>;
 }
 
-function EnrollmentChart({
-  data,
-}: {
-  data: { month: string; count: number }[];
-}) {
-  const max = Math.max(1, ...data.map((d) => d.count));
-  return (
-    <div className="flex h-32 items-end gap-2">
-      {data.map((d) => (
-        <div key={d.month} className="flex flex-1 flex-col items-center gap-1.5">
-          <div
-            className="w-full rounded-t-[4px] bg-[#1f9c7c]"
-            style={{ height: `${Math.max(4, (d.count / max) * 100)}px` }}
-            title={`${d.month}: ${d.count}`}
-          />
-          <div className="text-[9.5px] text-[#5b6472]">{monthLabel(d.month)}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function timeAgo(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+function timeAgo(value: string) {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
+function EnrollmentChart({ data }: { data: DashboardData["enrollmentGrowth"] }) {
+  const hasEnrollment = data.some((item) => item.count > 0);
+  if (!hasEnrollment) return <div className="dash-chart-empty"><div className="dash-chart-empty__lines"><span/><span/><span/></div><p>Enrollment trends will appear after members are added.</p><Link to="/members/new">Add the first member</Link></div>;
+  const max = Math.max(...data.map((item) => item.count), 1);
+  return <div className="dash-bars">{data.map((item) => <div className="dash-bar" key={item.month}><strong>{item.count || ""}</strong><span style={{ height: `${Math.max(5, (item.count / max) * 128)}px` }}/><small>{new Date(`${item.month}-01T00:00:00`).toLocaleDateString(undefined, { month: "short" })}</small></div>)}</div>;
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get("/dashboard");
-        if (!cancelled) setData(res.data.data);
-      } catch {
-        if (!cancelled) setError("Unable to load dashboard data.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const response = await api.get("/dashboard"); setData(response.data.data); }
+    catch { setError("Dashboard data could not be loaded. Confirm that the API is running, then try again."); }
+    finally { setLoading(false); }
   }, []);
 
-  if (loading) {
-    return <div className="text-[13px] text-[#5b6472]">Loading dashboard…</div>;
-  }
+  useEffect(() => { void load(); }, [load]);
 
-  if (error || !data) {
-    return (
-      <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#5b6472]">
-        {error || "No data available."}
-      </div>
-    );
-  }
+  if (loading) return <div className="dash-skeleton" aria-label="Loading dashboard"><span/><div><span/><span/><span/><span/></div><span/></div>;
+  if (error || !data) return <div className="dash-error"><div>!</div><h1>Dashboard unavailable</h1><p>{error || "No dashboard data is available."}</p><button onClick={() => void load()}>Try again</button></div>;
 
-  const claimEntries = Object.entries(data.claims);
+  const claims = Object.entries(data.claims);
+  const claimsTotal = claims.reduce((sum, [, count]) => sum + count, 0);
+  const firstName = user?.fullName?.trim().split(/\s+/)[0];
 
-  return (
-    <div>
-      <h1 className="mb-5 text-[25px] font-extrabold text-[#1e2761]">
-        Dashboard
-      </h1>
+  const today = new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Total Members" value={data.members.total} />
-        <StatCard label="Active" value={data.members.active} accent="#17805f" />
-        <StatCard label="Pending" value={data.members.pending} accent="#b9791a" />
-        <StatCard label="Flagged" value={data.members.flagged} accent="#c23b3b" />
-        <StatCard label="Removed" value={data.members.removed} accent="#5b6472" />
-      </div>
+  return <div className="dashboard">
+    <header className="dash-heading"><div><p>{today}</p><h1>Good morning{firstName ? `, ${firstName}` : ""}</h1><span>A quick view of membership operations and current exceptions.</span></div><div className="dash-actions"><Link className="dash-button dash-button--quiet" to="/members/upload">Import members</Link><Link className="dash-button dash-button--primary" to="/members/new"><b>+</b> Add member</Link></div></header>
 
-      <div className="mt-5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-        <StatCard
-          label="Report 20 Match Rate"
-          value={`${data.report20.matchRate}%`}
-          accent="#1f9c7c"
-        />
-        <StatCard label="Pending Transfers" value={data.transfers.pending} />
-        <StatCard
-          label="Coverage (Spouses + Beneficiaries)"
-          value={data.coverage.spouses + data.coverage.beneficiaries}
-        />
-      </div>
+    <section className="dash-metrics" aria-label="Membership summary">
+      <Metric label="Total members" value={data.members.total} icon={icons.members} tone="navy" />
+      <Metric label="Active members" value={data.members.active} icon={icons.active} tone="green" />
+      <Metric label="Pending approval" value={data.members.pending} icon={icons.pending} tone="amber" />
+      <Metric label="Needs attention" value={data.members.flagged + data.members.returned} icon={icons.flagged} tone="red" />
+    </section>
 
-      <div className="mt-5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-        <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-4 lg:col-span-2">
-          <h2 className="mb-4 text-[15px] font-bold text-[#1e2761]">
-            Enrollment Growth (12 months)
-          </h2>
-          <EnrollmentChart data={data.enrollmentGrowth} />
-        </div>
+    <div className="dash-grid">
+      <section className="dash-panel dash-panel--chart"><div className="dash-panel__heading"><div><h2>Enrollment</h2><p>Members added during the last 12 months</p></div><Link to="/members">View members</Link></div><EnrollmentChart data={data.enrollmentGrowth} /></section>
 
-        <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-4">
-          <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
-            Claims by Status
-          </h2>
-          {claimEntries.length === 0 ? (
-            <div className="text-[12.5px] text-[#5b6472]">
-              No claim submissions yet.
-            </div>
-          ) : (
-            <ul className="space-y-2 text-[12.5px]">
-              {claimEntries.map(([status, count]) => (
-                <li key={status} className="flex justify-between">
-                  <span className="text-[#5b6472]">{status}</span>
-                  <span className="font-semibold text-[#171b26]">{count}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-[12px] border border-[#e5e9f0] bg-white p-4">
-        <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
-          Recent Activity
-        </h2>
-        {data.recentActivity.length === 0 ? (
-          <div className="text-[12.5px] text-[#5b6472]">No recent activity.</div>
-        ) : (
-          <ul className="divide-y divide-[#e5e9f0]">
-            {data.recentActivity.map((item) => (
-              <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
-                <div>
-                  <div className="text-[12.5px] font-semibold text-[#171b26]">
-                    {item.description}
-                  </div>
-                  <div className="text-[11px] text-[#5b6472]">
-                    {item.actor?.fullName ?? "System"}
-                  </div>
-                </div>
-                <div className="whitespace-nowrap text-[11px] text-[#5b6472]">
-                  {timeAgo(item.createdAt)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <section className="dash-panel dash-health"><div className="dash-panel__heading"><div><h2>Operational health</h2><p>Items requiring review</p></div></div>
+        <div className="dash-health__score"><div style={{ "--score": `${data.report20.matchRate * 3.6}deg` } as CSSProperties}><strong>{data.report20.matchRate}%</strong><span>matched</span></div><p>Report 20 reconciliation</p></div>
+        <ul><li><span className="amber"/>Pending transfers <strong>{data.transfers.pending}</strong></li><li><span className="red"/>Flagged members <strong>{data.members.flagged}</strong></li><li><span className="navy"/>Unmatched records <strong>{data.report20.unmatchedMembers}</strong></li></ul>
+        <Link className="dash-text-link" to="/imports/report20">Review Report 20 <span>→</span></Link>
+      </section>
     </div>
-  );
+
+    <div className="dash-lower-grid">
+      <section className="dash-panel dash-activity"><div className="dash-panel__heading"><div><h2>Recent activity</h2><p>Latest actions across the system</p></div></div>{data.recentActivity.length === 0 ? <div className="dash-empty"><p>No activity has been recorded yet.</p></div> : <ul>{data.recentActivity.slice(0, 6).map((item) => <li key={item.id}><div className="dash-activity__avatar">{item.actor?.fullName?.charAt(0) || "S"}</div><div><strong>{item.description}</strong><span>{item.actor?.fullName ?? "System"}</span></div><time dateTime={item.createdAt}>{timeAgo(item.createdAt)}</time></li>)}</ul>}</section>
+
+      <section className="dash-panel dash-quick"><div className="dash-panel__heading"><div><h2>At a glance</h2><p>Coverage and claims</p></div></div><dl><div><dt>Covered family members</dt><dd>{(data.coverage.spouses + data.coverage.beneficiaries).toLocaleString()}</dd></div><div><dt>Claims submitted</dt><dd>{claimsTotal.toLocaleString()}</dd></div><div><dt>Members removed</dt><dd>{data.members.removed.toLocaleString()}</dd></div></dl>{claimsTotal === 0 && <p className="dash-quick__note">Claim status totals will appear here after Mankrado begins sending submissions.</p>}</section>
+    </div>
+  </div>;
 }

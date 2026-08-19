@@ -73,17 +73,17 @@ export default function Login() {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5">
-      <div className="grid w-full max-w-[960px] grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-2">
+      <div className="grid w-full max-w-240 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-2">
         {/* Brand side */}
-        <div className="relative flex flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white">
+        <div className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white md:flex">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-[60px] -top-[60px] h-[220px] w-[220px] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_70%)]"
+            className="pointer-events-none absolute -right-15 -top-15 h-55 w-55 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_70%)]"
           />
           <div>
             <div className="mb-6 flex items-center gap-2.5">
-              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/[0.06] py-1.5 pl-1.5 pr-3">
-                <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[7px] bg-white/[0.18] text-[10.5px] font-extrabold">
+              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/6 py-1.5 pl-1.5 pr-3">
+                <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-[7px] bg-white/18 text-[10.5px] font-extrabold">
                   GNAT
                 </div>
                 <div className="leading-tight">
@@ -93,9 +93,9 @@ export default function Login() {
                   </small>
                 </div>
               </div>
-              <div className="h-[30px] w-px flex-shrink-0 bg-white/20" />
-              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/[0.06] py-1.5 pl-1.5 pr-3">
-                <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[7px] bg-white/[0.18] text-[10.5px] font-extrabold">
+              <div className="h-7.5 w-px shrink-0 bg-white/20" />
+              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/6 py-1.5 pl-1.5 pr-3">
+                <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-[7px] bg-white/18 text-[10.5px] font-extrabold">
                   mL
                 </div>
                 <div className="leading-tight">
@@ -107,11 +107,11 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="relative z-10 flex h-[46px] w-[46px] items-center justify-center rounded-[9px] border border-white/20 bg-white/[0.16] text-[19px] font-extrabold">
+            <div className="relative z-10 flex h-11.5 w-11.5 items-center justify-center rounded-[9px] border border-white/20 bg-white/16 text-[19px] font-extrabold">
               SC
             </div>
 
-            <div className="my-5 flex h-[5px] w-[84px] overflow-hidden rounded-[3px]">
+            <div className="my-5 flex h-1.25 w-21 overflow-hidden rounded-[3px]">
               <span className="flex-1 bg-[#dff7ee]" />
               <span className="flex-1 bg-[#1f9c7c]" />
               <span className="flex-1 bg-[#b9791a]" />
@@ -132,13 +132,13 @@ export default function Login() {
                 key={f}
                 className="relative z-10 mt-4 flex items-start gap-2.5 text-[12.5px] text-white/90"
               >
-                <div className="mt-px flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[7px] bg-white/[0.12]">
+                <div className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-white/12">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2.6"
-                    className="h-[13px] w-[13px] text-[#dff7ee]"
+                    className="h-3.25 w-3.25 text-[#dff7ee]"
                   >
                     <path d="M9 12.5 11 14.5 15.5 9" />
                     <circle cx="12" cy="12" r="9" />
@@ -156,7 +156,7 @@ export default function Login() {
 
         {/* Form side */}
         <div className="flex flex-col px-9 py-10">
-          <div className="mb-[22px] flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
+          <div className="mb-5.5 flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
             <button
               type="button"
               onClick={() => setMode("staff")}
@@ -226,7 +226,7 @@ export default function Login() {
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.2"
-                      className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-[#5b6472]"
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
                     >
                       <circle cx="12" cy="8" r="3.4" />
                       <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" />
@@ -256,7 +256,7 @@ export default function Login() {
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.2"
-                      className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-[#5b6472]"
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
                     >
                       <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
                       <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
@@ -308,7 +308,7 @@ export default function Login() {
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.2"
-                      className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-[#5b6472]"
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
                     >
                       <rect x="2.5" y="5.5" width="19" height="13" rx="2.2" />
                       <circle cx="8.2" cy="12" r="2" />

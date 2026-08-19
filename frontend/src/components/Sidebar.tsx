@@ -91,10 +91,10 @@ const adminItems: { label: string; lock: string; icon: ReactNode }[] = [
 ];
 
 const navItemBase =
-  "flex items-center gap-[11px] rounded-[9px] px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/[0.06] hover:text-white";
+  "flex items-center gap-2.75 rounded-[9px] px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
 const navItemActive = "bg-[#1f9c7c] text-white hover:bg-[#1f9c7c]";
 const navSoonBadge =
-  "ml-auto rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
+  "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
 
 type SidebarProps = {
   isOpen: boolean;
@@ -108,17 +108,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     <>
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-[75] bg-[rgba(23,27,38,0.45)] transition-opacity md:hidden ${
+        className={`fixed inset-0 z-75 bg-[rgba(23,27,38,0.45)] transition-opacity md:hidden ${
           isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
       <aside
-        className={`fixed inset-y-0 left-0 z-[80] flex w-[236px] flex-shrink-0 flex-col bg-[#1e2761] py-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] py-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="mb-4 flex items-center gap-2.5 border-b border-white/[0.08] px-5 pb-[22px]">
-          <div className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-[9px] bg-[#1f9c7c] text-[16px] font-extrabold text-white">
+        <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
+          <div className="flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-[9px] bg-[#1f9c7c] text-[16px] font-extrabold text-white">
             SC
           </div>
           <div className="leading-[1.15]">
@@ -149,7 +149,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              className="h-[18px] w-[18px] flex-shrink-0"
+              className="h-4.5 w-4.5 shrink-0"
             >
               <path d="M3 11.5 12 4l9 7.5" />
               <path d="M5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9" />
@@ -163,7 +163,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               onClick={() => setMembersExpanded((v) => !v)}
               className={`w-full ${navItemBase}`}
             >
-              <span className="h-[18px] w-[18px] flex-shrink-0 [&>svg]:h-full [&>svg]:w-full">
+              <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
                 {membersGroup.icon}
               </span>
               {membersGroup.label}
@@ -172,7 +172,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.6"
-                className={`ml-auto h-[13px] w-[13px] flex-shrink-0 opacity-70 transition-transform ${
+                className={`ml-auto h-3.25 w-3.25 shrink-0 opacity-70 transition-transform ${
                   membersExpanded ? "rotate-180" : ""
                 }`}
               >
@@ -187,9 +187,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               {membersGroup.items.map((item) => (
                 <span
                   key={item.target}
-                  className="relative my-px flex cursor-not-allowed items-center gap-[9px] rounded-lg py-2 pl-[33px] pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
+                  className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
                 >
-                  <span className="absolute left-[19px] h-1 w-1 rounded-full bg-current opacity-80" />
+                  <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
                   {item.label}
                   <span className={navSoonBadge}>Soon</span>
                 </span>
@@ -202,7 +202,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               key={item.label}
               className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
             >
-              <span className="h-[18px] w-[18px] flex-shrink-0 [&>svg]:h-full [&>svg]:w-full">
+              <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
                 {item.icon}
               </span>
               {item.label}
@@ -219,7 +219,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               key={item.label}
               className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
             >
-              <span className="h-[18px] w-[18px] flex-shrink-0 [&>svg]:h-full [&>svg]:w-full">
+              <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
                 {item.icon}
               </span>
               {item.label}
@@ -228,7 +228,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        <div className="border-t border-white/[0.08] px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
+        <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
           GNAT Supreme Care &copy; 2026
           <br />
           Underwritten with miLife Insurance

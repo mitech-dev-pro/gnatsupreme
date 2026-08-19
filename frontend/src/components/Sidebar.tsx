@@ -21,7 +21,7 @@ const baseMembersItems: NavSubItem[] = [
   { label: "All Members", target: "all", to: "/members" },
   { label: "Add Member", target: "add", to: "/members/new" },
   { label: "Upload Members", target: "upload", to: "/members/upload" },
-  { label: "Pending Approvals", target: "pending", to: "/members?status=PENDING" },
+  { label: "Pending Approvals", target: "pending", to: "/approvals" },
   { label: "Change Requests", target: "changes", to: "/change-requests" },
   { label: "Removed / Exits", target: "removed", to: "/members?status=REMOVED" },
 ];
@@ -114,7 +114,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [membersExpanded, setMembersExpanded] = useState(() =>
     location.pathname.startsWith("/members") ||
     location.pathname.startsWith("/imports/report20") ||
-    location.pathname.startsWith("/change-requests"),
+    location.pathname.startsWith("/change-requests") ||
+    location.pathname.startsWith("/approvals"),
   );
 
   return (

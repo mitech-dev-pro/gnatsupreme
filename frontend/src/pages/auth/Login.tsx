@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { useMemberAuth } from "@/lib/MemberAuthContext";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -21,6 +22,12 @@ function ErrorBanner({ message }: { message: string }) {
 
 export default function Login() {
   const { user, isLoading, login } = useAuth();
+  const {
+    member,
+    isLoading: memberLoading,
+    requestOtp,
+    verifyOtp,
+  } = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -31,11 +38,19 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [memberStep, setMemberStep] = useState<"id" | "otp">("id");
   const [controllerId, setControllerId] = useState("");
+  const [otp, setOtp] = useState("");
+  const [challengeToken, setChallengeToken] = useState("");
   const [memberError, setMemberError] = useState("");
+  const [memberSubmitting, setMemberSubmitting] = useState(false);
 
   if (!isLoading && user) {
     return <Navigate to={searchParams.get("redirect") || "/"} replace />;
+  }
+
+  if (!memberLoading && member) {
+    return <Navigate to="/member" replace />;
   }
 
   const handleStaffSubmit = async (e: FormEvent) => {
@@ -60,15 +75,58 @@ export default function Login() {
     }
   };
 
-  const handleMemberSubmit = (e: FormEvent) => {
+  const handleRequestOtp = async (e: FormEvent) => {
     e.preventDefault();
-    if (!controllerId.trim()) {
-      setMemberError("Enter your Controller ID.");
+    setMemberError("");
+
+    if (!/^\d{4,7}$/.test(controllerId.trim())) {
+      setMemberError("Enter a valid Controller ID (4 to 7 digits).");
       return;
     }
-    setMemberError(
-      "The member self-service portal isn't available yet — please check back soon.",
-    );
+
+    setMemberSubmitting(true);
+    try {
+      const res = await requestOtp(controllerId.trim());
+      setChallengeToken(res.challengeToken);
+      setMemberStep("otp");
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to send a verification code.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setMemberError("Enter the six-digit verification code.");
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      await verifyOtp(challengeToken, otp.trim());
+      navigate("/member", { replace: true });
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message ||
+          "The verification code is invalid or expired.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleMemberModeChange = (nextMode: "staff" | "member") => {
+    setMode(nextMode);
+    setMemberStep("id");
+    setOtp("");
+    setChallengeToken("");
+    setMemberError("");
   };
 
   return (
@@ -159,7 +217,7 @@ export default function Login() {
           <div className="mb-5.5 flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
             <button
               type="button"
-              onClick={() => setMode("staff")}
+              onClick={() => handleMemberModeChange("staff")}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
                 mode === "staff"
                   ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]"
@@ -180,7 +238,7 @@ export default function Login() {
             </button>
             <button
               type="button"
-              onClick={() => setMode("member")}
+              onClick={() => handleMemberModeChange("member")}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
                 mode === "member"
                   ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]"
@@ -282,19 +340,19 @@ export default function Login() {
                 </button>
               </form>
             </>
-          ) : (
+          ) : memberStep === "id" ? (
             <>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Check your membership
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your Controller ID to view your coverage, spouse &amp;
-                beneficiary, and claims
+                Enter your Controller ID and we'll text a verification code to
+                your registered phone
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
 
-              <form onSubmit={handleMemberSubmit} noValidate>
+              <form onSubmit={handleRequestOtp} noValidate>
                 <div className="mb-3.5">
                   <label
                     htmlFor="controller-id"
@@ -318,7 +376,7 @@ export default function Login() {
                       id="controller-id"
                       value={controllerId}
                       onChange={(e) => setControllerId(e.target.value)}
-                      placeholder="e.g. 118820451"
+                      placeholder="e.g. 1188204"
                       inputMode="numeric"
                       className={inputClasses}
                     />
@@ -327,9 +385,74 @@ export default function Login() {
 
                 <button
                   type="submit"
-                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f]"
+                  disabled={memberSubmitting}
+                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Find My Record
+                  {memberSubmitting ? "Sending code…" : "Send Verification Code"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                Enter verification code
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                We've sent a 6-digit code by SMS to the phone on file for
+                Controller ID {controllerId}
+              </div>
+
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleVerifyOtp} noValidate>
+                <div className="mb-3.5">
+                  <label
+                    htmlFor="member-otp"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    Verification code
+                  </label>
+                  <div className="relative">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
+                    >
+                      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+                      <path d="M4 7l8 6 8-6" />
+                    </svg>
+                    <input
+                      id="member-otp"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      placeholder="e.g. 482913"
+                      maxLength={6}
+                      inputMode="numeric"
+                      className={inputClasses}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {memberSubmitting ? "Verifying…" : "Verify & Sign In"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberStep("id");
+                    setOtp("");
+                    setMemberError("");
+                  }}
+                  className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+                >
+                  &larr; Back
                 </button>
               </form>
             </>

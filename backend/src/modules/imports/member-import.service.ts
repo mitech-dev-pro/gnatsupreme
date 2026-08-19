@@ -79,16 +79,29 @@ async function spreadsheetRows(filePath: string, mimeType: string): Promise<RawR
   return rows;
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+// Postgres caps bind parameters at 65535 per query; batch large `IN (...)` lookups to stay well under that.
+async function findManyChunked<T>(ids: string[], run: (batch: string[]) => Promise<T[]>): Promise<T[]> {
+  const BATCH_SIZE = 10_000;
+  const results = await Promise.all(chunk(ids, BATCH_SIZE).map(run));
+  return results.flat();
+}
+
 export async function stageMemberImport(jobId: number, filePath: string, mimeType: string, user: AuthenticatedUser) {
   const sourceRows = await spreadsheetRows(filePath, mimeType);
   const districts = await prisma.district.findMany({ include: { region: { select: { name: true } } } });
-  const controllerIds = sourceRows.map((row) => readField(row.data, aliases.controllerId)?.replace(/\s/g, "")).filter((id): id is string => Boolean(id));
-  const ghanaCards = sourceRows.flatMap((row) => [readField(row.data, aliases.ghanaCardId)?.toUpperCase(), readField(row.data, aliases.spouseGhanaCardId)?.toUpperCase()]).filter((id): id is string => Boolean(id));
+  const controllerIds = [...new Set(sourceRows.map((row) => readField(row.data, aliases.controllerId)?.replace(/\s/g, "")).filter((id): id is string => Boolean(id)))];
+  const ghanaCards = [...new Set(sourceRows.flatMap((row) => [readField(row.data, aliases.ghanaCardId)?.toUpperCase(), readField(row.data, aliases.spouseGhanaCardId)?.toUpperCase()]).filter((id): id is string => Boolean(id)))];
   const [existingMembers, existingCards, existingSpouseCards, reportRows] = await Promise.all([
-    prisma.member.findMany({ where: { controllerId: { in: controllerIds } }, select: { id: true, controllerId: true } }),
-    prisma.member.findMany({ where: { ghanaCardId: { in: ghanaCards } }, select: { ghanaCardId: true } }),
-    prisma.spouse.findMany({ where: { ghanaCardId: { in: ghanaCards } }, select: { ghanaCardId: true } }),
-    prisma.report20Row.findMany({ where: { controllerId: { in: controllerIds }, importJob: { status: "COMPLETED" } }, select: { controllerId: true }, orderBy: { createdAt: "desc" } }),
+    findManyChunked(controllerIds, (batch) => prisma.member.findMany({ where: { controllerId: { in: batch } }, select: { id: true, controllerId: true } })),
+    findManyChunked(ghanaCards, (batch) => prisma.member.findMany({ where: { ghanaCardId: { in: batch } }, select: { ghanaCardId: true } })),
+    findManyChunked(ghanaCards, (batch) => prisma.spouse.findMany({ where: { ghanaCardId: { in: batch } }, select: { ghanaCardId: true } })),
+    findManyChunked(controllerIds, (batch) => prisma.report20Row.findMany({ where: { controllerId: { in: batch }, importJob: { status: "COMPLETED" } }, select: { controllerId: true }, orderBy: { createdAt: "desc" } })),
   ]);
   const existingIds = new Set(existingMembers.map((member) => member.controllerId));
   const usedCards = new Set([...existingCards, ...existingSpouseCards].map((record) => record.ghanaCardId).filter(Boolean));
@@ -116,7 +129,7 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     const dateOfBirth = parseDate(readField(data, aliases.dateOfBirth), "Date of birth", issues);
     parseDate(readField(data, aliases.spouseDateOfBirth), "Spouse date of birth", issues);
     parseDate(readField(data, aliases.beneficiaryDateOfBirth), "Beneficiary date of birth", issues);
-    if (!controllerId || !/^\d{9}$/.test(controllerId)) issues.push("Controller ID must contain exactly 9 digits");
+    if (!controllerId || !/^\d{4,7}$/.test(controllerId)) issues.push("Controller ID must contain 4 to 7 digits");
     if (!fullName || fullName.length < 2) issues.push("Full name is required");
     if (!school || school.length < 2) issues.push("School is required");
     if (!districtName) issues.push("District is required");
@@ -174,10 +187,14 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
       rawData: data,
     };
   });
-  await prisma.$transaction([
-    prisma.memberBulkImportRow.createMany({ data: rows }),
-    prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", totalRows: rows.length, readyRows: counts.READY, invalidRows: counts.INVALID, duplicateRows: counts.DUPLICATE, unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE, completedAt: new Date() } }),
-  ]);
+  await prisma.$transaction(
+    [
+      prisma.memberBulkImportRow.createMany({ data: rows }),
+      prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", totalRows: rows.length, readyRows: counts.READY, invalidRows: counts.INVALID, duplicateRows: counts.DUPLICATE, unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE, completedAt: new Date() } }),
+    ],
+    // Default 5s timeout is too short for inserting up to MAX_ROWS rows; scale the ceiling with the importer's own limit.
+    { timeout: 120_000 },
+  );
 }
 
 export function bulkRawFields(raw: Prisma.JsonValue) {

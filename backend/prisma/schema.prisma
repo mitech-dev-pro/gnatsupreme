@@ -38,6 +38,8 @@ enum BeneficiaryRelationship {
 enum FileCategory {
   MEMBER_DOCUMENT
   MARRIAGE_CERTIFICATE
+  REPORT_20
+  MEMBER_IMPORT
   OTHER
 }
 
@@ -54,6 +56,26 @@ enum ExternalClaimStatus {
   SUBMITTED
   FAILED
   SYNCHRONIZED
+}
+
+enum ImportType {
+  REPORT_20
+  MEMBER_BULK
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ImportRowStatus {
+  MATCHED
+  CHANGED
+  UNMATCHED
+  DUPLICATE
+  INVALID
 }
 
 model Region {
@@ -99,6 +121,7 @@ model User {
   requestedTransfers MemberTransfer[]          @relation("TransferRequestedBy")
   reviewedTransfers  MemberTransfer[]          @relation("TransferReviewedBy")
   claimSubmissions   ExternalClaimSubmission[]
+  importJobs         ImportJob[]
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
@@ -125,6 +148,7 @@ model Member {
   files            StoredFile[]
   transfers        MemberTransfer[]
   claimSubmissions ExternalClaimSubmission[]
+  importRows       Report20Row[]
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -184,18 +208,70 @@ model StoredFile {
   sizeBytes    Int
   storagePath  String       @unique
   downloadPath String       @unique
-  memberId     Int
+  memberId     Int?
   spouseId     Int?
   uploadedById Int
-  member       Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member       Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
   spouse       Spouse?      @relation(fields: [spouseId], references: [id], onDelete: SetNull)
   uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
   createdAt    DateTime     @default(now())
+  importJob    ImportJob?
 
   @@index([memberId])
   @@index([spouseId])
   @@index([uploadedById])
   @@index([category])
+}
+
+model ImportJob {
+  id            Int           @id @default(autoincrement())
+  type          ImportType
+  status        ImportStatus  @default(PENDING)
+  checksum      String
+  fileId        Int           @unique
+  file          StoredFile    @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  uploadedById  Int
+  uploadedBy    User          @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reportMonth   DateTime?     @db.Date
+  totalRows     Int           @default(0)
+  matchedRows   Int           @default(0)
+  changedRows   Int           @default(0)
+  unmatchedRows Int           @default(0)
+  duplicateRows Int           @default(0)
+  invalidRows   Int           @default(0)
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  rows          Report20Row[]
+
+  @@unique([type, checksum])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Report20Row {
+  id           Int             @id @default(autoincrement())
+  importJobId  Int
+  importJob    ImportJob       @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  rowNumber    Int
+  controllerId String?
+  fullName     String?
+  districtName String?
+  school       String?
+  ghanaCardId  String?
+  status       ImportRowStatus
+  memberId     Int?
+  member       Member?         @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  issues       Json?
+  rawData      Json
+  createdAt    DateTime        @default(now())
+
+  @@unique([importJobId, rowNumber])
+  @@index([importJobId, status])
+  @@index([controllerId])
+  @@index([memberId])
 }
 
 model AuditLog {

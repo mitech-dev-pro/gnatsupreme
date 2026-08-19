@@ -17,7 +17,7 @@ export const fileRouter = Router();
 const memberParamsSchema = z.object({ memberId: z.coerce.number().int().positive() });
 const fileParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 const storedNameParamsSchema = z.object({
-  storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/),
+  storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp|csv|xlsx)$/),
 });
 const categorySchema = z.enum(["MEMBER_DOCUMENT", "MARRIAGE_CERTIFICATE", "OTHER"]);
 
@@ -187,13 +187,18 @@ fileRouter.get("/:storedName", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid file name" });
     return;
   }
-  const file = await prisma.storedFile.findFirst({
-    where: {
-      storedName: params.data.storedName,
-      member: { is: memberScope(currentUser(response)) },
-    },
+  const user = currentUser(response);
+  const file = await prisma.storedFile.findUnique({
+    where: { storedName: params.data.storedName },
+    include: { member: { select: { districtId: true, district: { select: { regionId: true } } } } },
   });
-  if (!file) {
+  const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
+  const accessible = file?.member
+    ? elevated ||
+      (user.role === "REGIONAL_ADMIN" && file.member.district.regionId === user.regionId) ||
+      (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
+    : elevated;
+  if (!file || !accessible) {
     response.status(404).json({ success: false, message: "File not found" });
     return;
   }
@@ -217,14 +222,25 @@ fileRouter.delete("/:id", async (request, response) => {
     return;
   }
   const user = currentUser(response);
-  const file = await prisma.storedFile.findFirst({
-    where: { id: params.data.id, member: { is: memberScope(user) } },
+  const file = await prisma.storedFile.findUnique({
+    where: { id: params.data.id },
     include: {
       member: { select: { districtId: true, district: { select: { regionId: true } } } },
+      importJob: { select: { id: true } },
     },
   });
-  if (!file) {
+  const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
+  const accessible = file?.member
+    ? elevated ||
+      (user.role === "REGIONAL_ADMIN" && file.member.district.regionId === user.regionId) ||
+      (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
+    : elevated;
+  if (!file || !accessible) {
     response.status(404).json({ success: false, message: "File not found" });
+    return;
+  }
+  if (file.importJob) {
+    response.status(409).json({ success: false, message: "Import source files cannot be deleted independently" });
     return;
   }
   if (file.uploadedById !== user.id && user.role !== "SUPER_ADMIN" && user.role !== "NATIONAL_ADMIN") {
@@ -248,8 +264,8 @@ fileRouter.delete("/:id", async (request, response) => {
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
     },
-    regionId: file.member.district.regionId,
-    districtId: file.member.districtId,
+    regionId: file.member?.district.regionId,
+    districtId: file.member?.districtId,
   });
   response.status(204).send();
 });

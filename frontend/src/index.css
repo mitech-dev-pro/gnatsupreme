@@ -15,12 +15,6 @@
   --text-3xl: 21px;
   --text-4xl: 24px;
   --text-5xl: 28px;
-
-  --color-brand-50: #eef0fa;
-  --color-brand-100: #dff7ee;
-  --color-brand-500: #1f9c7c;
-  --color-brand-600: #17805f;
-  --color-brand-700: #146a4f;
 }
 
 @layer base {

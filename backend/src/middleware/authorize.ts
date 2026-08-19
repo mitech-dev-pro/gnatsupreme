@@ -23,3 +23,5 @@ export function authorizeRoles(...allowedRoles: UserRole[]) {
     next();
   };
 }
+
+// this middleware function checks if the user is authenticated and has one of the allowed roles. If the user is not authenticated, it returns a 401 Unauthorized response. If the user does not have the required role, it returns a 403 Forbidden response. If the user is authenticated and has the required role, it calls the next middleware function in the stack.

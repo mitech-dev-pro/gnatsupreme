@@ -11,6 +11,7 @@ import { districtRouter, regionRouter } from "./modules/geography/geography.rout
 import { userRouter } from "./modules/users/user.routes.js";
 import { memberRouter } from "./modules/members/member.routes.js";
 import { fileRouter, memberFileRouter } from "./modules/files/file.routes.js";
+import { auditRouter } from "./modules/audit/audit.routes.js";
 
 export const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/users", userRouter);
 app.use("/api/members", memberRouter);
 app.use("/api/members", memberFileRouter);
 app.use("/api/files", fileRouter);
+app.use("/api/audit-logs", auditRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

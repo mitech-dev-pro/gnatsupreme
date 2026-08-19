@@ -6,6 +6,7 @@ import type { UserRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { recordAudit } from "../audit/audit.service.js";
 import {
   createUserSchema,
   updateUserPasswordSchema,
@@ -91,6 +92,26 @@ async function hashPassword(password: string) {
     timeCost: 2,
     parallelism: 1,
   });
+}
+
+function safeUserSnapshot(user: {
+  id: number;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  regionId: number | null;
+  districtId: number | null;
+}) {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    regionId: user.regionId,
+    districtId: user.districtId,
+  };
 }
 
 userRouter.use(authenticate, staffManagers);
@@ -193,6 +214,17 @@ userRouter.post("/", async (request, response) => {
       },
       select: publicUserSelect,
     });
+    await recordAudit({
+      request,
+      actor: currentUser,
+      action: "USER_CREATED",
+      entityType: "USER",
+      entityId: user.id,
+      description: `Created staff account for ${user.fullName}`,
+      afterData: safeUserSnapshot(user),
+      regionId: user.regionId,
+      districtId: user.districtId,
+    });
     response.status(201).json({ success: true, data: user });
   } catch (error) {
     if (error instanceof UserInputError) {
@@ -259,6 +291,18 @@ userRouter.patch("/:id", async (request, response) => {
       },
       select: publicUserSelect,
     });
+    await recordAudit({
+      request,
+      actor: actor(response),
+      action: "USER_UPDATED",
+      entityType: "USER",
+      entityId: user.id,
+      description: `Updated staff account for ${user.fullName}`,
+      beforeData: safeUserSnapshot(existing),
+      afterData: safeUserSnapshot(user),
+      regionId: user.regionId,
+      districtId: user.districtId,
+    });
     response.json({ success: true, data: user });
   } catch (error) {
     if (error instanceof UserInputError) {
@@ -312,6 +356,18 @@ userRouter.patch("/:id/status", async (request, response) => {
         ]
       : []),
   ]);
+  await recordAudit({
+    request,
+    actor: currentUser,
+    action: body.data.isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+    entityType: "USER",
+    entityId: user.id,
+    description: `${body.data.isActive ? "Activated" : "Deactivated"} ${user.fullName}`,
+    beforeData: { isActive: existing.isActive },
+    afterData: { isActive: user.isActive },
+    regionId: user.regionId,
+    districtId: user.districtId,
+  });
   response.json({ success: true, data: user });
 });
 
@@ -337,5 +393,15 @@ userRouter.patch("/:id/password", async (request, response) => {
       data: { revokedAt: new Date() },
     }),
   ]);
+  await recordAudit({
+    request,
+    actor: actor(response),
+    action: "USER_PASSWORD_RESET",
+    entityType: "USER",
+    entityId: existing.id,
+    description: `Reset password and revoked sessions for ${existing.fullName}`,
+    regionId: existing.regionId,
+    districtId: existing.districtId,
+  });
   response.json({ success: true, message: "Password updated; existing sessions were revoked" });
 });

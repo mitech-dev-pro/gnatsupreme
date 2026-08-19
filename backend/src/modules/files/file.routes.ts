@@ -8,6 +8,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
+import { recordAudit } from "../audit/audit.service.js";
 import { hasValidFileSignature, memberFileUpload, uploadRoot } from "./file.storage.js";
 
 export const memberFileRouter = Router();
@@ -32,7 +33,10 @@ async function requireMemberAccess(request: Request, response: Response, next: N
   }
   const member = await prisma.member.findFirst({
     where: { id: params.data.memberId, ...memberScope(currentUser(response)) },
-    include: { spouse: { select: { id: true } } },
+    include: {
+      spouse: { select: { id: true } },
+      district: { select: { regionId: true } },
+    },
   });
   if (!member) {
     response.status(404).json({ success: false, message: "Member not found" });
@@ -106,7 +110,12 @@ memberFileRouter.post(
     }
 
     const category = categorySchema.safeParse(request.body.category ?? "MEMBER_DOCUMENT");
-    const member = response.locals.fileMember as { id: number; spouse: { id: number } | null };
+    const member = response.locals.fileMember as {
+      id: number;
+      districtId: number;
+      district: { regionId: number };
+      spouse: { id: number } | null;
+    };
     if (!category.success) {
       await removeUploadedFile(request.file.path);
       response.status(400).json({ success: false, message: "Invalid file category" });
@@ -147,6 +156,22 @@ memberFileRouter.post(
           downloadPath: true,
           createdAt: true,
         },
+      });
+      await recordAudit({
+        request,
+        actor: currentUser(response),
+        action: "FILE_UPLOADED",
+        entityType: "STORED_FILE",
+        entityId: file.id,
+        description: `Uploaded ${file.originalName}`,
+        afterData: {
+          category: file.category,
+          originalName: file.originalName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+        },
+        regionId: member.district.regionId,
+        districtId: member.districtId,
       });
       response.status(201).json({ success: true, data: file });
     } catch (error) {
@@ -194,6 +219,9 @@ fileRouter.delete("/:id", async (request, response) => {
   const user = currentUser(response);
   const file = await prisma.storedFile.findFirst({
     where: { id: params.data.id, member: { is: memberScope(user) } },
+    include: {
+      member: { select: { districtId: true, district: { select: { regionId: true } } } },
+    },
   });
   if (!file) {
     response.status(404).json({ success: false, message: "File not found" });
@@ -207,5 +235,21 @@ fileRouter.delete("/:id", async (request, response) => {
   const filePath = absoluteStoragePath(file.storagePath);
   if (filePath) await removeUploadedFile(filePath);
   await prisma.storedFile.delete({ where: { id: file.id } });
+  await recordAudit({
+    request,
+    actor: user,
+    action: "FILE_DELETED",
+    entityType: "STORED_FILE",
+    entityId: file.id,
+    description: `Deleted ${file.originalName}`,
+    beforeData: {
+      category: file.category,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+    },
+    regionId: file.member.district.regionId,
+    districtId: file.member.districtId,
+  });
   response.status(204).send();
 });

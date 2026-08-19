@@ -78,6 +78,7 @@ model User {
   createdMembers Member[]       @relation("MemberCreatedBy")
   refreshTokens  RefreshToken[]
   uploadedFiles  StoredFile[]
+  auditLogs      AuditLog[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -173,4 +174,29 @@ model StoredFile {
   @@index([spouseId])
   @@index([uploadedById])
   @@index([category])
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  actorId     Int?
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail  String?
+  action      String
+  entityType  String
+  entityId    String?
+  description String
+  beforeData  Json?
+  afterData   Json?
+  regionId    Int?
+  districtId  Int?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([regionId])
+  @@index([districtId])
+  @@index([createdAt])
 }

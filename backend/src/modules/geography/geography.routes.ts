@@ -4,6 +4,7 @@ import type { ZodError } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { recordAudit } from "../audit/audit.service.js";
 import {
   districtCreateSchema,
   districtQuerySchema,
@@ -66,6 +67,16 @@ regionRouter.post("/", geographyManagers, async (request, response) => {
   }
 
   const region = await prisma.region.create({ data: parsed.data });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "REGION_CREATED",
+    entityType: "REGION",
+    entityId: region.id,
+    description: `Created region ${region.name}`,
+    afterData: { name: region.name },
+    regionId: region.id,
+  });
   response.status(201).json({ success: true, data: region });
 });
 
@@ -96,6 +107,17 @@ regionRouter.patch("/:id", geographyManagers, async (request, response) => {
     where: { id: params.data.id },
     data: body.data,
   });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "REGION_UPDATED",
+    entityType: "REGION",
+    entityId: region.id,
+    description: `Updated region ${region.name}`,
+    beforeData: { name: existing.name },
+    afterData: { name: region.name },
+    regionId: region.id,
+  });
   response.json({ success: true, data: region });
 });
 
@@ -120,6 +142,16 @@ regionRouter.delete("/:id", geographyManagers, async (request, response) => {
   }
 
   await prisma.region.delete({ where: { id: params.data.id } });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "REGION_DELETED",
+    entityType: "REGION",
+    entityId: region.id,
+    description: `Deleted region ${region.name}`,
+    beforeData: { name: region.name },
+    regionId: region.id,
+  });
   response.status(204).send();
 });
 
@@ -173,6 +205,17 @@ districtRouter.post("/", geographyManagers, async (request, response) => {
     data: parsed.data,
     include: { region: { select: { id: true, name: true } } },
   });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "DISTRICT_CREATED",
+    entityType: "DISTRICT",
+    entityId: district.id,
+    description: `Created district ${district.name}`,
+    afterData: { name: district.name, regionId: district.regionId },
+    regionId: district.regionId,
+    districtId: district.id,
+  });
   response.status(201).json({ success: true, data: district });
 });
 
@@ -215,6 +258,18 @@ districtRouter.patch("/:id", geographyManagers, async (request, response) => {
     data: body.data,
     include: { region: { select: { id: true, name: true } } },
   });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "DISTRICT_UPDATED",
+    entityType: "DISTRICT",
+    entityId: district.id,
+    description: `Updated district ${district.name}`,
+    beforeData: { name: existing.name, regionId: existing.regionId },
+    afterData: { name: district.name, regionId: district.regionId },
+    regionId: district.regionId,
+    districtId: district.id,
+  });
   response.json({ success: true, data: district });
 });
 
@@ -239,5 +294,16 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
   }
 
   await prisma.district.delete({ where: { id: params.data.id } });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "DISTRICT_DELETED",
+    entityType: "DISTRICT",
+    entityId: district.id,
+    description: `Deleted district ${district.name}`,
+    beforeData: { name: district.name, regionId: district.regionId },
+    regionId: district.regionId,
+    districtId: district.id,
+  });
   response.status(204).send();
 });

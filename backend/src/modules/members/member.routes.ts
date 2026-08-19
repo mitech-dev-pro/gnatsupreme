@@ -4,6 +4,7 @@ import type { ZodError } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { recordAudit } from "../audit/audit.service.js";
 import { canAccessDistrict, memberScope } from "./member.access.js";
 import {
   beneficiaryIdParamsSchema,
@@ -171,6 +172,25 @@ memberRouter.post("/", async (request, response) => {
     },
     include: memberInclude,
   });
+  await recordAudit({
+    request,
+    actor: user,
+    action: "MEMBER_ENROLLED",
+    entityType: "MEMBER",
+    entityId: member.id,
+    description: `Enrolled ${member.fullName} (${member.controllerId})`,
+    afterData: {
+      controllerId: member.controllerId,
+      fullName: member.fullName,
+      school: member.school,
+      status: member.status,
+      districtId: member.districtId,
+      spouseRecorded: Boolean(member.spouse),
+      beneficiaryCount: member.beneficiaries.length,
+    },
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.status(201).json({ success: true, data: member });
 });
 
@@ -214,6 +234,30 @@ memberRouter.patch("/:id", async (request, response) => {
     data: body.data,
     include: memberInclude,
   });
+  await recordAudit({
+    request,
+    actor: user,
+    action: "MEMBER_UPDATED",
+    entityType: "MEMBER",
+    entityId: member.id,
+    description: `Updated ${member.fullName} (${member.controllerId})`,
+    beforeData: {
+      controllerId: existing.controllerId,
+      fullName: existing.fullName,
+      school: existing.school,
+      districtId: existing.districtId,
+      report20Matched: existing.report20Matched,
+    },
+    afterData: {
+      controllerId: member.controllerId,
+      fullName: member.fullName,
+      school: member.school,
+      districtId: member.districtId,
+      report20Matched: member.report20Matched,
+    },
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.json({ success: true, data: member });
 });
 
@@ -235,6 +279,18 @@ memberRouter.patch(
       where: { id: existing.id },
       data: { status: body.data.status },
       include: memberInclude,
+    });
+    await recordAudit({
+      request,
+      actor: currentUser(response),
+      action: "MEMBER_STATUS_CHANGED",
+      entityType: "MEMBER",
+      entityId: member.id,
+      description: `Changed ${member.fullName} from ${existing.status} to ${member.status}`,
+      beforeData: { status: existing.status },
+      afterData: { status: member.status },
+      regionId: member.district.regionId,
+      districtId: member.districtId,
     });
     response.json({ success: true, data: member });
   },
@@ -265,6 +321,20 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     update: body.data,
     create: { ...body.data, memberId: member.id },
   });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: member.spouse ? "SPOUSE_UPDATED" : "SPOUSE_ADDED",
+    entityType: "SPOUSE",
+    entityId: spouse.id,
+    description: `${member.spouse ? "Updated" : "Added"} spouse for ${member.fullName}`,
+    beforeData: member.spouse
+      ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
+      : undefined,
+    afterData: { fullName: spouse.fullName, dateOfBirth: spouse.dateOfBirth },
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.json({ success: true, data: spouse });
 });
 
@@ -277,6 +347,19 @@ memberRouter.delete("/:id/spouse", async (request, response) => {
     return;
   }
   await prisma.spouse.deleteMany({ where: { memberId: member.id } });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "SPOUSE_REMOVED",
+    entityType: "SPOUSE",
+    entityId: member.spouse?.id,
+    description: `Removed spouse from ${member.fullName}`,
+    beforeData: member.spouse
+      ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
+      : undefined,
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.status(204).send();
 });
 
@@ -297,6 +380,17 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
   const beneficiary = await prisma.beneficiary.create({
     data: { ...body.data, memberId: member.id },
   });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "BENEFICIARY_ADDED",
+    entityType: "BENEFICIARY",
+    entityId: beneficiary.id,
+    description: `Added beneficiary for ${member.fullName}`,
+    afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.status(201).json({ success: true, data: beneficiary });
 });
 
@@ -314,6 +408,19 @@ memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response
     where: { id: params.data.beneficiaryId },
     data: body.data,
   });
+  const previous = member.beneficiaries.find((item) => item.id === params.data.beneficiaryId);
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "BENEFICIARY_UPDATED",
+    entityType: "BENEFICIARY",
+    entityId: beneficiary.id,
+    description: `Updated beneficiary for ${member.fullName}`,
+    beforeData: previous ? { fullName: previous.fullName, relationship: previous.relationship } : undefined,
+    afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.json({ success: true, data: beneficiary });
 });
 
@@ -329,6 +436,20 @@ memberRouter.delete("/:id/beneficiaries/:beneficiaryId", async (request, respons
     response.status(409).json({ success: false, message: "A member must retain at least one beneficiary" });
     return;
   }
+  const beneficiary = member.beneficiaries.find((item) => item.id === params.data.beneficiaryId);
   await prisma.beneficiary.delete({ where: { id: params.data.beneficiaryId } });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "BENEFICIARY_REMOVED",
+    entityType: "BENEFICIARY",
+    entityId: params.data.beneficiaryId,
+    description: `Removed beneficiary from ${member.fullName}`,
+    beforeData: beneficiary
+      ? { fullName: beneficiary.fullName, relationship: beneficiary.relationship }
+      : undefined,
+    regionId: member.district.regionId,
+    districtId: member.districtId,
+  });
   response.status(204).send();
 });

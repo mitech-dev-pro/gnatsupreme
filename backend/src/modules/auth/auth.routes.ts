@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { loginRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
 import { loginSchema } from "./auth.schemas.js";
+import { recordAudit } from "../audit/audit.service.js";
 import {
   createAccessToken,
   createRefreshToken,
@@ -67,6 +68,13 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
       : false;
 
     if (!user || !user.isActive || !passwordMatches) {
+      await recordAudit({
+        request,
+        actorEmail: parsed.data.email,
+        action: "LOGIN_FAILED",
+        entityType: "AUTH",
+        description: `Failed login attempt for ${parsed.data.email}`,
+      });
       response.status(401).json({ success: false, message: "Invalid email or password" });
       return;
     }
@@ -82,6 +90,14 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
     });
 
     setRefreshCookie(response, refreshToken);
+    await recordAudit({
+      request,
+      actor: user,
+      action: "LOGIN_SUCCEEDED",
+      entityType: "USER",
+      entityId: user.id,
+      description: `${user.fullName} signed in`,
+    });
     response.status(200).json({
       success: true,
       accessToken: await createAccessToken(user.id),
@@ -149,6 +165,14 @@ authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
     }
 
     setRefreshCookie(response, nextToken);
+    await recordAudit({
+      request,
+      actor: session.user,
+      action: "SESSION_REFRESHED",
+      entityType: "USER",
+      entityId: session.user.id,
+      description: `${session.user.fullName} refreshed a session`,
+    });
     response.status(200).json({
       success: true,
       accessToken: await createAccessToken(session.user.id),
@@ -179,6 +203,12 @@ authRouter.post("/logout", async (request, response) => {
     }
 
     response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
+    await recordAudit({
+      request,
+      action: "LOGOUT",
+      entityType: "AUTH",
+      description: "A refresh session was signed out",
+    });
     response.status(200).json({ success: true, message: "Signed out successfully" });
   } catch (error) {
     console.error("Logout failed:", error);

@@ -10,9 +10,11 @@ import { env } from "../../config/env.js";
 export const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
 export const memberUploadDirectory = path.join(uploadRoot, "member-files");
 export const report20UploadDirectory = path.join(uploadRoot, "report-20");
+export const memberImportUploadDirectory = path.join(uploadRoot, "member-imports");
 
 mkdirSync(memberUploadDirectory, { recursive: true });
 mkdirSync(report20UploadDirectory, { recursive: true });
+mkdirSync(memberImportUploadDirectory, { recursive: true });
 
 const allowedMimeTypes = new Map([
   ["application/pdf", ".pdf"],
@@ -58,6 +60,26 @@ const report20Storage = multer.diskStorage({
 
 export const report20FileUpload = multer({
   storage: report20Storage,
+  limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
+  fileFilter: (_request, file, callback) => {
+    if (!report20MimeTypes.has(file.mimetype)) {
+      callback(new Error("Only CSV and XLSX files are allowed"));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
+const memberImportStorage = multer.diskStorage({
+  destination: (_request, _file, callback) => callback(null, memberImportUploadDirectory),
+  filename: (_request, file, callback) => {
+    const extension = report20MimeTypes.get(file.mimetype);
+    callback(null, `${randomUUID()}${extension ?? ""}`);
+  },
+});
+
+export const memberImportFileUpload = multer({
+  storage: memberImportStorage,
   limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!report20MimeTypes.has(file.mimetype)) {

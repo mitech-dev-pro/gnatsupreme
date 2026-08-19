@@ -85,6 +85,46 @@ enum BenefitType {
   HOSPITALIZATION
 }
 
+enum BulkImportRowStatus {
+  READY
+  INVALID
+  DUPLICATE
+  EXISTING
+  OUT_OF_SCOPE
+  IMPORTED
+  FAILED
+}
+
+enum MemberWorkflowAction {
+  APPROVED
+  RETURNED
+  REMOVED
+}
+
+enum RemovalReason {
+  DEATH
+  DISABILITY
+  RETIREMENT
+  RESIGNATION
+  OTHER
+}
+
+enum ChangeRequestType {
+  MEMBER_DETAILS
+  SPOUSE
+  BENEFICIARY_ADD
+  BENEFICIARY_UPDATE
+  BENEFICIARY_REMOVE
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  RETURNED
+  REJECTED
+  CANCELLED
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -111,27 +151,30 @@ model District {
 }
 
 model User {
-  id                 Int                       @id @default(autoincrement())
-  fullName           String
-  email              String                    @unique
-  passwordHash       String
-  role               UserRole
-  isActive           Boolean                   @default(true)
-  regionId           Int?
-  districtId         Int?
-  region             Region?                   @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district           District?                 @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdMembers     Member[]                  @relation("MemberCreatedBy")
-  refreshTokens      RefreshToken[]
-  uploadedFiles      StoredFile[]
-  auditLogs          AuditLog[]
-  requestedTransfers MemberTransfer[]          @relation("TransferRequestedBy")
-  reviewedTransfers  MemberTransfer[]          @relation("TransferReviewedBy")
-  claimSubmissions   ExternalClaimSubmission[]
-  importJobs         ImportJob[]
-  benefitPlans       BenefitPlanVersion[]
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
+  id                      Int                       @id @default(autoincrement())
+  fullName                String
+  email                   String                    @unique
+  passwordHash            String
+  role                    UserRole
+  isActive                Boolean                   @default(true)
+  regionId                Int?
+  districtId              Int?
+  region                  Region?                   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district                District?                 @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers          Member[]                  @relation("MemberCreatedBy")
+  refreshTokens           RefreshToken[]
+  uploadedFiles           StoredFile[]
+  auditLogs               AuditLog[]
+  requestedTransfers      MemberTransfer[]          @relation("TransferRequestedBy")
+  reviewedTransfers       MemberTransfer[]          @relation("TransferReviewedBy")
+  claimSubmissions        ExternalClaimSubmission[]
+  importJobs              ImportJob[]
+  benefitPlans            BenefitPlanVersion[]
+  memberWorkflowEvents    MemberWorkflowEvent[]
+  submittedChangeRequests MemberChangeRequest[]     @relation("ChangeRequestedBy")
+  reviewedChangeRequests  MemberChangeRequest[]     @relation("ChangeReviewedBy")
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 
   @@index([regionId])
   @@index([districtId])
@@ -157,6 +200,9 @@ model Member {
   transfers        MemberTransfer[]
   claimSubmissions ExternalClaimSubmission[]
   importRows       Report20Row[]
+  bulkImportRows   MemberBulkImportRow[]
+  workflowEvents   MemberWorkflowEvent[]
+  changeRequests   MemberChangeRequest[]
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -232,27 +278,30 @@ model StoredFile {
 }
 
 model ImportJob {
-  id            Int           @id @default(autoincrement())
+  id            Int                   @id @default(autoincrement())
   type          ImportType
-  status        ImportStatus  @default(PENDING)
+  status        ImportStatus          @default(PENDING)
   checksum      String
-  fileId        Int           @unique
-  file          StoredFile    @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  fileId        Int                   @unique
+  file          StoredFile            @relation(fields: [fileId], references: [id], onDelete: Restrict)
   uploadedById  Int
-  uploadedBy    User          @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reportMonth   DateTime?     @db.Date
-  totalRows     Int           @default(0)
-  matchedRows   Int           @default(0)
-  changedRows   Int           @default(0)
-  unmatchedRows Int           @default(0)
-  duplicateRows Int           @default(0)
-  invalidRows   Int           @default(0)
+  uploadedBy    User                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reportMonth   DateTime?             @db.Date
+  totalRows     Int                   @default(0)
+  matchedRows   Int                   @default(0)
+  changedRows   Int                   @default(0)
+  unmatchedRows Int                   @default(0)
+  duplicateRows Int                   @default(0)
+  invalidRows   Int                   @default(0)
   errorMessage  String?
   startedAt     DateTime?
   completedAt   DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
   rows          Report20Row[]
+  memberRows    MemberBulkImportRow[]
+  readyRows     Int                   @default(0)
+  importedRows  Int                   @default(0)
 
   @@unique([type, checksum])
   @@index([status])
@@ -280,6 +329,76 @@ model Report20Row {
   @@index([importJobId, status])
   @@index([controllerId])
   @@index([memberId])
+}
+
+model MemberBulkImportRow {
+  id              Int                 @id @default(autoincrement())
+  importJobId     Int
+  importJob       ImportJob           @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  controllerId    String?
+  fullName        String?
+  school          String?
+  districtName    String?
+  districtId      Int?
+  dateOfBirth     DateTime?           @db.Date
+  ghanaCardId     String?
+  phone           String?
+  report20Matched Boolean             @default(false)
+  status          BulkImportRowStatus
+  memberId        Int?
+  member          Member?             @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  issues          Json?
+  rawData         Json
+  createdAt       DateTime            @default(now())
+
+  @@unique([importJobId, rowNumber])
+  @@index([importJobId, status])
+  @@index([controllerId])
+  @@index([memberId])
+  @@index([districtId])
+}
+
+model MemberWorkflowEvent {
+  id            Int                  @id @default(autoincrement())
+  memberId      Int
+  member        Member               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  action        MemberWorkflowAction
+  fromStatus    MemberStatus
+  toStatus      MemberStatus
+  reason        RemovalReason?
+  note          String?
+  performedById Int
+  performedBy   User                 @relation(fields: [performedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime             @default(now())
+
+  @@index([memberId, createdAt])
+  @@index([action])
+  @@index([performedById])
+}
+
+model MemberChangeRequest {
+  id                  Int                 @id @default(autoincrement())
+  memberId            Int
+  member              Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type                ChangeRequestType
+  status              ChangeRequestStatus @default(PENDING)
+  targetBeneficiaryId Int?
+  proposedData        Json?
+  requestNote         String?
+  requestedById       Int?
+  requestedBy         User?               @relation("ChangeRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedById        Int?
+  reviewedBy          User?               @relation("ChangeReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote          String?
+  requestedAt         DateTime            @default(now())
+  reviewedAt          DateTime?
+  updatedAt           DateTime            @updatedAt
+
+  @@index([memberId, status])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([requestedAt])
 }
 
 model BenefitPlanVersion {

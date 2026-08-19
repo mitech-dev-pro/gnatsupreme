@@ -264,35 +264,11 @@ memberRouter.patch("/:id", async (request, response) => {
 memberRouter.patch(
   "/:id/status",
   authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"),
-  async (request, response) => {
-    const params = memberIdParamsSchema.safeParse(request.params);
-    const body = memberStatusSchema.safeParse(request.body);
-    if (!params.success) return validationFailure(response, params.error);
-    if (!body.success) return validationFailure(response, body.error);
-
-    const existing = await findAccessibleMember(params.data.id, currentUser(response));
-    if (!existing) {
-      response.status(404).json({ success: false, message: "Member not found" });
-      return;
-    }
-    const member = await prisma.member.update({
-      where: { id: existing.id },
-      data: { status: body.data.status },
-      include: memberInclude,
+  async (_request, response) => {
+    response.status(410).json({
+      success: false,
+      message: "Use the approve, return, or remove workflow endpoint",
     });
-    await recordAudit({
-      request,
-      actor: currentUser(response),
-      action: "MEMBER_STATUS_CHANGED",
-      entityType: "MEMBER",
-      entityId: member.id,
-      description: `Changed ${member.fullName} from ${existing.status} to ${member.status}`,
-      beforeData: { status: existing.status },
-      afterData: { status: member.status },
-      regionId: member.district.regionId,
-      districtId: member.districtId,
-    });
-    response.json({ success: true, data: member });
   },
 );
 

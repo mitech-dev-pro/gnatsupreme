@@ -1,5 +1,8 @@
-Demo.html/
+Demo.html
 node_modules/
 dist/
 .env
 uploads/
+/backend/.agents/
+/backend/.claude/
+/backend/.windsurf/

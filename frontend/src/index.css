@@ -1,0 +1,497 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", sans-serif;
+  --font-heading: "Plus Jakarta Sans", sans-serif;
+
+  --text-xs: 13px;
+  --text-sm: 13px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --text-2xl: 19px;
+  --text-3xl: 21px;
+  --text-4xl: 24px;
+  --text-5xl: 28px;
+
+  --color-brand-50: #eef0fa;
+  --color-brand-100: #dff7ee;
+  --color-brand-500: #1f9c7c;
+  --color-brand-600: #17805f;
+  --color-brand-700: #146a4f;
+}
+
+@layer base {
+  body {
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+  }
+
+  h1,
+  h2,
+  h3,
+  .jakarta {
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+}
+
+@keyframes breathe {
+
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* ─── Page transition animations ──────────────────────────────────────────── */
+/* Available options (copy the animation value):
+   ── Originals ──
+   - page-fade-in          → simple opacity fade
+   - page-slide-up-fade    → slides up from below + fades
+   - page-slide-right-fade → slides in from the left + fades
+   - page-scale-fade       → scales up from 0.96 + fades
+   - page-blur-fade        → blurs in + fades (default)
+
+   ── Wonky & fun ──
+   - page-rubber-band      → squashes & stretches like a rubber band
+   - page-spin-drop        → spins 180° and drops in
+   - page-jello            → jiggles side to side like jello
+   - page-flip-x           → flips in on the X axis (top-to-bottom)
+   - page-flip-y           → flips in on the Y axis (left-to-right)
+   - page-bounce-in        → overshoots and bounces to rest
+   - page-slot-machine     → slams down from above like a slot reel
+   - page-shatter-land     → tumbles in as if falling apart and landing
+   - page-wipe-diagonal    → diagonal clip-path wipe across
+   - page-skid-in          → skids in from the left with a skew
+   - page-pop              → pops in from nothing, overshoots
+   - page-tumble           → tumbles in from below with rotation
+   - page-glitch           → glitches left and right into place
+   - page-swing-in         → swings in from the top like a pendulum
+   - page-stretch-x        → stretches horizontally from a thin strip
+   - page-typewriter       → text reveals left-to-right (clip-path wipe)
+*/
+
+.page-transition {
+  animation: page-blur-fade 0.125s ease-out both;
+}
+
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes page-slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes page-slide-right-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+
+@keyframes page-scale-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+
+@keyframes page-blur-fade {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+
+
+/* Squashes horizontally then snaps back */
+@keyframes page-rubber-band {
+  0% {
+    opacity: 0;
+    transform: scale(1.3, 0.7);
+  }
+
+  30% {
+    opacity: 1;
+    transform: scale(0.85, 1.1);
+  }
+
+  60% {
+    transform: scale(1.05, 0.95);
+  }
+
+  80% {
+    transform: scale(0.97, 1.02);
+  }
+
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+
+/* Spins 180° and scales in */
+@keyframes page-spin-drop {
+  from {
+    opacity: 0;
+    transform: rotate(-180deg) scale(0.4);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+
+/* Wobbly skew side to side */
+@keyframes page-jello {
+  0% {
+    opacity: 0;
+    transform: skewX(0deg);
+  }
+
+  15% {
+    opacity: 1;
+    transform: skewX(-14deg);
+  }
+
+  30% {
+    transform: skewX(11deg);
+  }
+
+  45% {
+    transform: skewX(-8deg);
+  }
+
+  60% {
+    transform: skewX(5deg);
+  }
+
+  75% {
+    transform: skewX(-3deg);
+  }
+
+  100% {
+    transform: skewX(0deg);
+  }
+}
+
+
+/* Flips in over the X axis like a page turning top-to-bottom */
+@keyframes page-flip-x {
+  from {
+    opacity: 0;
+    transform: rotateX(90deg) translateY(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotateX(0deg) translateY(0);
+  }
+}
+
+
+/* Flips in over the Y axis like a door opening */
+@keyframes page-flip-y {
+  from {
+    opacity: 0;
+    transform: rotateY(-90deg) translateX(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotateY(0deg) translateX(0);
+  }
+}
+
+
+/* Scales up from tiny, overshoots, then settles */
+@keyframes page-bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  70% {
+    transform: scale(0.9);
+  }
+
+  85% {
+    transform: scale(1.05);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+
+/* Slams down from above like a slot reel locking in */
+@keyframes page-slot-machine {
+  from {
+    opacity: 0;
+    transform: translateY(-100%) scaleY(1.5);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translateY(4%) scaleY(0.95);
+  }
+
+  to {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+
+/* Tumbles in as if pieces are falling into place */
+@keyframes page-shatter-land {
+  0% {
+    opacity: 0;
+    transform: scale(1.4) rotate(8deg);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(0.93) rotate(-3deg);
+  }
+
+  70% {
+    transform: scale(1.02) rotate(1deg);
+  }
+
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+
+/* Reveals via a left-to-right clip-path wipe */
+@keyframes page-wipe-diagonal {
+  0% {
+    opacity: 0;
+    clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+}
+
+
+/* Skids in from the left with a trailing skew */
+@keyframes page-skid-in {
+  from {
+    opacity: 0;
+    transform: translateX(-80px) skewX(18deg);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateX(8px) skewX(-4deg);
+  }
+
+  to {
+    transform: translateX(0) skewX(0);
+  }
+}
+
+
+/* Pops up from nothing, overshoots slightly */
+@keyframes page-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+
+  80% {
+    transform: scale(0.93);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+
+/* Tumbles in from below with a slight rotation */
+@keyframes page-tumble {
+  from {
+    opacity: 0;
+    transform: rotate(20deg) translateY(40px) scale(0.8);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotate(0) translateY(0) scale(1);
+  }
+}
+
+
+/* Rapidly glitches left and right before settling */
+@keyframes page-glitch {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  20% {
+    opacity: 1;
+    transform: translateX(-6px) skewX(10deg);
+  }
+
+  40% {
+    transform: translateX(6px) skewX(-10deg);
+  }
+
+  60% {
+    transform: translateX(-3px);
+  }
+
+  80% {
+    transform: translateX(2px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+
+/* Swings in from the top like a pendulum — set transform-origin on your element */
+@keyframes page-swing-in {
+  0% {
+    opacity: 0;
+    transform: rotateZ(-30deg) translateY(-30px);
+  }
+
+  60% {
+    opacity: 1;
+    transform: rotateZ(8deg);
+  }
+
+  80% {
+    transform: rotateZ(-4deg);
+  }
+
+  100% {
+    transform: rotateZ(0);
+  }
+}
+
+/* Tip: add `transform-origin: top center` to .page-transition for best effect */
+
+
+/* Stretches in horizontally from a thin vertical strip */
+@keyframes page-stretch-x {
+  from {
+    opacity: 0;
+    transform: scaleX(0.05) scaleY(1.3);
+  }
+
+  50% {
+    transform: scaleX(1.08) scaleY(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1) scaleY(1);
+  }
+}
+
+
+/* Wipes in left-to-right via clip-path (no opacity needed) */
+@keyframes page-typewriter {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+
+/* html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+#root {
+    height: 100%;
+    overflow: hidden;
+} */
+
+html {
+  overflow: hidden;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  height: 100%;
+}
+
+#root {
+  overflow: hidden;
+  height: 100%;
+}

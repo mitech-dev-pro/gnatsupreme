@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "admin:create": "tsx scripts/create-admin.ts",
+    "db:seed-geography": "tsx scripts/seed-geography.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [],

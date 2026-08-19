@@ -27,6 +27,14 @@ enum MemberStatus {
   REMOVED
 }
 
+enum BeneficiaryRelationship {
+  CHILD
+  SPOUSE
+  PARENT
+  SIBLING
+  OTHER
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -71,25 +79,53 @@ model User {
 }
 
 model Member {
-  id              Int          @id @default(autoincrement())
-  controllerId    String       @unique
+  id              Int           @id @default(autoincrement())
+  controllerId    String        @unique
   fullName        String
-  dateOfBirth     DateTime?    @db.Date
-  ghanaCardId     String?      @unique
+  dateOfBirth     DateTime?     @db.Date
+  ghanaCardId     String?       @unique
   phone           String?
   school          String
-  status          MemberStatus @default(PENDING)
-  report20Matched Boolean      @default(false)
+  status          MemberStatus  @default(PENDING)
+  report20Matched Boolean       @default(false)
   districtId      Int
   createdById     Int?
-  district        District     @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdBy       User?        @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  district        District      @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdBy       User?         @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  spouse          Spouse?
+  beneficiaries   Beneficiary[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([districtId])
   @@index([status])
   @@index([fullName])
+}
+
+model Spouse {
+  id          Int       @id @default(autoincrement())
+  memberId    Int       @unique
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  fullName    String
+  dateOfBirth DateTime? @db.Date
+  ghanaCardId String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Beneficiary {
+  id                 Int                     @id @default(autoincrement())
+  memberId           Int
+  member             Member                  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  fullName           String
+  relationship       BeneficiaryRelationship
+  dateOfBirth        DateTime?               @db.Date
+  trusteeName        String?
+  trusteeGhanaCardId String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([memberId])
 }
 
 model RefreshToken {

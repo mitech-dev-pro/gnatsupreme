@@ -9,6 +9,7 @@ import { apiRateLimiter } from "./middleware/rate-limit.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { districtRouter, regionRouter } from "./modules/geography/geography.routes.js";
 import { userRouter } from "./modules/users/user.routes.js";
+import { memberRouter } from "./modules/members/member.routes.js";
 
 export const app = express();
 
@@ -36,6 +37,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/regions", regionRouter);
 app.use("/api/districts", districtRouter);
 app.use("/api/users", userRouter);
+app.use("/api/members", memberRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

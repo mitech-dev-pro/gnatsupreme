@@ -3,6 +3,15 @@ import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { verifyAccessToken } from "../modules/auth/auth.tokens.js";
 
+export type AuthenticatedUser = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: "SUPER_ADMIN" | "NATIONAL_ADMIN" | "REGIONAL_ADMIN" | "DISTRICT_ADMIN";
+  regionId: number | null;
+  districtId: number | null;
+};
+
 export async function authenticate(request: Request, response: Response, next: NextFunction) {
   const authorization = request.header("authorization");
 
@@ -30,7 +39,7 @@ export async function authenticate(request: Request, response: Response, next: N
       return;
     }
 
-    response.locals.user = user;
+    response.locals.user = user satisfies AuthenticatedUser;
     next();
   } catch {
     response.status(401).json({ success: false, message: "Authentication required" });

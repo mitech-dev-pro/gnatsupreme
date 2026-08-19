@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -29,26 +30,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshStarted = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    if (refreshStarted.current) return;
+    refreshStarted.current = true;
 
     (async () => {
       try {
         const res = await api.post("/auth/refresh");
         setAccessToken(res.data.accessToken);
-        if (!cancelled) setUser(res.data.user);
+        setUser(res.data.user);
       } catch {
         setAccessToken(null);
-        if (!cancelled) setUser(null);
+        setUser(null);
       } finally {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

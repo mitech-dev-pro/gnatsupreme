@@ -1,0 +1,5 @@
+Demo.html/
+node_modules/
+dist/
+.env
+uploads/

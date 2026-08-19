@@ -13,6 +13,7 @@ import { memberRouter } from "./modules/members/member.routes.js";
 import { fileRouter, memberFileRouter } from "./modules/files/file.routes.js";
 import { auditRouter } from "./modules/audit/audit.routes.js";
 import { transferRouter } from "./modules/transfers/transfer.routes.js";
+import { claimsRouter } from "./modules/claims/claims.routes.js";
 
 export const app = express();
 
@@ -45,6 +46,7 @@ app.use("/api/members", memberFileRouter);
 app.use("/api/files", fileRouter);
 app.use("/api/audit-logs", auditRouter);
 app.use("/api/transfers", transferRouter);
+app.use("/api/claims", claimsRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

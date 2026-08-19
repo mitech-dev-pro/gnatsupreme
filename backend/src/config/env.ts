@@ -19,6 +19,19 @@ const environmentSchema = z.object({
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
+  MANKRADO_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  MANKRADO_MODE: z.enum(["HOSTED_FORM", "API"]).default("API"),
+  MANKRADO_BASE_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
+  MANKRADO_API_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(16).optional(),
+  ),
 });
 
 const result = environmentSchema.safeParse(process.env);
@@ -31,6 +44,10 @@ if (!result.success) {
 
   console.error("Invalid environment configuration:", problems);
   throw new Error("Application environment validation failed");
+}
+
+if (result.success && result.data.MANKRADO_ENABLED && !result.data.MANKRADO_BASE_URL) {
+  throw new Error("MANKRADO_BASE_URL is required when the Mankrado integration is enabled");
 }
 
 export const env = result.data;

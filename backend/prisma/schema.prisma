@@ -48,6 +48,14 @@ enum TransferStatus {
   CANCELLED
 }
 
+enum ExternalClaimStatus {
+  PENDING
+  REDIRECT_READY
+  SUBMITTED
+  FAILED
+  SYNCHRONIZED
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -74,49 +82,51 @@ model District {
 }
 
 model User {
-  id                 Int              @id @default(autoincrement())
+  id                 Int                       @id @default(autoincrement())
   fullName           String
-  email              String           @unique
+  email              String                    @unique
   passwordHash       String
   role               UserRole
-  isActive           Boolean          @default(true)
+  isActive           Boolean                   @default(true)
   regionId           Int?
   districtId         Int?
-  region             Region?          @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district           District?        @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdMembers     Member[]         @relation("MemberCreatedBy")
+  region             Region?                   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district           District?                 @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers     Member[]                  @relation("MemberCreatedBy")
   refreshTokens      RefreshToken[]
   uploadedFiles      StoredFile[]
   auditLogs          AuditLog[]
-  requestedTransfers MemberTransfer[] @relation("TransferRequestedBy")
-  reviewedTransfers  MemberTransfer[] @relation("TransferReviewedBy")
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  requestedTransfers MemberTransfer[]          @relation("TransferRequestedBy")
+  reviewedTransfers  MemberTransfer[]          @relation("TransferReviewedBy")
+  claimSubmissions   ExternalClaimSubmission[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
 
   @@index([regionId])
   @@index([districtId])
 }
 
 model Member {
-  id              Int              @id @default(autoincrement())
-  controllerId    String           @unique
-  fullName        String
-  dateOfBirth     DateTime?        @db.Date
-  ghanaCardId     String?          @unique
-  phone           String?
-  school          String
-  status          MemberStatus     @default(PENDING)
-  report20Matched Boolean          @default(false)
-  districtId      Int
-  createdById     Int?
-  district        District         @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdBy       User?            @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  spouse          Spouse?
-  beneficiaries   Beneficiary[]
-  files           StoredFile[]
-  transfers       MemberTransfer[]
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id               Int                       @id @default(autoincrement())
+  controllerId     String                    @unique
+  fullName         String
+  dateOfBirth      DateTime?                 @db.Date
+  ghanaCardId      String?                   @unique
+  phone            String?
+  school           String
+  status           MemberStatus              @default(PENDING)
+  report20Matched  Boolean                   @default(false)
+  districtId       Int
+  createdById      Int?
+  district         District                  @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdBy        User?                     @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  spouse           Spouse?
+  beneficiaries    Beneficiary[]
+  files            StoredFile[]
+  transfers        MemberTransfer[]
+  claimSubmissions ExternalClaimSubmission[]
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
   @@index([districtId])
   @@index([status])
@@ -239,4 +249,28 @@ model MemberTransfer {
   @@index([toDistrictId])
   @@index([status])
   @@index([requestedAt])
+}
+
+model ExternalClaimSubmission {
+  id              Int                 @id @default(autoincrement())
+  memberId        Int
+  member          Member              @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  submittedById   Int
+  submittedBy     User                @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  provider        String              @default("MANKRADO")
+  idempotencyKey  String              @unique
+  externalClaimId String?             @unique
+  formUrl         String?
+  status          ExternalClaimStatus @default(PENDING)
+  errorCode       String?
+  errorMessage    String?
+  submittedAt     DateTime?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([memberId])
+  @@index([submittedById])
+  @@index([status])
+  @@index([createdAt])
 }

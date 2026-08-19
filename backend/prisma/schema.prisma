@@ -11,3 +11,81 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum UserRole {
+  SUPER_ADMIN
+  NATIONAL_ADMIN
+  REGIONAL_ADMIN
+  DISTRICT_ADMIN
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+  FLAGGED
+  RETURNED
+  REMOVED
+}
+
+model Region {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  districts District[]
+  users     User[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model District {
+  id        Int      @id @default(autoincrement())
+  name      String
+  regionId  Int
+  region    Region   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  users     User[]
+  members   Member[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([regionId, name])
+  @@index([regionId])
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  fullName       String
+  email          String    @unique
+  role           UserRole
+  isActive       Boolean   @default(true)
+  regionId       Int?
+  districtId     Int?
+  region         Region?   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district       District? @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers Member[]  @relation("MemberCreatedBy")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([regionId])
+  @@index([districtId])
+}
+
+model Member {
+  id              Int          @id @default(autoincrement())
+  controllerId    String       @unique
+  fullName        String
+  dateOfBirth     DateTime?    @db.Date
+  ghanaCardId     String?      @unique
+  phone           String?
+  school          String
+  status          MemberStatus @default(PENDING)
+  report20Matched Boolean      @default(false)
+  districtId      Int
+  createdById     Int?
+  district        District     @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdBy       User?        @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([districtId])
+  @@index([status])
+  @@index([fullName])
+}

@@ -5,7 +5,7 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -51,18 +51,20 @@ model District {
 }
 
 model User {
-  id             Int       @id @default(autoincrement())
+  id             Int            @id @default(autoincrement())
   fullName       String
-  email          String    @unique
+  email          String         @unique
+  passwordHash   String
   role           UserRole
-  isActive       Boolean   @default(true)
+  isActive       Boolean        @default(true)
   regionId       Int?
   districtId     Int?
-  region         Region?   @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district       District? @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdMembers Member[]  @relation("MemberCreatedBy")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  region         Region?        @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district       District?      @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers Member[]       @relation("MemberCreatedBy")
+  refreshTokens  RefreshToken[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@index([regionId])
   @@index([districtId])
@@ -88,4 +90,19 @@ model Member {
   @@index([districtId])
   @@index([status])
   @@index([fullName])
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

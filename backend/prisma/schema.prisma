@@ -164,31 +164,33 @@ model District {
 }
 
 model User {
-  id                      Int                       @id @default(autoincrement())
-  fullName                String
-  email                   String                    @unique
-  passwordHash            String
-  role                    UserRole
-  isActive                Boolean                   @default(true)
-  regionId                Int?
-  districtId              Int?
-  region                  Region?                   @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district                District?                 @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdMembers          Member[]                  @relation("MemberCreatedBy")
-  refreshTokens           RefreshToken[]
-  uploadedFiles           StoredFile[]
-  auditLogs               AuditLog[]
-  requestedTransfers      MemberTransfer[]          @relation("TransferRequestedBy")
-  reviewedTransfers       MemberTransfer[]          @relation("TransferReviewedBy")
-  claimSubmissions        ExternalClaimSubmission[]
-  importJobs              ImportJob[]
-  benefitPlans            BenefitPlanVersion[]
-  memberWorkflowEvents    MemberWorkflowEvent[]
-  submittedChangeRequests MemberChangeRequest[]     @relation("ChangeRequestedBy")
-  reviewedChangeRequests  MemberChangeRequest[]     @relation("ChangeReviewedBy")
-  notifications           Notification[]
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime                  @updatedAt
+  id                          Int                           @id @default(autoincrement())
+  fullName                    String
+  email                       String                        @unique
+  passwordHash                String
+  role                        UserRole
+  isActive                    Boolean                       @default(true)
+  regionId                    Int?
+  districtId                  Int?
+  region                      Region?                       @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  district                    District?                     @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdMembers              Member[]                      @relation("MemberCreatedBy")
+  refreshTokens               RefreshToken[]
+  uploadedFiles               StoredFile[]
+  auditLogs                   AuditLog[]
+  requestedTransfers          MemberTransfer[]              @relation("TransferRequestedBy")
+  reviewedTransfers           MemberTransfer[]              @relation("TransferReviewedBy")
+  claimSubmissions            ExternalClaimSubmission[]
+  importJobs                  ImportJob[]
+  benefitPlans                BenefitPlanVersion[]
+  memberWorkflowEvents        MemberWorkflowEvent[]
+  submittedChangeRequests     MemberChangeRequest[]         @relation("ChangeRequestedBy")
+  reviewedChangeRequests      MemberChangeRequest[]         @relation("ChangeReviewedBy")
+  notifications               Notification[]
+  organizationSettingsUpdates OrganizationSettings[]
+  organizationSettingVersions OrganizationSettingsVersion[]
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
 
   @@index([regionId])
   @@index([districtId])
@@ -330,6 +332,51 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([memberId, readAt, createdAt])
   @@index([type])
+}
+
+model OrganizationSettings {
+  id                   Int                           @id @default(autoincrement())
+  singletonKey         String                        @unique @default("MILIFE")
+  portalName           String                        @default("GNAT Supreme Care")
+  schemeSponsor        String                        @default("GNAT")
+  underwriter          String                        @default("miLife Insurance")
+  sidebarMark          String                        @default("GS")
+  primaryColor         String                        @default("#102A43")
+  accentColor          String                        @default("#00A896")
+  memberIdLabel        String                        @default("Controller ID")
+  reconciliationSource String                        @default("CAGD Report 20")
+  subRegionLabel       String                        @default("District")
+  organizationEmail    String?
+  organizationPhone    String?
+  address              String?
+  websiteUrl           String?
+  privacyNotice        String?
+  timezone             String                        @default("Africa/Accra")
+  currency             String                        @default("GHS")
+  version              Int                           @default(1)
+  updatedById          Int?
+  updatedBy            User?                         @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  versions             OrganizationSettingsVersion[]
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+
+  @@index([updatedById])
+}
+
+model OrganizationSettingsVersion {
+  id            Int                  @id @default(autoincrement())
+  settingsId    Int
+  settings      OrganizationSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  version       Int
+  snapshot      Json
+  changedFields Json
+  changedById   Int?
+  changedBy     User?                @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now())
+
+  @@unique([settingsId, version])
+  @@index([changedById])
+  @@index([createdAt])
 }
 
 model StoredFile {

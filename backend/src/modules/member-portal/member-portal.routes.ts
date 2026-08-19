@@ -6,6 +6,7 @@ import { authenticateMember, type AuthenticatedMember } from "../../middleware/a
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
 import { notifyStaffForMember } from "../notifications/notification.service.js";
+import { getOrganizationSettings, publicBranding } from "../settings/settings.service.js";
 
 export const memberPortalRouter = Router();
 
@@ -18,6 +19,11 @@ function asJson(value: unknown) {
 }
 
 memberPortalRouter.use(authenticateMember);
+
+memberPortalRouter.get("/settings", async (_request, response) => {
+  const settings = await getOrganizationSettings();
+  response.json({ success: true, data: { ...publicBranding(settings), address: settings.address, privacyNotice: settings.privacyNotice } });
+});
 
 memberPortalRouter.get("/profile", async (_request, response) => {
   const currentMember = member(response);

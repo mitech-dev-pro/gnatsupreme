@@ -20,9 +20,9 @@ type SourceRow = {
 
 const aliases = {
   controllerId: ["controllerid", "controller", "employeeno", "employeenumber", "staffid"],
-  fullName: ["fullname", "name", "membername", "employeename"],
+  fullName: ["fullname", "name", "membername", "employeename", "nameofemployee"],
   districtName: ["district", "districtname", "municipality", "mmda"],
-  school: ["school", "schoolname", "institution"],
+  school: ["school", "schoolname", "institution", "managementunit"],
   ghanaCardId: ["ghanacardid", "ghanacard", "nationalid"],
 } as const;
 
@@ -115,10 +115,10 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     const controllerId = row.controllerId?.replace(/\s+/g, "") ?? null;
     const member = controllerId ? membersByControllerId.get(controllerId) : undefined;
 
-    if (!controllerId || !/^\d{9}$/.test(controllerId) || !row.fullName) {
+    if (!controllerId || !/^\d{4,7}$/.test(controllerId) || !row.fullName) {
       status = "INVALID";
       if (!controllerId) issues.push("Controller ID is required");
-      else if (!/^\d{9}$/.test(controllerId)) issues.push("Controller ID must contain exactly 9 digits");
+      else if (!/^\d{4,7}$/.test(controllerId)) issues.push("Controller ID must contain 4 to 7 digits");
       if (!row.fullName) issues.push("Full name is required");
     } else if (seen.has(controllerId)) {
       status = "DUPLICATE";
@@ -152,24 +152,28 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     };
   });
 
-  await prisma.$transaction([
-    prisma.report20Row.createMany({ data }),
-    prisma.member.updateMany({
-      where: { id: { in: [...matchedMemberIds] } },
-      data: { report20Matched: true },
-    }),
-    prisma.importJob.update({
-      where: { id: importJobId },
-      data: {
-        status: "COMPLETED",
-        totalRows: sourceRows.length,
-        matchedRows: counts.matched,
-        changedRows: counts.changed,
-        unmatchedRows: counts.unmatched,
-        duplicateRows: counts.duplicate,
-        invalidRows: counts.invalid,
-        completedAt: new Date(),
-      },
-    }),
-  ]);
+  await prisma.$transaction(
+    [
+      prisma.report20Row.createMany({ data }),
+      prisma.member.updateMany({
+        where: { id: { in: [...matchedMemberIds] } },
+        data: { report20Matched: true },
+      }),
+      prisma.importJob.update({
+        where: { id: importJobId },
+        data: {
+          status: "COMPLETED",
+          totalRows: sourceRows.length,
+          matchedRows: counts.matched,
+          changedRows: counts.changed,
+          unmatchedRows: counts.unmatched,
+          duplicateRows: counts.duplicate,
+          invalidRows: counts.invalid,
+          completedAt: new Date(),
+        },
+      }),
+    ],
+    // Default 5s timeout is too short for inserting up to MAX_ROWS rows; scale the ceiling with the importer's own limit.
+    { timeout: 120_000 },
+  );
 }

@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,26 +33,24 @@ const MemberAuthContext = createContext<MemberAuthContextType | undefined>(
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshStarted = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    if (refreshStarted.current) return;
+    refreshStarted.current = true;
 
     (async () => {
       try {
         const res = await api.post("/member-auth/refresh");
         setMemberAccessToken(res.data.accessToken);
-        if (!cancelled) setMember(res.data.member);
+        setMember(res.data.member);
       } catch {
         setMemberAccessToken(null);
-        if (!cancelled) setMember(null);
+        setMember(null);
       } finally {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const requestOtp = useCallback(async (controllerId: string) => {

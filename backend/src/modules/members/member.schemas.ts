@@ -25,7 +25,8 @@ export const beneficiarySchema = z.object({
 });
 
 const memberFields = {
-  controllerId: z.string().trim().regex(/^\d{9}$/, "Controller ID must contain exactly 9 digits"),
+  // Controller ID length isn't fixed — currently 4-7 digits, expected to grow over time.
+  controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
   fullName: z.string().trim().min(2).max(120),
   dateOfBirth: optionalDate,
   ghanaCardId: ghanaCard,

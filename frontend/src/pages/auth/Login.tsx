@@ -79,8 +79,8 @@ export default function Login() {
     e.preventDefault();
     setMemberError("");
 
-    if (!/^\d{9}$/.test(controllerId.trim())) {
-      setMemberError("Enter a valid 9-digit Controller ID.");
+    if (!/^\d{4,7}$/.test(controllerId.trim())) {
+      setMemberError("Enter a valid Controller ID (4 to 7 digits).");
       return;
     }
 
@@ -376,7 +376,7 @@ export default function Login() {
                       id="controller-id"
                       value={controllerId}
                       onChange={(e) => setControllerId(e.target.value)}
-                      placeholder="e.g. 118820451"
+                      placeholder="e.g. 1188204"
                       inputMode="numeric"
                       className={inputClasses}
                     />

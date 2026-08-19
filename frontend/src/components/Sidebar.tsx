@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useAuth } from "@/lib/AuthContext";
 
 type NavSubItem = {
   label: string;
@@ -7,29 +8,27 @@ type NavSubItem = {
   to?: string;
 };
 
-type NavGroup = {
-  label: string;
-  icon: ReactNode;
-  items: NavSubItem[];
-};
+const membersGroupIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+    <circle cx="17.5" cy="9" r="2.6" />
+    <path d="M15.5 20a4 4 0 0 1 6.6-3" />
+  </svg>
+);
 
-const membersGroup: NavGroup = {
-  label: "Members",
-  icon: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
-      <circle cx="17.5" cy="9" r="2.6" />
-      <path d="M15.5 20a4 4 0 0 1 6.6-3" />
-    </svg>
-  ),
-  items: [
-    { label: "All Members", target: "all", to: "/members" },
-    { label: "Add Member", target: "add" },
-    { label: "Upload Members", target: "upload" },
-    { label: "Pending Approvals", target: "pending" },
-    { label: "Removed / Exits", target: "removed" },
-  ],
+const baseMembersItems: NavSubItem[] = [
+  { label: "All Members", target: "all", to: "/members" },
+  { label: "Add Member", target: "add", to: "/members/new" },
+  { label: "Upload Members", target: "upload", to: "/members/upload" },
+  { label: "Pending Approvals", target: "pending", to: "/members?status=PENDING" },
+  { label: "Removed / Exits", target: "removed", to: "/members?status=REMOVED" },
+];
+
+const report20Item: NavSubItem = {
+  label: "Report 20 Import",
+  target: "report20",
+  to: "/imports/report20",
 };
 
 const soonItems: { label: string; icon: ReactNode }[] = [
@@ -104,8 +103,16 @@ type SidebarProps = {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
+  const { user } = useAuth();
+  const canImportReport20 = user
+    ? ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role)
+    : false;
+  const membersItems = canImportReport20
+    ? [...baseMembersItems, report20Item]
+    : baseMembersItems;
   const [membersExpanded, setMembersExpanded] = useState(() =>
-    location.pathname.startsWith("/members"),
+    location.pathname.startsWith("/members") ||
+    location.pathname.startsWith("/imports/report20"),
   );
 
   return (
@@ -168,9 +175,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               className={`w-full ${navItemBase}`}
             >
               <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-                {membersGroup.icon}
+                {membersGroupIcon}
               </span>
-              {membersGroup.label}
+              Members
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -188,19 +195,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 membersExpanded ? "max-h-60" : "max-h-0"
               }`}
             >
-              {membersGroup.items.map((item) =>
+              {membersItems.map((item) =>
                 item.to ? (
                   <NavLink
                     key={item.target}
                     to={item.to}
                     onClick={onClose}
-                    className={({ isActive }) =>
-                      `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
+                    className={() => {
+                      const isActive =
+                        location.pathname + location.search === item.to;
+                      return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
                         isActive
                           ? "bg-white/8 font-semibold text-white"
                           : "text-[#9aa2c4] hover:bg-white/6 hover:text-white"
-                      }`
-                    }
+                      }`;
+                    }}
                   >
                     <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
                     {item.label}

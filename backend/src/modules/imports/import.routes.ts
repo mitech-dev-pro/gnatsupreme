@@ -12,6 +12,7 @@ import { recordAudit } from "../audit/audit.service.js";
 import {
   hasValidReport20Signature,
   report20FileUpload,
+  uploadRoot,
 } from "../files/file.storage.js";
 import { parseReport20, reconcileReport20, sha256File } from "./report20.service.js";
 
@@ -83,16 +84,23 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
   const checksum = await sha256File(request.file.path);
   const duplicate = await prisma.importJob.findUnique({
     where: { type_checksum: { type: "REPORT_20", checksum } },
-    select: { id: true, status: true, createdAt: true },
+    select: { id: true, status: true, createdAt: true, fileId: true, matchedRows: true, changedRows: true, file: { select: { storagePath: true } } },
   });
   if (duplicate) {
-    await removeFile(request.file.path);
-    response.status(409).json({
-      success: false,
-      message: "This exact Report 20 file has already been uploaded",
-      duplicateImport: duplicate,
-    });
-    return;
+    // Only block a re-upload once this file actually reconciled something. A failed run, or one that completed
+    // but matched/changed no members (e.g. every row was invalid), shouldn't permanently lock the file out.
+    if (duplicate.matchedRows + duplicate.changedRows > 0) {
+      await removeFile(request.file.path);
+      response.status(409).json({
+        success: false,
+        message: "This exact Report 20 file has already been uploaded",
+        duplicateImport: duplicate,
+      });
+      return;
+    }
+    await prisma.importJob.delete({ where: { id: duplicate.id } });
+    await prisma.storedFile.delete({ where: { id: duplicate.fileId } }).catch(() => undefined);
+    await removeFile(path.join(uploadRoot, duplicate.file.storagePath));
   }
 
   let rows;

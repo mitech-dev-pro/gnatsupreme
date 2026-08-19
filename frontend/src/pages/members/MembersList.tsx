@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 
 type MemberRow = {
@@ -21,17 +21,27 @@ const STATUS_STYLES: Record<string, string> = {
   REMOVED: "bg-[#eef0fa] text-[#5b6472]",
 };
 
+const PAGE_TITLES: Record<string, string> = {
+  PENDING: "Pending Approvals",
+  REMOVED: "Removed / Exits",
+};
+
 export default function MembersList() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "";
+
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(initialStatus);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const limit = 20;
+
+  const pageTitle = PAGE_TITLES[status] ?? "All Members";
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +78,7 @@ export default function MembersList() {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-[25px] font-extrabold text-[#1e2761]">
-            All Members
+            {pageTitle}
           </h1>
           <div className="mt-1 text-[12.5px] text-[#5b6472]">
             {total} member{total === 1 ? "" : "s"}
@@ -95,8 +105,10 @@ export default function MembersList() {
         <select
           value={status}
           onChange={(e) => {
-            setStatus(e.target.value);
+            const next = e.target.value;
+            setStatus(next);
             setPage(1);
+            setSearchParams(next ? { status: next } : {});
           }}
           className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
         >

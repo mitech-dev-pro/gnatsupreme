@@ -8,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { hasValidReport20Signature, memberImportFileUpload } from "../files/file.storage.js";
+import { hasValidReport20Signature, memberImportFileUpload, uploadRoot } from "../files/file.storage.js";
 import { bulkRawFields, stageMemberImport } from "./member-import.service.js";
 import { sha256File } from "./report20.service.js";
 
@@ -18,6 +18,11 @@ const rowQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
   status: z.enum(["READY", "INVALID", "DUPLICATE", "EXISTING", "OUT_OF_SCOPE", "IMPORTED", "FAILED"]).optional(),
+});
+const listSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]).optional(),
 });
 
 function user(response: Response) {
@@ -53,6 +58,27 @@ function optionalDate(value: string | null) {
 
 memberImportRouter.use(authenticate);
 
+memberImportRouter.get("/members", async (request, response) => {
+  const parsed = listSchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Invalid query" });
+    return;
+  }
+  const { page, limit, status } = parsed.data;
+  const where = { type: "MEMBER_BULK" as const, ...jobScope(user(response)), ...(status ? { status } : {}) };
+  const [jobs, total] = await prisma.$transaction([
+    prisma.importJob.findMany({
+      where,
+      include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.importJob.count({ where }),
+  ]);
+  response.json({ success: true, data: jobs, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+});
+
 memberImportRouter.post("/members", receiveFile, async (request, response) => {
   if (!request.file) {
     response.status(400).json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
@@ -64,11 +90,22 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
     return;
   }
   const checksum = await sha256File(request.file.path);
-  const duplicate = await prisma.importJob.findUnique({ where: { type_checksum: { type: "MEMBER_BULK", checksum } }, select: { id: true, status: true } });
+  const duplicate = await prisma.importJob.findUnique({
+    where: { type_checksum: { type: "MEMBER_BULK", checksum } },
+    select: { id: true, status: true, fileId: true, importedRows: true, file: { select: { storagePath: true } } },
+  });
   if (duplicate) {
-    await removeFile(request.file.path);
-    response.status(409).json({ success: false, message: "This exact member file has already been uploaded", duplicateImport: duplicate });
-    return;
+    // Only block a re-upload once something was actually enrolled from this file. A failed run, or one that
+    // staged successfully but never got committed (e.g. every row was invalid, or the admin just re-checks
+    // after a fix), shouldn't permanently lock the file out of being retried.
+    if (duplicate.importedRows > 0) {
+      await removeFile(request.file.path);
+      response.status(409).json({ success: false, message: "This exact member file has already been uploaded", duplicateImport: duplicate });
+      return;
+    }
+    await prisma.importJob.delete({ where: { id: duplicate.id } });
+    await prisma.storedFile.delete({ where: { id: duplicate.fileId } }).catch(() => undefined);
+    await removeFile(path.join(uploadRoot, duplicate.file.storagePath));
   }
   const currentUser = user(response);
   const storagePath = path.posix.join("member-imports", request.file.filename);

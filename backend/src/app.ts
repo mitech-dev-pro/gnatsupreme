@@ -1,14 +1,34 @@
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 
+import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
+import { apiRateLimiter } from "./middleware/rate-limit.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 
 export const app = express();
 
+if (env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
+app.use(helmet());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      callback(null, !origin || origin === env.FRONTEND_ORIGIN);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+app.use("/api", apiRateLimiter);
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use("/api/auth", authRouter);
 

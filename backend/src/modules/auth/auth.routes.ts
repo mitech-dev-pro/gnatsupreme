@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from "express";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { loginRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
 import { loginSchema } from "./auth.schemas.js";
 import {
   createAccessToken,
@@ -44,7 +45,7 @@ function clientMetadata(request: Request) {
   };
 }
 
-authRouter.post("/login", async (request, response) => {
+authRouter.post("/login", loginRateLimiter, async (request, response) => {
   const parsed = loginSchema.safeParse(request.body);
 
   if (!parsed.success) {
@@ -99,7 +100,7 @@ authRouter.post("/login", async (request, response) => {
   }
 });
 
-authRouter.post("/refresh", async (request, response) => {
+authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
   const currentToken = request.cookies[env.REFRESH_COOKIE_NAME] as string | undefined;
 
   if (!currentToken) {

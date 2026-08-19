@@ -1,12 +1,22 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 
 import pino from "pino";
 import { pinoHttp } from "pino-http";
 
 import { env } from "../config/env.js";
 
+const logFilePath = path.resolve(process.cwd(), env.LOG_FILE);
+mkdirSync(path.dirname(logFilePath), { recursive: true });
+
+const logStreams = pino.multistream([
+  { stream: process.stdout },
+  { stream: pino.destination({ dest: logFilePath, sync: false }) },
+]);
+
 export const logger = pino({
-  level: env.NODE_ENV === "production" ? "info" : "debug",
+  level: env.LOG_LEVEL ?? (env.NODE_ENV === "production" ? "info" : "debug"),
   redact: {
     paths: [
       "req.headers.authorization",
@@ -21,7 +31,7 @@ export const logger = pino({
     censor: "[REDACTED]",
   },
   base: { service: "gnatsupreme-backend", environment: env.NODE_ENV },
-});
+}, logStreams);
 
 export const requestLogger = pinoHttp({
   logger,

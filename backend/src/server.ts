@@ -31,6 +31,7 @@ const shutdown = (signal: string, exitCode = 0) => {
       process.exit(1);
     }
 
+    await new Promise<void>((resolve) => logger.flush(() => resolve()));
     process.exit(exitCode);
   });
 };

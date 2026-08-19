@@ -16,6 +16,7 @@ Copy `.env.production.example` to `/etc/gnatsupreme/backend.env`, restrict it to
 
 ```bash
 sudo install -d -o gnatsupreme -g gnatsupreme /var/lib/gnatsupreme/uploads
+sudo install -d -o gnatsupreme -g gnatsupreme /var/log/gnatsupreme
 sudo chmod 750 /etc/gnatsupreme/backend.env
 ```
 
@@ -36,6 +37,13 @@ Structured JSON logs are written to stdout and captured by journald:
 
 ```bash
 journalctl -u gnatsupreme-backend -f
+```
+
+They are also appended to the path configured by `LOG_FILE`. Install the supplied rotation policy so the file cannot grow indefinitely:
+
+```bash
+sudo cp deploy/logrotate.conf /etc/logrotate.d/gnatsupreme-backend
+sudo logrotate --debug /etc/logrotate.d/gnatsupreme-backend
 ```
 
 ## 3. Configure Nginx and TLS

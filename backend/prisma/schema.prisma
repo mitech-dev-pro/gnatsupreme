@@ -125,6 +125,19 @@ enum ChangeRequestStatus {
   CANCELLED
 }
 
+enum NotificationChannel {
+  IN_APP
+  SMS
+}
+
+enum NotificationStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -173,6 +186,7 @@ model User {
   memberWorkflowEvents    MemberWorkflowEvent[]
   submittedChangeRequests MemberChangeRequest[]     @relation("ChangeRequestedBy")
   reviewedChangeRequests  MemberChangeRequest[]     @relation("ChangeReviewedBy")
+  notifications           Notification[]
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
 
@@ -206,6 +220,7 @@ model Member {
   changeRequests   MemberChangeRequest[]
   otpChallenges    MemberOtpChallenge[]
   memberSessions   MemberSession[]
+  notifications    Notification[]
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -286,6 +301,35 @@ model MemberSession {
 
   @@index([memberId])
   @@index([expiresAt])
+}
+
+model Notification {
+  id                Int                 @id @default(autoincrement())
+  channel           NotificationChannel
+  status            NotificationStatus  @default(QUEUED)
+  type              String
+  title             String
+  message           String
+  idempotencyKey    String              @unique
+  userId            Int?
+  user              User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId          Int?
+  member            Member?             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  destination       String?
+  attempts          Int                 @default(0)
+  maxAttempts       Int                 @default(5)
+  nextAttemptAt     DateTime            @default(now())
+  providerMessageId String?
+  lastError         String?
+  sentAt            DateTime?
+  readAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([userId, readAt, createdAt])
+  @@index([memberId, readAt, createdAt])
+  @@index([type])
 }
 
 model StoredFile {

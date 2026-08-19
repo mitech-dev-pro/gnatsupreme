@@ -1,6 +1,9 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
+import { startNotificationWorker } from "./modules/notifications/notification.worker.js";
+
+const stopNotificationWorker = await startNotificationWorker();
 
 const server = app.listen(env.PORT, () => {
   console.log(`Server listening on http://localhost:${env.PORT}`);
@@ -9,6 +12,7 @@ const server = app.listen(env.PORT, () => {
 const shutdown = (signal: NodeJS.Signals) => {
   console.log(`${signal} received. Shutting down gracefully.`);
 
+  stopNotificationWorker();
   server.close(async (error) => {
     await prisma.$disconnect();
 

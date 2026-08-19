@@ -6,6 +6,7 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { memberScope } from "../members/member.access.js";
+import { notifyMember } from "../notifications/notification.service.js";
 import {
   cancelTransferSchema,
   createTransferSchema,
@@ -181,6 +182,7 @@ transferRouter.post("/", async (request, response) => {
       regionId: member.district.regionId,
       districtId: member.districtId,
     });
+    await notifyMember({ memberId: member.id, type: "TRANSFER_REQUESTED", title: "Transfer requested", message: `A transfer from ${member.district.name} to ${destination.name} has been requested for your membership.`, idempotencyKey: `transfer:${transfer.id}:requested` });
     response.status(201).json({ success: true, data: transfer });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
@@ -259,6 +261,7 @@ transferRouter.patch(
         regionId: transfer.toDistrict.regionId,
         districtId: transfer.toDistrictId,
       });
+      await notifyMember({ memberId: transfer.memberId, type: `TRANSFER_${transfer.status}`, title: "Transfer request updated", message: `Your transfer to ${transfer.toDistrict.name} was ${transfer.status.toLowerCase()}${transfer.reviewNote ? `: ${transfer.reviewNote}` : "."}`, idempotencyKey: `transfer:${transfer.id}:${transfer.status}` });
       response.json({ success: true, data: transfer });
     } catch (error) {
       if (error instanceof TransferConflict) {
@@ -317,5 +320,6 @@ transferRouter.patch("/:id/cancel", async (request, response) => {
     regionId: transfer.fromDistrict.regionId,
     districtId: transfer.fromDistrictId,
   });
+  await notifyMember({ memberId: transfer.memberId, type: "TRANSFER_CANCELLED", title: "Transfer cancelled", message: `Your transfer request to ${transfer.toDistrict.name} was cancelled.`, idempotencyKey: `transfer:${transfer.id}:CANCELLED` });
   response.json({ success: true, data: transfer });
 });

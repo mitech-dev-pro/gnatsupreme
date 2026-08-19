@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
+import { notifyStaffForMember } from "../notifications/notification.service.js";
 
 export const memberPortalRouter = Router();
 
@@ -92,5 +93,6 @@ memberPortalRouter.post("/change-requests", async (request, response) => {
     },
   });
   await recordAudit({ request, action: "MEMBER_SELF_SERVICE_CHANGE_REQUESTED", entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `Member ${currentMember.controllerId} requested a ${item.type} change`, afterData: { memberId: currentMember.id, type: item.type } });
+  await notifyStaffForMember({ memberId: currentMember.id, type: "MEMBER_CHANGE_REQUESTED", title: "Member change request", message: `${currentMember.fullName} submitted a ${item.type.toLowerCase().replaceAll("_", " ")} request for review.`, idempotencyKey: `change-request:${item.id}` });
   response.status(201).json({ success: true, data: item });
 });

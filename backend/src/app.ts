@@ -22,6 +22,8 @@ import { benefitRouter } from "./modules/benefits/benefit.routes.js";
 import { changeRequestRouter, memberWorkflowRouter } from "./modules/workflows/workflow.routes.js";
 import { memberAuthRouter } from "./modules/member-auth/member-auth.routes.js";
 import { memberPortalRouter } from "./modules/member-portal/member-portal.routes.js";
+import { notificationRouter } from "./modules/notifications/notification.routes.js";
+import { memberNotificationRouter } from "./modules/notifications/member-notification.routes.js";
 
 export const app = express();
 
@@ -64,6 +66,8 @@ app.use("/api/members", memberWorkflowRouter);
 app.use("/api/change-requests", changeRequestRouter);
 app.use("/api/member-auth", memberAuthRouter);
 app.use("/api/member-portal", memberPortalRouter);
+app.use("/api/notifications", notificationRouter);
+app.use("/api/member-portal", memberNotificationRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

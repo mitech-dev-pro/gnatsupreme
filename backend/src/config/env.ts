@@ -20,7 +20,7 @@ const environmentSchema = z.object({
   MEMBER_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(10),
   MEMBER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   MEMBER_OTP_TTL_MINUTES: z.coerce.number().int().min(2).max(10).default(5),
-  MEMBER_OTP_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
+  SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
@@ -55,8 +55,12 @@ if (result.success && result.data.MANKRADO_ENABLED && !result.data.MANKRADO_BASE
   throw new Error("MANKRADO_BASE_URL is required when the Mankrado integration is enabled");
 }
 
-if (result.success && result.data.NODE_ENV === "production" && result.data.MEMBER_OTP_PROVIDER === "CONSOLE") {
-  throw new Error("The CONSOLE member OTP provider cannot be used in production");
+if (
+  result.success &&
+  result.data.NODE_ENV === "production" &&
+  result.data.SMS_PROVIDER === "CONSOLE"
+) {
+  throw new Error("The console SMS provider cannot be used in production");
 }
 
 export const env = result.data;

@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
 import { memberOtpRequestRateLimiter, memberOtpVerifyRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { processNotificationById, queueSmsNotification } from "../notifications/notification.service.js";
 import { requestOtpSchema, verifyOtpSchema } from "./member-auth.schemas.js";
 import {
   createChallengeToken,
@@ -71,7 +72,15 @@ memberAuthRouter.post("/request-otp", memberOtpRequestRateLimiter, async (reques
         prisma.memberOtpChallenge.updateMany({ where: { memberId: member.id, consumedAt: null }, data: { consumedAt: new Date() } }),
         prisma.memberOtpChallenge.create({ data: { publicToken: challengeToken, memberId: member.id, otpHash: hashOtp(challengeToken, otp), expiresAt, ipAddress: request.ip?.slice(0, 64) } }),
       ]);
-      console.info(`[DEV MEMBER OTP] Controller ID ${member.controllerId}: ${otp} (expires in ${env.MEMBER_OTP_TTL_MINUTES} minutes)`);
+      const notification = await queueSmsNotification({
+        type: "MEMBER_OTP",
+        title: "Member verification code",
+        message: `Your GNAT Supreme Care verification code is ${otp}. It expires in ${env.MEMBER_OTP_TTL_MINUTES} minutes. Do not share this code.`,
+        destination: member.phone,
+        idempotencyKey: `member-otp:${challengeToken}`,
+        memberId: member.id,
+      });
+      await processNotificationById(notification.id);
     }
   }
   const remainingDelay = 300 - (Date.now() - startedAt);

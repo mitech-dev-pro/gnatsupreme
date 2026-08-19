@@ -17,6 +17,7 @@ import { claimsRouter } from "./modules/claims/claims.routes.js";
 import { importRouter } from "./modules/imports/import.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { reportRouter } from "./modules/reports/report.routes.js";
+import { benefitRouter } from "./modules/benefits/benefit.routes.js";
 
 export const app = express();
 
@@ -53,6 +54,7 @@ app.use("/api/claims", claimsRouter);
 app.use("/api/imports", importRouter);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/reports", reportRouter);
+app.use("/api/benefits", benefitRouter);
 
 app.get("/api/health", async (_request, response) => {
   try {

@@ -78,6 +78,13 @@ enum ImportRowStatus {
   INVALID
 }
 
+enum BenefitType {
+  DEATH
+  TOTAL_PERMANENT_DISABILITY
+  CRITICAL_ILLNESS
+  HOSPITALIZATION
+}
+
 model Region {
   id        Int        @id @default(autoincrement())
   name      String     @unique
@@ -122,6 +129,7 @@ model User {
   reviewedTransfers  MemberTransfer[]          @relation("TransferReviewedBy")
   claimSubmissions   ExternalClaimSubmission[]
   importJobs         ImportJob[]
+  benefitPlans       BenefitPlanVersion[]
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
@@ -272,6 +280,34 @@ model Report20Row {
   @@index([importJobId, status])
   @@index([controllerId])
   @@index([memberId])
+}
+
+model BenefitPlanVersion {
+  id               Int             @id @default(autoincrement())
+  effectiveFrom    DateTime        @unique @db.Date
+  monthlyPremium   Decimal         @db.Decimal(12, 2)
+  collectionMethod String
+  note             String?
+  createdById      Int
+  createdBy        User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  benefits         BenefitAmount[]
+  createdAt        DateTime        @default(now())
+
+  @@index([effectiveFrom])
+  @@index([createdById])
+}
+
+model BenefitAmount {
+  id            Int                @id @default(autoincrement())
+  planVersionId Int
+  planVersion   BenefitPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  type          BenefitType
+  enabled       Boolean            @default(true)
+  memberAmount  Decimal            @db.Decimal(14, 2)
+  spouseAmount  Decimal?           @db.Decimal(14, 2)
+
+  @@unique([planVersionId, type])
+  @@index([type])
 }
 
 model AuditLog {

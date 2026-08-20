@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-20T00:00:00.000Z",
+  "title": "Design System: GNAT Supreme Care",
+  "extensions": {
+    "colorMeta": {
+      "authority-navy": { "role": "primary", "displayName": "Authority Navy", "canonical": "oklch(32% 0.11 275)", "tonalRamp": ["oklch(18% 0.06 275)", "oklch(25% 0.09 275)", "oklch(32% 0.11 275)", "oklch(42% 0.10 275)", "oklch(55% 0.08 275)", "oklch(68% 0.06 275)", "oklch(82% 0.035 275)", "oklch(94% 0.015 275)"] },
+      "assurance-teal": { "role": "secondary", "displayName": "Assurance Teal", "canonical": "oklch(62% 0.12 165)", "tonalRamp": ["oklch(18% 0.05 165)", "oklch(28% 0.075 165)", "oklch(40% 0.095 165)", "oklch(50% 0.10 165)", "oklch(62% 0.12 165)", "oklch(72% 0.09 165)", "oklch(84% 0.055 165)", "oklch(95% 0.02 165)"] },
+      "quiet-slate": { "role": "neutral", "displayName": "Quiet Slate", "canonical": "#5b6472", "tonalRamp": ["#20242b", "#353b45", "#4a525f", "#5b6472", "#7d8692", "#a2a9b2", "#cbd0d6", "#f1f3f6"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Page titles and primary workflow headings." },
+      "body": { "displayName": "Body", "purpose": "Forms, records, instructions, and tables." },
+      "label": { "displayName": "Label", "purpose": "Controls, metadata, and compact actions." }
+    },
+    "shadows": [
+      { "name": "low-ambient", "value": "0 2px 6px rgba(30,39,97,0.10)", "purpose": "Focused controls and small floating surfaces." },
+      { "name": "floating", "value": "0 14px 34px rgba(30,39,97,0.18)", "purpose": "Menus, notification panels, and dialogs." }
+    ],
+    "motion": [
+      { "name": "state", "value": "180ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Hover, focus, disclosure, and state feedback." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    { "name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "The single primary action within a task region.", "html": "<button class=\"ds-button-primary\">Save changes</button>", "css": ".ds-button-primary{border:0;border-radius:9px;background:#1f9c7c;color:#fbfcfe;padding:10px 16px;font:700 12px/1.35 Inter,system-ui,sans-serif;transition:background 180ms cubic-bezier(.22,1,.36,1),box-shadow 180ms cubic-bezier(.22,1,.36,1)}.ds-button-primary:hover{background:#17805f}.ds-button-primary:focus-visible{outline:3px solid #b9eadc;outline-offset:2px}.ds-button-primary:active{background:#146b51}" },
+    { "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary", "description": "A supporting or cancel action.", "html": "<button class=\"ds-button-secondary\">Cancel</button>", "css": ".ds-button-secondary{border:1px solid #e5e9f0;border-radius:9px;background:#fbfcfe;color:#1e2761;padding:10px 16px;font:600 12px/1.35 Inter,system-ui,sans-serif;transition:background 180ms cubic-bezier(.22,1,.36,1),border-color 180ms cubic-bezier(.22,1,.36,1)}.ds-button-secondary:hover{background:#f4f6fa;border-color:#cbd0d6}.ds-button-secondary:focus-visible{outline:3px solid #b9eadc;outline-offset:2px}" },
+    { "name": "Text Field", "kind": "input", "refersTo": "input", "description": "A persistent-label form field.", "html": "<label class=\"ds-field\"><span>Controller ID</span><input value=\"1188204\" /></label>", "css": ".ds-field{display:grid;gap:6px;color:#5b6472;font:600 12px/1.35 Inter,system-ui,sans-serif}.ds-field input{border:1px solid #e5e9f0;border-radius:9px;background:#fbfcfe;color:#171b26;padding:9px 12px;font:400 13px/1.5 Inter,system-ui,sans-serif}.ds-field input:focus-visible{border-color:#1f9c7c;outline:3px solid #dff7ee;outline-offset:0}" },
+    { "name": "Success Status", "kind": "chip", "refersTo": "status-success", "description": "A text-backed positive state indicator.", "html": "<span class=\"ds-status-success\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"m5 10 3 3 7-7\"/></svg>Active</span>", "css": ".ds-status-success{display:inline-flex;align-items:center;gap:5px;border-radius:999px;background:#dff7ee;color:#17805f;padding:2px 10px;font:600 12px/1.35 Inter,system-ui,sans-serif}.ds-status-success svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2}" },
+    { "name": "Sidebar Navigation", "kind": "nav", "description": "Persistent task navigation with a clearly selected destination.", "html": "<nav class=\"ds-nav\" aria-label=\"Primary\"><a href=\"#\">Dashboard</a><a href=\"#\" aria-current=\"page\">Members</a><a href=\"#\">Reports</a></nav>", "css": ".ds-nav{display:grid;gap:2px;width:220px;background:#1e2761;padding:10px}.ds-nav a{border-radius:9px;color:#b7bedd;padding:10px 12px;font:600 13px/1.35 Inter,system-ui,sans-serif;text-decoration:none}.ds-nav a:hover{background:rgba(251,252,254,.06);color:#fbfcfe}.ds-nav a:focus-visible{outline:2px solid #79d1b8;outline-offset:1px}.ds-nav a[aria-current=page]{background:#1f9c7c;color:#fbfcfe}" }
+  ],
+  "narrative": {
+    "northStar": "The Trusted Operations Desk",
+    "overview": "GNAT Supreme Care is composed, legible, and dependable. It supports sensitive operational work with clear hierarchy, restrained color, familiar controls, and explicit system feedback.",
+    "keyCharacteristics": ["Dense enough for operational work, never cramped.", "Clear hierarchy with predictable actions and feedback.", "Flat by default, with elevation reserved for floating surfaces.", "Consistent across administrative and member-facing experiences.", "Accessible at WCAG 2.1 AA and resilient at 200% zoom."],
+    "rules": [
+      { "name": "The One Action Color Rule", "body": "Assurance Teal is reserved for the primary action, focus, or progress. It must not become surface decoration.", "section": "colors" },
+      { "name": "The Redundancy Rule", "body": "Status always combines color with text, an icon, or both.", "section": "colors" },
+      { "name": "The Flat-by-Default Rule", "body": "A surface at rest uses a border or tonal shift, not a shadow.", "section": "elevation" }
+    ],
+    "dos": ["Do make the current state and next available action visible in every workflow.", "Do provide loading, empty, error, success, disabled, hover, focus, and active states.", "Do keep all workflows operable by keyboard."],
+    "donts": ["Don't use flashy or stereotypical healthcare styling.", "Don't build generic dashboards from repetitive cards.", "Don't use decorative animation, novelty transitions, glass effects, or unexplained icons.", "Don't rely on color alone to communicate status or urgency.", "Don't hide destructive actions behind browser-native dialogs."]
+  }
+}

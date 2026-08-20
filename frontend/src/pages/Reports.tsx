@@ -1,5 +1,8 @@
 import { useState } from "react";
 import api from "@/lib/api";
+import PageHeader from "@/components/ui/PageHeader";
+import { Alert } from "@/components/ui/Feedback";
+import Button from "@/components/ui/Button";
 
 type ReportDef = {
   key: string;
@@ -73,17 +76,12 @@ export default function Reports() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[22px] font-extrabold text-[#1e2761]">Reports</h1>
-      <div className="mb-5 text-[12.5px] text-[#5b6472]">
-        Export CSV reports scoped to your access level. Large reports stream directly from the
-        server, so exports may take a moment for national-level data.
-      </div>
+      <PageHeader
+        title="Reports"
+        description="Export CSV reports scoped to your access level. Large national reports may take a moment to prepare."
+      />
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {REPORTS.map((report) => (
@@ -97,14 +95,14 @@ export default function Reports() {
                 {report.description}
               </p>
             </div>
-            <button
-              type="button"
+            <Button
               onClick={() => void download(report)}
-              disabled={busyKey === report.key}
-              className="mt-4 self-start rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+              loading={busyKey === report.key}
+              loadingLabel="Preparing…"
+              className="mt-4 self-start"
             >
-              {busyKey === report.key ? "Preparing…" : "Download CSV"}
-            </button>
+              Download CSV
+            </Button>
           </div>
         ))}
       </div>

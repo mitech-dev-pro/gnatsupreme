@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
+import PageHeader from "@/components/ui/PageHeader";
+import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import Button from "@/components/ui/Button";
 
 type ClaimSubmission = {
   id: number;
@@ -102,11 +105,10 @@ export default function Claims() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[22px] font-extrabold text-[#1e2761]">Claims</h1>
-      <div className="mb-5 text-[12.5px] text-[#5b6472]">
-        Claim submissions relayed to the external claims provider on behalf of
-        members.
-      </div>
+      <PageHeader
+        title="Claims"
+        description="Claim submissions relayed to the external claims provider on behalf of members."
+      />
 
       {provider && (
         <div className="mb-5 flex flex-wrap items-center gap-2.5 rounded-[10px] border border-[#e5e9f0] bg-white px-4 py-3 text-[12.5px]">
@@ -132,11 +134,7 @@ export default function Claims() {
         </div>
       )}
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
       <div className="mb-4">
         <select
@@ -170,21 +168,14 @@ export default function Claims() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-6 text-center text-[#5b6472]"
-                  >
-                    Loading…
-                  </td>
-                </tr>
+                <TableSkeleton columns={6} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-6 text-center text-[#5b6472]"
-                  >
-                    No claim submissions yet.
+                  <td colSpan={6}>
+                    <EmptyState
+                      title="No claim submissions yet"
+                      description="Claims submitted for members will appear here with their provider and synchronization status."
+                    />
                   </td>
                 </tr>
               ) : (
@@ -242,22 +233,22 @@ export default function Claims() {
             Page {page} of {totalPages} · {total} total
           </span>
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page <= 1}
               onClick={() => updateParams({ page: String(page - 1) })}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page >= totalPages}
               onClick={() => updateParams({ page: String(page + 1) })}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

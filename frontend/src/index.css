@@ -8,6 +8,28 @@
   --ink: oklch(0.24 0.025 270);
   --paper: oklch(0.99 0.004 255);
   --app-bg: oklch(0.965 0.008 255);
+  --surface-raised: #fbfcfe;
+  --surface-subtle: #f4f6fa;
+  --text-strong: #1e2761;
+  --text-muted: #5b6472;
+  --text-on-action: #fbfcfe;
+  --border-default: #e5e9f0;
+  --border-strong: #cbd0d6;
+  --action-primary: #1f9c7c;
+  --action-primary-hover: #17805f;
+  --focus-ring: #79d1b8;
+  --danger: #c23b3b;
+  --danger-soft: #fbe9e9;
+  --danger-border: #efc7c7;
+  --success: #17805f;
+  --success-soft: #dff7ee;
+  --success-border: #a9dfcf;
+  --warning: #9a6414;
+  --warning-soft: #fbf0dd;
+  --warning-border: #efd5a9;
+  --info-soft: #eef0fa;
+  --info-border: #d6daed;
+  --skeleton: #e9edf3;
 }
 
 body {

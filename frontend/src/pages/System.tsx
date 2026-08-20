@@ -2,7 +2,12 @@ import { Fragment, useCallback, useEffect, useState, type FormEvent } from "reac
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { InputField } from "@/components/ui/FormField";
-import { Alert } from "@/components/ui/Feedback";
+import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
+import Pagination from "@/components/ui/Pagination";
+import StatusBadge from "@/components/ui/StatusBadge";
+import TableFrame from "@/components/ui/TableFrame";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 
@@ -252,21 +257,20 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             ))}
           </select>
         </div>
-        <button
-          type="button"
+        <Button
+          variant={showCreate ? "secondary" : "primary"}
           onClick={() => {
             setShowCreate((v) => !v);
             setEditingId(null);
             resetForm();
             setFormError("");
           }}
-          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white"
         >
           {showCreate ? "Close" : "Add Staff Account"}
-        </button>
+        </Button>
       </div>
 
-      {error && <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>}
+      {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="success">{success}</Alert>}
 
       {statusTarget && (
@@ -326,9 +330,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </form>
       )}
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-[12.5px]">
+      <TableFrame label="Staff accounts" className="min-w-[820px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">Name</th>
@@ -341,12 +343,10 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">Loading…</td>
-                </tr>
+                <TableSkeleton columns={6} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">No staff accounts found.</td>
+                  <td colSpan={6}><EmptyState title="No staff accounts found" description="No accounts match the current search and role filters." /></td>
                 </tr>
               ) : (
                 rows.map((row) => (
@@ -357,9 +357,9 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
                       <td className="px-4 py-2.5 text-[#5b6472]">{row.district?.name ?? row.region?.name ?? "National"}</td>
                       <td className="px-4 py-2.5">
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${row.isActive ? "bg-[#dff7ee] text-[#17805f]" : "bg-[#fbe9e9] text-[#c23b3b]"}`}>
+                        <StatusBadge tone={row.isActive ? "success" : "danger"}>
                           {row.isActive ? "Active" : "Inactive"}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1.5">
@@ -410,23 +410,9 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">Page {page} of {totalPages} · {total} total</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:opacity-40">
-              Previous
-            </button>
-            <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:opacity-40">
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="accounts" onPageChange={setPage} />
     </div>
   );
 }
@@ -483,11 +469,9 @@ function AuditLogTab() {
         />
       </div>
 
-      {error && <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>}
+      {error && <Alert tone="error">{error}</Alert>}
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left text-[12.5px]">
+      <TableFrame label="Audit log" className="min-w-[800px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">When</th>
@@ -498,12 +482,10 @@ function AuditLogTab() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-[#5b6472]">Loading…</td>
-                </tr>
+                <TableSkeleton columns={4} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-[#5b6472]">No audit entries found.</td>
+                  <td colSpan={4}><EmptyState title="No audit entries found" description="No recorded activity matches the current description and action filters." /></td>
                 </tr>
               ) : (
                 rows.map((row) => (
@@ -518,23 +500,9 @@ function AuditLogTab() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">Page {page} of {totalPages} · {total} total</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:opacity-40">
-              Previous
-            </button>
-            <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:opacity-40">
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="entries" onPageChange={setPage} />
     </div>
   );
 }
@@ -557,16 +525,13 @@ export default function System() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[22px] font-extrabold text-[#1e2761]">System</h1>
-      <div className="mb-5 text-[12.5px] text-[#5b6472]">
-        Staff accounts and the full activity audit trail.
-      </div>
+      <PageHeader title="System" description="Manage staff accounts and review the full activity audit trail." />
 
-      <div className="mb-5 flex gap-2">
-        <button type="button" onClick={() => setTab("users")} className={tabButton(tab === "users")}>
+      <div className="mb-5 flex gap-2" role="tablist" aria-label="System sections">
+        <button type="button" role="tab" aria-selected={tab === "users"} onClick={() => setTab("users")} className={tabButton(tab === "users")}>
           Staff Accounts
         </button>
-        <button type="button" onClick={() => setTab("audit")} className={tabButton(tab === "audit")}>
+        <button type="button" role="tab" aria-selected={tab === "audit"} onClick={() => setTab("audit")} className={tabButton(tab === "audit")}>
           Audit Log
         </button>
       </div>

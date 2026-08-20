@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { useAuth } from "@/lib/AuthContext";
+import PageHeader from "@/components/ui/PageHeader";
+import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 
 type Region = { id: number; name: string; _count: { districts: number } };
 type District = { id: number; name: string; region: { id: number; name: string }; _count: { members: number } };
@@ -180,13 +182,11 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
     ? districts.filter((d) => String(d.region.id) === districtRegionFilter)
     : districts;
 
-  if (loading) return <div className="text-[13px] text-[#5b6472]">Loading…</div>;
+  if (loading) return <div className="overflow-hidden rounded-[12px] border border-(--border-default) bg-(--surface-raised)"><table className="w-full"><tbody><TableSkeleton columns={3} /></tbody></table></div>;
 
   return (
     <div className="space-y-5">
-      {error && (
-        <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>
-      )}
+      {error && <Alert tone="error">{error}</Alert>}
 
       {deleteTarget && (
         <ConfirmationPanel
@@ -483,13 +483,11 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
     }
   };
 
-  if (loading) return <div className="text-[13px] text-[#5b6472]">Loading…</div>;
+  if (loading) return <div className="overflow-hidden rounded-[12px] border border-(--border-default) bg-(--surface-raised)"><table className="w-full"><tbody><TableSkeleton columns={4} /></tbody></table></div>;
 
   return (
     <div className="space-y-5">
-      {error && (
-        <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>
-      )}
+      {error && <Alert tone="error">{error}</Alert>}
 
       <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -654,17 +652,13 @@ export default function Setup() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[22px] font-extrabold text-[#1e2761]">Setup</h1>
-      <div className="mb-5 text-[12.5px] text-[#5b6472]">
-        Scheme configuration — regions, districts, and the benefit plan. Only Super Admins and
-        National Admins can make changes; other roles can view what's in their scope.
-      </div>
+      <PageHeader title="Setup" description="Configure regions, districts, and the benefit plan. Regional Admins can review configuration; National Admins and Super Admins can publish changes." />
 
-      <div className="mb-5 flex gap-2">
-        <button type="button" onClick={() => setTab("geography")} className={tabButton(tab === "geography")}>
+      <div className="mb-5 flex gap-2" role="tablist" aria-label="Setup sections">
+        <button type="button" role="tab" aria-selected={tab === "geography"} onClick={() => setTab("geography")} className={tabButton(tab === "geography")}>
           Regions &amp; Districts
         </button>
-        <button type="button" onClick={() => setTab("benefits")} className={tabButton(tab === "benefits")}>
+        <button type="button" role="tab" aria-selected={tab === "benefits"} onClick={() => setTab("benefits")} className={tabButton(tab === "benefits")}>
           Benefit Plan
         </button>
       </div>

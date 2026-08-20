@@ -3,6 +3,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import Pagination from "@/components/ui/Pagination";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
+import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import { SelectField, TextareaField } from "@/components/ui/FormField";
+import StatusBadge from "@/components/ui/StatusBadge";
+import TableFrame from "@/components/ui/TableFrame";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 
@@ -32,11 +38,11 @@ type MemberOption = {
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"];
 const REVIEW_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"];
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: "bg-[#fbf0dd] text-[#b9791a]",
-  APPROVED: "bg-[#dff7ee] text-[#17805f]",
-  REJECTED: "bg-[#fbe9e9] text-[#c23b3b]",
-  CANCELLED: "bg-[#eef0fa] text-[#5b6472]",
+const STATUS_TONES: Record<string, "neutral" | "success" | "warning" | "danger"> = {
+  PENDING: "warning",
+  APPROVED: "success",
+  REJECTED: "danger",
+  CANCELLED: "neutral",
 };
 
 function formatDate(iso: string | null) {
@@ -97,7 +103,7 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
       <h2 className="mb-3 text-[14.5px] font-bold text-[#1e2761]">Request a transfer</h2>
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Member</label>
+          <label htmlFor="transfer-member-search" className="mb-1 block text-[11px] font-bold text-[#1e2761]">Member</label>
           {member ? (
             <div className="flex items-center justify-between rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px]">
               <span>
@@ -110,13 +116,18 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
           ) : (
             <div className="relative">
               <input
+                id="transfer-member-search"
                 value={memberSearch}
                 onChange={(e) => setMemberSearch(e.target.value)}
                 placeholder="Search name or Controller ID"
+                role="combobox"
+                aria-expanded={memberSearch.trim().length >= 2 && (searching || memberOptions.length > 0)}
+                aria-controls="transfer-member-options"
+                aria-autocomplete="list"
                 className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none"
               />
               {memberSearch.trim().length >= 2 && (searching || memberOptions.length > 0) && (
-                <div className="absolute z-10 mt-1 w-full rounded-[9px] border border-[#e5e9f0] bg-white shadow-lg">
+                <div id="transfer-member-options" role="listbox" className="absolute z-10 mt-1 w-full rounded-[9px] border border-[#e5e9f0] bg-white shadow-lg">
                   {searching ? (
                     <div className="px-3 py-2 text-[12.5px] text-[#5b6472]">Searching…</div>
                   ) : (
@@ -124,6 +135,8 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
                       <button
                         key={option.id}
                         type="button"
+                        role="option"
+                        aria-selected="false"
                         onClick={() => {
                           setMember(option);
                           setMemberSearch("");
@@ -142,11 +155,10 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
         </div>
 
         <div className="max-w-72">
-          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Destination district</label>
-          <select
+          <SelectField
+            label="Destination district"
             value={toDistrictId}
             onChange={(e) => setToDistrictId(e.target.value)}
-            className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] focus:border-[#1f9c7c] focus:outline-none"
           >
             <option value="">Select district</option>
             {districts
@@ -156,38 +168,33 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
                   {d.name} ({d.region.name})
                 </option>
               ))}
-          </select>
+          </SelectField>
         </div>
 
-        <div>
-          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Reason</label>
-          <textarea
+          <TextareaField
+            label="Reason"
+            hint={`${reason.length}/500 characters. Enter at least 5 characters.`}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             maxLength={500}
             placeholder="Explain why this member is transferring districts"
-            className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none"
           />
-        </div>
 
-        {error && <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>}
+        {error && <Alert tone="error">{error}</Alert>}
 
         <div className="flex gap-2">
-          <button
+          <Button
             type="submit"
+            loading={busy}
+            loadingLabel="Submitting…"
             disabled={busy || !member || !toDistrictId || reason.trim().length < 5}
-            className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {busy ? "Submitting…" : "Submit request"}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[9px] border border-[#e5e9f0] px-4 py-2 text-[12.5px] font-semibold text-[#1e2761]"
-          >
+            Submit request
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -269,37 +276,19 @@ export default function Transfers() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-extrabold text-[#1e2761]">Transfers</h1>
-          <div className="mt-1 text-[12.5px] text-[#5b6472]">
-            Move members between districts, with review and audit trail.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f]"
-        >
-          {showForm ? "Close" : "Request Transfer"}
-        </button>
-      </div>
+      <PageHeader title="Transfers" description="Move members between districts with a reviewable audit trail." actions={<Button variant={showForm ? "secondary" : "primary"} onClick={() => setShowForm((v) => !v)}>{showForm ? "Close request form" : "Request transfer"}</Button>} />
 
       {showForm && (
         <RequestTransferForm onClose={() => setShowForm(false)} onCreated={() => void load()} />
       )}
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
-      <div className="mb-4">
-        <select
+      <div className="mb-4 max-w-52">
+        <SelectField
+          label="Transfer status"
           value={status}
           onChange={(e) => updateParams({ status: e.target.value || null, page: null })}
-          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
         >
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
@@ -307,12 +296,10 @@ export default function Transfers() {
               {s}
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-[12.5px]">
+      <TableFrame label="Transfer requests" className="min-w-[900px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">Member</th>
@@ -325,16 +312,10 @@ export default function Transfers() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
-                    Loading…
-                  </td>
-                </tr>
+                <TableSkeleton columns={6} />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
-                    No transfers found.
-                  </td>
+                  <td colSpan={6}><EmptyState title="No transfers found" description={status ? "No transfer requests match this status. Choose another status to broaden the list." : "Transfer requests will appear here after they are submitted."} /></td>
                 </tr>
               ) : (
                 rows.map((row) => (
@@ -353,9 +334,9 @@ export default function Transfers() {
                         <div className="text-[11px]">by {row.requestedBy.fullName}</div>
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[row.status] ?? ""}`}>
+                        <StatusBadge tone={STATUS_TONES[row.status] ?? "neutral"}>
                           {row.status}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td className="px-4 py-2.5">
                         {row.status === "PENDING" && (
@@ -407,6 +388,7 @@ export default function Transfers() {
                         <td colSpan={6} className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <input
+                              aria-label={`Review note for ${row.member.fullName}`}
                               value={reviewNote}
                               onChange={(e) => setReviewNote(e.target.value)}
                               placeholder="Review note (optional)"
@@ -437,9 +419,7 @@ export default function Transfers() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
 
       <Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="transfers" onPageChange={(nextPage) => updateParams({ page: String(nextPage) })} />
     </div>

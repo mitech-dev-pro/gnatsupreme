@@ -6,6 +6,7 @@ import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
 import { SelectField } from "@/components/ui/FormField";
 import Pagination from "@/components/ui/Pagination";
 import StatusBadge from "@/components/ui/StatusBadge";
+import TableFrame from "@/components/ui/TableFrame";
 
 type ClaimSubmission = {
   id: number;
@@ -155,9 +156,7 @@ export default function Claims() {
         </SelectField>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-190 text-left text-[12.5px]">
+      <TableFrame label="Claim submissions" className="min-w-190">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">Member</th>
@@ -223,9 +222,7 @@ export default function Claims() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
 
       <Pagination
         page={page}

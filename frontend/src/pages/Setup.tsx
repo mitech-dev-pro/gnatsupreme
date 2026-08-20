@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { useAuth } from "@/lib/AuthContext";
 
 type Region = { id: number; name: string; _count: { districts: number } };
@@ -64,6 +65,7 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
   const [editingDistrictName, setEditingDistrictName] = useState("");
   const [editingDistrictRegionId, setEditingDistrictRegionId] = useState("");
   const [districtRegionFilter, setDistrictRegionFilter] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "region"; item: Region } | { type: "district"; item: District } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,11 +117,11 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
   };
 
   const deleteRegion = async (region: Region) => {
-    if (!window.confirm(`Delete region "${region.name}"?`)) return;
     setBusy(true);
     setError("");
     try {
       await api.delete(`/regions/${region.id}`);
+      setDeleteTarget(null);
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to delete region.");
@@ -161,11 +163,11 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
   };
 
   const deleteDistrict = async (district: District) => {
-    if (!window.confirm(`Delete district "${district.name}"?`)) return;
     setBusy(true);
     setError("");
     try {
       await api.delete(`/districts/${district.id}`);
+      setDeleteTarget(null);
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to delete district.");
@@ -184,6 +186,18 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
     <div className="space-y-5">
       {error && (
         <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmationPanel
+          title={`Delete ${deleteTarget.type} “${deleteTarget.item.name}”?`}
+          description={deleteTarget.type === "region" ? "This region will be permanently removed. Regions containing districts cannot be deleted." : "This district will be permanently removed. Districts containing member records cannot be deleted."}
+          confirmLabel={`Delete ${deleteTarget.type}`}
+          busyLabel="Deleting…"
+          busy={busy}
+          onConfirm={() => deleteTarget.type === "region" ? void deleteRegion(deleteTarget.item) : void deleteDistrict(deleteTarget.item)}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
 
       <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
@@ -251,7 +265,7 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
                             Rename
                           </button>
                           <button
-                            onClick={() => void deleteRegion(region)}
+                            onClick={() => setDeleteTarget({ type: "region", item: region })}
                             disabled={region._count.districts > 0}
                             className="font-semibold text-[#c23b3b] disabled:cursor-not-allowed disabled:opacity-40"
                             title={region._count.districts > 0 ? "Remove all districts first" : undefined}
@@ -374,7 +388,7 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
                             Edit
                           </button>
                           <button
-                            onClick={() => void deleteDistrict(district)}
+                            onClick={() => setDeleteTarget({ type: "district", item: district })}
                             disabled={district._count.members > 0}
                             className="font-semibold text-[#c23b3b] disabled:cursor-not-allowed disabled:opacity-40"
                             title={district._count.members > 0 ? "Reassign or remove members first" : undefined}

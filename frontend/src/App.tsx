@@ -22,6 +22,12 @@ import Claims from "@/pages/Claims";
 import Reports from "@/pages/Reports";
 import Setup from "@/pages/Setup";
 import System from "@/pages/System";
+import Unauthorized from "@/pages/Unauthorized";
+import NotFound from "@/pages/NotFound";
+import RoleProtectedRoute from "@/components/RoleProtectedRoute";
+
+const NATIONAL_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN"];
+const REGIONAL_ROLES = [...NATIONAL_ROLES, "REGIONAL_ADMIN"];
 
 export default function App() {
   return (
@@ -40,17 +46,19 @@ export default function App() {
               <Route path="/members/:id" element={<MemberDetail />} />
               <Route path="/change-requests" element={<ChangeRequests />} />
               <Route path="/approvals" element={<PendingApprovals />} />
-              <Route path="/imports/report20" element={<Report20Upload />} />
+              <Route path="/imports/report20" element={<RoleProtectedRoute roles={NATIONAL_ROLES}><Report20Upload /></RoleProtectedRoute>} />
               <Route
                 path="/imports/report20/:id"
-                element={<Report20Review />}
+                element={<RoleProtectedRoute roles={NATIONAL_ROLES}><Report20Review /></RoleProtectedRoute>}
               />
               <Route path="/transfers" element={<Transfers />} />
               <Route path="/claims" element={<Claims />} />
               <Route path="/reports" element={<Reports />} />
-              <Route path="/setup" element={<Setup />} />
-              <Route path="/system" element={<System />} />
+              <Route path="/setup" element={<RoleProtectedRoute roles={REGIONAL_ROLES}><Setup /></RoleProtectedRoute>} />
+              <Route path="/system" element={<RoleProtectedRoute roles={NATIONAL_ROLES}><System /></RoleProtectedRoute>} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/unauthorized" element={<Unauthorized />} />
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Route>
 
@@ -58,7 +66,7 @@ export default function App() {
             <Route path="/member" element={<MemberHome />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </MemberAuthProvider>
     </AuthProvider>

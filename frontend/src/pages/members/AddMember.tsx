@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import "./AddMember.css";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -23,6 +24,7 @@ function SummaryRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export default function AddMember() {
+  const navigate = useNavigate();
   const { districts, loading: districtsLoading } = useDistricts();
   const [controllerId, setControllerId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -42,6 +44,7 @@ export default function AddMember() {
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedMember | null>(null);
+  const [confirmation, setConfirmation] = useState<"exit" | "spouse" | null>(null);
 
   const memberSection = useRef<HTMLElement>(null);
   const employmentSection = useRef<HTMLElement>(null);
@@ -125,10 +128,11 @@ export default function AddMember() {
   if (created) return <main className="enroll-success"><div className="enroll-success__mark">✓</div><p>Enrollment complete</p><h1>{created.fullName} was added successfully</h1><dl><SummaryRow label="Controller ID" value={created.controllerId}/><SummaryRow label="Initial status" value={<span className="enroll-pending">Pending</span>}/></dl><div><Link to={`/members/${created.id}`}>View member</Link><button type="button" onClick={startAnother}>Add another member</button></div></main>;
 
   return <main className="enroll-page">
-    <Link to="/members" className="enroll-back" onClick={(event) => { if (isDirty && !window.confirm("Discard this unfinished enrollment?")) event.preventDefault(); }}>← Members</Link>
+    <Link to="/members" className="enroll-back" onClick={(event) => { if (isDirty) { event.preventDefault(); setConfirmation("exit"); } }}>← Members</Link>
     <header className="enroll-heading"><div><p>Member administration</p><h1>{reviewing ? "Review enrollment" : "New member enrollment"}</h1><span>{reviewing ? "Confirm the information before creating the member record." : "New members begin in Pending status and require workflow approval."}</span></div>{!reviewing && <div className="enroll-progress"><strong>{completedRequired}/{requiredValues.length}</strong><span>required fields complete</span></div>}</header>
 
     {submitError && <div className="enroll-alert" role="alert"><strong>Enrollment needs attention</strong><span>{submitError}</span></div>}
+    {confirmation && <ConfirmationPanel title={confirmation === "exit" ? "Discard this unfinished enrollment?" : "Discard the spouse information entered?"} description={confirmation === "exit" ? "The member, employment, household, and beneficiary information entered on this page will be lost." : "The spouse fields will be cleared. Spouse details can still be added after enrollment."} confirmLabel={confirmation === "exit" ? "Discard enrollment" : "Discard spouse details"} onConfirm={() => { if (confirmation === "exit") navigate("/members"); else { setIncludeSpouse(false); setSpouseName(""); setSpouseDob(""); setSpouseGhanaCardId(""); setConfirmation(null); } }} onCancel={() => setConfirmation(null)} />}
 
     {reviewing ? <section className="enroll-review">
       <div className="enroll-review__heading"><div><p>Ready for confirmation</p><h2>{fullName}</h2><span>Controller ID {controllerId}</span></div><span className="enroll-pending">Pending</span></div>
@@ -154,14 +158,14 @@ export default function AddMember() {
         </div></section>
 
         <section ref={householdSection} id="household"><div className="enroll-section-title"><i>3</i><div><h2>Household</h2><p>Record spouse and beneficiary information.</p></div></div>
-          <div className="enroll-spouse"><div><strong>Does this member have a spouse to record?</strong><span>Spouse details can also be added later.</span></div><div><button type="button" className={!includeSpouse ? "active" : ""} onClick={() => { if (!includeSpouse || (!spouseName && !spouseDob && !spouseGhanaCardId) || window.confirm("Discard the spouse information entered?")) setIncludeSpouse(false); }}>No</button><button type="button" className={includeSpouse ? "active" : ""} onClick={() => setIncludeSpouse(true)}>Yes</button></div></div>
+          <div className="enroll-spouse"><div><strong>Does this member have a spouse to record?</strong><span>Spouse details can also be added later.</span></div><div><button type="button" className={!includeSpouse ? "active" : ""} onClick={() => { if (!includeSpouse || (!spouseName && !spouseDob && !spouseGhanaCardId)) setIncludeSpouse(false); else setConfirmation("spouse"); }}>No</button><button type="button" className={includeSpouse ? "active" : ""} onClick={() => setIncludeSpouse(true)}>Yes</button></div></div>
           {includeSpouse && <div className="enroll-fields enroll-spouse-fields"><Field label="Spouse full name" required error={errors.spouseName}><input value={spouseName} onChange={(event) => setSpouseName(event.target.value)}/></Field><Field label="Date of birth" error={errors.spouseDob}><input type="date" max={new Date().toISOString().slice(0,10)} value={spouseDob} onChange={(event) => setSpouseDob(event.target.value)}/></Field><Field label="Ghana Card ID" error={errors.spouseGhanaCardId}><input value={spouseGhanaCardId} onChange={(event) => setSpouseGhanaCardId(normalizeGhanaCard(event.target.value))} placeholder="GHA-000000000-0"/></Field></div>}
 
           <div className="enroll-beneficiary-heading"><div><h3>Beneficiaries</h3><p>At least one beneficiary is required. Up to 10 may be recorded.</p></div><button type="button" disabled={beneficiaries.length >= 10} onClick={() => setBeneficiaries((current) => [...current, emptyBeneficiary()])}>+ Add beneficiary</button></div>
           <div className="enroll-beneficiaries">{beneficiaries.map((item, index) => <article key={index}><header><span>{index + 1}</span><div><strong>Beneficiary {index + 1}</strong><small>{item.fullName || "Details not complete"}</small></div>{beneficiaries.length > 1 && <button type="button" onClick={() => removeBeneficiary(index)}>Remove</button>}</header><div className="enroll-fields"><Field label="Full name" required error={errors[`beneficiaries.${index}.fullName`]}><input value={item.fullName} onChange={(event) => updateBeneficiary(index, { fullName: event.target.value })}/></Field><Field label="Relationship" required><select value={item.relationship} onChange={(event) => updateBeneficiary(index, { relationship: event.target.value })}>{RELATIONSHIPS.map((relationship) => <option key={relationship} value={relationship}>{relationship.charAt(0) + relationship.slice(1).toLowerCase()}</option>)}</select></Field><Field label="Date of birth" error={errors[`beneficiaries.${index}.dateOfBirth`]}><input type="date" max={new Date().toISOString().slice(0,10)} value={item.dateOfBirth} onChange={(event) => updateBeneficiary(index, { dateOfBirth: event.target.value })}/></Field>{item.relationship === "CHILD" && <><Field label="Trustee name" help="Optional when no trustee is required"><input value={item.trusteeName} onChange={(event) => updateBeneficiary(index, { trusteeName: event.target.value })}/></Field><Field label="Trustee Ghana Card" error={errors[`beneficiaries.${index}.trusteeGhanaCardId`]}><input value={item.trusteeGhanaCardId} onChange={(event) => updateBeneficiary(index, { trusteeGhanaCardId: normalizeGhanaCard(event.target.value) })} placeholder="GHA-000000000-0"/></Field></>}</div></article>)}</div>
         </section>
 
-        <footer className="enroll-footer"><Link to="/members" onClick={(event) => { if (isDirty && !window.confirm("Discard this unfinished enrollment?")) event.preventDefault(); }}>Cancel</Link><div><span>{completedRequired} of {requiredValues.length} required fields complete</span><button type="submit">Review enrollment</button></div></footer>
+        <footer className="enroll-footer"><Link to="/members" onClick={(event) => { if (isDirty) { event.preventDefault(); setConfirmation("exit"); } }}>Cancel</Link><div><span>{completedRequired} of {requiredValues.length} required fields complete</span><button type="submit">Review enrollment</button></div></footer>
       </form>
     </div>}
   </main>;

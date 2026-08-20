@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 
 type ImportJob = {
   id: number;
@@ -61,6 +62,7 @@ export default function Report20Review() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rerunning, setRerunning] = useState(false);
+  const [confirmingRerun, setConfirmingRerun] = useState(false);
   const [rerunMessage, setRerunMessage] = useState("");
   const limit = 50;
 
@@ -110,13 +112,6 @@ export default function Report20Review() {
   }, [job?.status]);
 
   const rerun = async () => {
-    if (
-      !window.confirm(
-        "Re-run reconciliation for this file against the current members list? This replaces the existing rows for this upload.",
-      )
-    ) {
-      return;
-    }
     setRerunning(true);
     setError("");
     setRerunMessage("");
@@ -125,6 +120,7 @@ export default function Report20Review() {
       setJob(res.data.data);
       setRerunMessage("Reconciliation is running in the background — this page will update automatically.");
       setPage(1);
+      setConfirmingRerun(false);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to re-run reconciliation.");
     } finally {
@@ -170,7 +166,7 @@ export default function Report20Review() {
           {job.status === "COMPLETED" && (
             <button
               type="button"
-              onClick={rerun}
+              onClick={() => setConfirmingRerun(true)}
               disabled={rerunning}
               className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:border-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -179,6 +175,22 @@ export default function Report20Review() {
           )}
         </div>
       </div>
+
+      {confirmingRerun && (
+        <div className="mb-4">
+          <ConfirmationPanel
+            title="Re-run this reconciliation?"
+            description="The file will be checked against the current member list. Existing reconciliation rows for this upload will be replaced."
+            confirmLabel="Re-run reconciliation"
+            busyLabel="Starting…"
+            tone="warning"
+            confirmVariant="primary"
+            busy={rerunning}
+            onConfirm={() => void rerun()}
+            onCancel={() => setConfirmingRerun(false)}
+          />
+        </div>
+      )}
 
       {rerunMessage && (
         <div className="mb-4 rounded-lg bg-[#dff7ee] px-3 py-2 text-[12.5px] font-semibold text-[#17805f]">

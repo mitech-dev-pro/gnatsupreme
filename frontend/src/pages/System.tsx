@@ -1,5 +1,8 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import { InputField } from "@/components/ui/FormField";
+import { Alert } from "@/components/ui/Feedback";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 
@@ -65,6 +68,10 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [form, setForm] = useState({ fullName: "", email: "", role: "DISTRICT_ADMIN", regionId: "", districtId: "", password: "" });
   const [formError, setFormError] = useState("");
   const [formBusy, setFormBusy] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<StaffUser | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<StaffUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [success, setSuccess] = useState("");
 
   const availableRoles = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== "SUPER_ADMIN");
 
@@ -148,11 +155,12 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   };
 
   const toggleActive = async (row: StaffUser) => {
-    if (!window.confirm(`${row.isActive ? "Deactivate" : "Activate"} ${row.fullName}?`)) return;
     setBusyId(row.id);
     setError("");
     try {
       await api.patch(`/users/${row.id}/status`, { isActive: !row.isActive });
+      setStatusTarget(null);
+      setSuccess(`${row.fullName} was ${row.isActive ? "deactivated" : "activated"}.`);
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to update this account's status.");
@@ -162,13 +170,14 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   };
 
   const resetPassword = async (row: StaffUser) => {
-    const password = window.prompt(`New password for ${row.fullName} (at least 12 characters, mixed case, a number, a symbol):`);
-    if (!password) return;
+    if (!newPassword) return;
     setBusyId(row.id);
     setError("");
     try {
-      await api.patch(`/users/${row.id}/password`, { password });
-      window.alert("Password updated. The user's existing sessions were revoked.");
+      await api.patch(`/users/${row.id}/password`, { password: newPassword });
+      setPasswordTarget(null);
+      setNewPassword("");
+      setSuccess(`Password updated for ${row.fullName}. Existing sessions were revoked.`);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to reset this account's password.");
     } finally {
@@ -258,6 +267,42 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       </div>
 
       {error && <div className="rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{error}</div>}
+      {success && <Alert tone="success">{success}</Alert>}
+
+      {statusTarget && (
+        <ConfirmationPanel
+          title={`${statusTarget.isActive ? "Deactivate" : "Activate"} ${statusTarget.fullName}?`}
+          description={statusTarget.isActive ? "This person will immediately lose access. Existing sessions may no longer be usable." : "This person will regain access according to their assigned role and scope."}
+          confirmLabel={statusTarget.isActive ? "Deactivate account" : "Activate account"}
+          busyLabel="Updating…"
+          busy={busyId === statusTarget.id}
+          onConfirm={() => void toggleActive(statusTarget)}
+          onCancel={() => setStatusTarget(null)}
+        />
+      )}
+
+      {passwordTarget && (
+        <ConfirmationPanel
+          title={`Set a new password for ${passwordTarget.fullName}`}
+          description="Saving the new password will revoke this user's existing sessions. Share the password through an approved secure channel."
+          confirmLabel="Update password"
+          busyLabel="Updating…"
+          busy={busyId === passwordTarget.id}
+          onConfirm={() => void resetPassword(passwordTarget)}
+          onCancel={() => { setPasswordTarget(null); setNewPassword(""); }}
+        >
+          <div className="mt-4 max-w-96">
+            <InputField
+              label="New temporary password"
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              hint="At least 12 characters with mixed case, a number, and a symbol."
+              autoComplete="new-password"
+            />
+          </div>
+        </ConfirmationPanel>
+      )}
 
       {showCreate && (
         <form onSubmit={submitCreate} className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
@@ -323,7 +368,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void resetPassword(row)}
+                            onClick={() => { setPasswordTarget(row); setStatusTarget(null); setNewPassword(""); setSuccess(""); }}
                             disabled={busyId === row.id}
                             className="rounded-[7px] border border-[#e5e9f0] px-2.5 py-1 text-[11.5px] font-semibold text-[#1e2761] disabled:opacity-60"
                           >
@@ -331,7 +376,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void toggleActive(row)}
+                            onClick={() => { setStatusTarget(row); setPasswordTarget(null); setSuccess(""); }}
                             disabled={busyId === row.id}
                             className={`rounded-[7px] border px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60 ${row.isActive ? "border-[#c23b3b] text-[#c23b3b]" : "border-[#17805f] text-[#17805f]"}`}
                           >

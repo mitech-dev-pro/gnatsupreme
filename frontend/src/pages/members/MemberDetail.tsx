@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -94,6 +95,7 @@ export default function MemberDetail() {
   const [actionError, setActionError] = useState("");
   const [checkResult, setCheckResult] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ type: "spouse" } | { type: "beneficiary"; id: number; name: string } | { type: "approve" } | null>(null);
 
   const [editing, setEditing] = useState(false);
   const [editFullName, setEditFullName] = useState("");
@@ -199,11 +201,11 @@ export default function MemberDetail() {
   };
 
   const removeSpouse = async () => {
-    if (!window.confirm("Remove this spouse from the member record?")) return;
     setBusy(true);
     setActionError("");
     try {
       await api.delete(`/members/${id}/spouse`);
+      setConfirmation(null);
       await load();
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to remove spouse.");
@@ -233,11 +235,11 @@ export default function MemberDetail() {
   };
 
   const removeBeneficiary = async (beneficiaryId: number) => {
-    if (!window.confirm("Remove this beneficiary from the member record?")) return;
     setBusy(true);
     setActionError("");
     try {
       await api.delete(`/members/${id}/beneficiaries/${beneficiaryId}`);
+      setConfirmation(null);
       await load();
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to remove beneficiary.");
@@ -277,11 +279,12 @@ export default function MemberDetail() {
   };
 
   const approve = async () => {
-    if (!member || !window.confirm(`Approve ${member.fullName}? The resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`)) return;
+    if (!member) return;
     setBusy(true);
     setActionError("");
     try {
       await api.post(`/members/${id}/approve`);
+      setConfirmation(null);
       await load();
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to approve member.");
@@ -372,6 +375,22 @@ export default function MemberDetail() {
           {actionError && (
             <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
               {actionError}
+            </div>
+          )}
+
+          {confirmation && (
+            <div className="mb-4">
+              <ConfirmationPanel
+                title={confirmation.type === "spouse" ? "Remove this spouse?" : confirmation.type === "beneficiary" ? `Remove ${confirmation.name}?` : `Approve ${member.fullName}?`}
+                description={confirmation.type === "spouse" ? "The spouse record will be removed from this member. This does not remove the member." : confirmation.type === "beneficiary" ? "This beneficiary will be removed from the member record." : `The member's resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`}
+                confirmLabel={confirmation.type === "approve" ? "Approve member" : "Remove record"}
+                busyLabel={confirmation.type === "approve" ? "Approving…" : "Removing…"}
+                tone={confirmation.type === "approve" ? "warning" : "danger"}
+                confirmVariant={confirmation.type === "approve" ? "primary" : "danger"}
+                busy={busy}
+                onConfirm={() => confirmation.type === "spouse" ? void removeSpouse() : confirmation.type === "beneficiary" ? void removeBeneficiary(confirmation.id) : void approve()}
+                onCancel={() => setConfirmation(null)}
+              />
             </div>
           )}
 
@@ -489,7 +508,7 @@ export default function MemberDetail() {
                     {member.spouse && (
                       <button
                         type="button"
-                        onClick={removeSpouse}
+                        onClick={() => setConfirmation({ type: "spouse" })}
                         disabled={busy}
                         className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
                       >
@@ -660,7 +679,7 @@ export default function MemberDetail() {
                           {member.beneficiaries.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => removeBeneficiary(b.id)}
+                              onClick={() => setConfirmation({ type: "beneficiary", id: b.id, name: b.fullName })}
                               disabled={busy}
                               className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
                             >
@@ -703,7 +722,7 @@ export default function MemberDetail() {
                     (member.status === "FLAGGED" && member.report20Matched)) && (
                     <button
                       type="button"
-                      onClick={approve}
+                      onClick={() => setConfirmation({ type: "approve" })}
                       disabled={busy}
                       className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >

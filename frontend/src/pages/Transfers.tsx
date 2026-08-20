@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Pagination from "@/components/ui/Pagination";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 
@@ -204,6 +206,7 @@ export default function Transfers() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [reviewingId, setReviewingId] = useState<number | null>(null);
   const [reviewNote, setReviewNote] = useState("");
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const page = Math.max(1, Number(params.get("page")) || 1);
   const status = params.get("status") ?? "";
@@ -251,11 +254,11 @@ export default function Transfers() {
   };
 
   const cancel = async (id: number) => {
-    if (!window.confirm("Cancel this transfer request?")) return;
     setBusyId(id);
     setError("");
     try {
       await api.patch(`/transfers/${id}/cancel`, {});
+      setCancellingId(null);
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to cancel this transfer.");
@@ -370,7 +373,7 @@ export default function Transfers() {
                             {(row.requestedBy.id === user?.id || (user && ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role))) && (
                               <button
                                 type="button"
-                                onClick={() => void cancel(row.id)}
+                                onClick={() => setCancellingId(row.id)}
                                 disabled={busyId === row.id}
                                 className="rounded-[7px] border border-[#e5e9f0] px-2.5 py-1 text-[11.5px] font-semibold text-[#c23b3b] disabled:opacity-60"
                               >
@@ -384,6 +387,21 @@ export default function Transfers() {
                         )}
                       </td>
                     </tr>
+                    {cancellingId === row.id && (
+                      <tr className="border-b border-[#e5e9f0]">
+                        <td colSpan={6} className="px-4 py-3">
+                          <ConfirmationPanel
+                            title="Cancel this transfer request?"
+                            description={`${row.member.fullName} will remain in ${row.fromDistrict.name}. This request will stay in the audit trail as cancelled.`}
+                            confirmLabel="Cancel transfer"
+                            busyLabel="Cancelling…"
+                            busy={busyId === row.id}
+                            onConfirm={() => void cancel(row.id)}
+                            onCancel={() => setCancellingId(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
                     {reviewingId === row.id && (
                       <tr className="border-b border-[#e5e9f0] bg-[#fafbfd]">
                         <td colSpan={6} className="px-4 py-3">
@@ -423,31 +441,7 @@ export default function Transfers() {
         </div>
       </div>
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">
-            Page {page} of {totalPages} · {total} total
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => updateParams({ page: String(page - 1) })}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => updateParams({ page: String(page + 1) })}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="transfers" onPageChange={(nextPage) => updateParams({ page: String(nextPage) })} />
     </div>
   );
 }

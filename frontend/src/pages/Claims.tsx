@@ -15,9 +15,20 @@ type ClaimSubmission = {
   submittedBy: { id: number; fullName: string };
 };
 
-type ProviderInfo = { provider: string; mode: string; configured: boolean; submissionsEnabled: boolean };
+type ProviderInfo = {
+  provider: string;
+  mode: string;
+  configured: boolean;
+  submissionsEnabled: boolean;
+};
 
-const STATUSES = ["PENDING", "REDIRECT_READY", "SUBMITTED", "FAILED", "SYNCHRONIZED"];
+const STATUSES = [
+  "PENDING",
+  "REDIRECT_READY",
+  "SUBMITTED",
+  "FAILED",
+  "SYNCHRONIZED",
+];
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-[#fbf0dd] text-[#b9791a]",
@@ -29,7 +40,11 @@ const STATUS_STYLES: Record<string, string> = {
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function Claims() {
@@ -47,7 +62,9 @@ export default function Claims() {
 
   const updateParams = (values: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
-    Object.entries(values).forEach(([key, value]) => (value ? next.set(key, value) : next.delete(key)));
+    Object.entries(values).forEach(([key, value]) =>
+      value ? next.set(key, value) : next.delete(key),
+    );
     setParams(next);
   };
 
@@ -55,7 +72,9 @@ export default function Claims() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/claims/submissions", { params: { page, limit, status: status || undefined } });
+      const res = await api.get("/claims/submissions", {
+        params: { page, limit, status: status || undefined },
+      });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
@@ -85,23 +104,29 @@ export default function Claims() {
     <div>
       <h1 className="mb-1 text-[22px] font-extrabold text-[#1e2761]">Claims</h1>
       <div className="mb-5 text-[12.5px] text-[#5b6472]">
-        Claim submissions relayed to the external claims provider on behalf of members.
+        Claim submissions relayed to the external claims provider on behalf of
+        members.
       </div>
 
       {provider && (
         <div className="mb-5 flex flex-wrap items-center gap-2.5 rounded-[10px] border border-[#e5e9f0] bg-white px-4 py-3 text-[12.5px]">
           <span className="font-bold text-[#1e2761]">{provider.provider}</span>
-          <span className="text-[#5b6472]">· {provider.mode.replace("_", " ").toLowerCase()} integration</span>
+          <span className="text-[#5b6472]">
+            · {provider.mode.replace("_", " ").toLowerCase()} integration
+          </span>
           <span
             className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-              provider.configured ? "bg-[#dff7ee] text-[#17805f]" : "bg-[#fbf0dd] text-[#b9791a]"
+              provider.configured
+                ? "bg-[#dff7ee] text-[#17805f]"
+                : "bg-[#fbf0dd] text-[#b9791a]"
             }`}
           >
             {provider.configured ? "Configured" : "Not configured"}
           </span>
           {!provider.submissionsEnabled && (
             <span className="text-[#5b6472]">
-              New submissions aren't enabled yet — this page shows past claim activity only.
+              New submissions aren't enabled yet — this page shows past claim
+              activity only.
             </span>
           )}
         </div>
@@ -116,7 +141,9 @@ export default function Claims() {
       <div className="mb-4">
         <select
           value={status}
-          onChange={(e) => updateParams({ status: e.target.value || null, page: null })}
+          onChange={(e) =>
+            updateParams({ status: e.target.value || null, page: null })
+          }
           className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
         >
           <option value="">All statuses</option>
@@ -128,9 +155,9 @@ export default function Claims() {
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
+      <div className="overflow-hidden rounded-xl border border-[#e5e9f0] bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-[12.5px]">
+          <table className="w-full min-w-190 text-left text-[12.5px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">Member</th>
@@ -144,37 +171,63 @@ export default function Claims() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-6 text-center text-[#5b6472]"
+                  >
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-6 text-center text-[#5b6472]"
+                  >
                     No claim submissions yet.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.id} className="border-b border-[#e5e9f0] last:border-0">
+                  <tr
+                    key={row.id}
+                    className="border-b border-[#e5e9f0] last:border-0"
+                  >
                     <td className="px-4 py-2.5">
-                      <Link to={`/members/${row.member.id}`} className="font-semibold text-[#1e2761] hover:underline">
+                      <Link
+                        to={`/members/${row.member.id}`}
+                        className="font-semibold text-[#1e2761] hover:underline"
+                      >
                         {row.member.fullName}
                       </Link>
-                      <div className="text-[11px] text-[#5b6472]">{row.member.controllerId}</div>
+                      <div className="text-[11px] text-[#5b6472]">
+                        {row.member.controllerId}
+                      </div>
                     </td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{row.provider}</td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{row.externalClaimId ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-[#5b6472]">
+                      {row.provider}
+                    </td>
+                    <td className="px-4 py-2.5 text-[#171b26]">
+                      {row.externalClaimId ?? "—"}
+                    </td>
                     <td className="px-4 py-2.5">
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[row.status] ?? ""}`}>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[row.status] ?? ""}`}
+                      >
                         {row.status.replace("_", " ")}
                       </span>
                       {row.status === "FAILED" && row.errorMessage && (
-                        <div className="mt-0.5 text-[11px] text-[#c23b3b]">{row.errorMessage}</div>
+                        <div className="mt-0.5 text-[11px] text-[#c23b3b]">
+                          {row.errorMessage}
+                        </div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{formatDate(row.submittedAt)}</td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{formatDate(row.lastSyncedAt)}</td>
+                    <td className="px-4 py-2.5 text-[#5b6472]">
+                      {formatDate(row.submittedAt)}
+                    </td>
+                    <td className="px-4 py-2.5 text-[#5b6472]">
+                      {formatDate(row.lastSyncedAt)}
+                    </td>
                   </tr>
                 ))
               )}

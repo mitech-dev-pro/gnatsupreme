@@ -36,9 +36,10 @@ const report20Item: NavSubItem = {
   to: "/imports/report20",
 };
 
-const soonItems: { label: string; icon: ReactNode }[] = [
+const mainNavItems: { label: string; to: string; icon: ReactNode }[] = [
   {
     label: "Transfers",
+    to: "/transfers",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -52,6 +53,7 @@ const soonItems: { label: string; icon: ReactNode }[] = [
   },
   {
     label: "Claims",
+    to: "/claims",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -66,6 +68,7 @@ const soonItems: { label: string; icon: ReactNode }[] = [
   },
   {
     label: "Reports",
+    to: "/reports",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -85,10 +88,12 @@ const settingsIcon = (
   </svg>
 );
 
-const adminItems: { label: string; lock: string; icon: ReactNode }[] = [
+const adminItems: { label: string; to: string; lock: string; roles: string[]; icon: ReactNode }[] = [
   {
     label: "Setup",
+    to: "/setup",
     lock: "Regional+",
+    roles: ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"],
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -103,7 +108,9 @@ const adminItems: { label: string; lock: string; icon: ReactNode }[] = [
   },
   {
     label: "System",
+    to: "/system",
     lock: "National",
+    roles: ["SUPER_ADMIN", "NATIONAL_ADMIN"],
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -265,17 +272,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           </div>
 
-          {soonItems.map((item) => (
-            <span
+          {mainNavItems.map((item) => (
+            <NavLink
               key={item.label}
-              className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
+              to={item.to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
+              }
             >
               <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
                 {item.icon}
               </span>
               {item.label}
-              <span className={navSoonBadge}>Soon</span>
-            </span>
+            </NavLink>
           ))}
 
           <NavLink
@@ -295,18 +305,34 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             ADMINISTRATION
           </div>
 
-          {adminItems.map((item) => (
-            <span
-              key={item.label}
-              className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
-            >
-              <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-                {item.icon}
+          {adminItems.map((item) =>
+            user && item.roles.includes(user.role) ? (
+              <NavLink
+                key={item.label}
+                to={item.to}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
+                }
+              >
+                <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
+                  {item.icon}
+                </span>
+                {item.label}
+              </NavLink>
+            ) : (
+              <span
+                key={item.label}
+                className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
+              >
+                <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
+                  {item.icon}
+                </span>
+                {item.label}
+                <span className={navSoonBadge}>{item.lock}</span>
               </span>
-              {item.label}
-              <span className={navSoonBadge}>{item.lock}</span>
-            </span>
-          ))}
+            ),
+          )}
         </nav>
 
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">

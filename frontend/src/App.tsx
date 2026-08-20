@@ -17,6 +17,11 @@ import MemberHome from "@/pages/member/MemberHome";
 import ChangeRequests from "@/pages/members/ChangeRequests";
 import PendingApprovals from "@/pages/members/PendingApprovals";
 import Settings from "@/pages/Settings";
+import Transfers from "@/pages/Transfers";
+import Claims from "@/pages/Claims";
+import Reports from "@/pages/Reports";
+import Setup from "@/pages/Setup";
+import System from "@/pages/System";
 
 export default function App() {
   return (
@@ -40,6 +45,11 @@ export default function App() {
                 path="/imports/report20/:id"
                 element={<Report20Review />}
               />
+              <Route path="/transfers" element={<Transfers />} />
+              <Route path="/claims" element={<Claims />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/setup" element={<Setup />} />
+              <Route path="/system" element={<System />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>

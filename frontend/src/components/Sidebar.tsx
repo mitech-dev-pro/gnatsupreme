@@ -155,15 +155,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      <div
+      <button
+        type="button"
+        aria-label="Close navigation menu"
+        tabIndex={isOpen ? 0 : -1}
         onClick={onClose}
-        className={`fixed inset-0 z-75 bg-[rgba(23,27,38,0.45)] transition-opacity md:hidden ${
+        className={`fixed inset-0 z-75 border-0 bg-[rgba(23,27,38,0.45)] p-0 transition-opacity md:hidden ${
           isOpen
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0"
         }`}
       />
       <aside
+        id="app-sidebar"
         className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] py-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -216,6 +220,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               type="button"
               onClick={() => setMembersExpanded((v) => !v)}
+              aria-expanded={membersExpanded}
+              aria-controls="members-navigation"
               className={`w-full ${navItemBase}`}
             >
               <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
@@ -235,6 +241,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </svg>
             </button>
             <div
+              id="members-navigation"
               className={`overflow-hidden transition-[max-height] duration-200 ${
                 membersExpanded ? "max-h-70" : "max-h-0"
               }`}

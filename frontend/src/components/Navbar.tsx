@@ -1,17 +1,33 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { formatRole, initials } from "@/lib/roleLabel";
 import NotificationBell from "@/components/NotificationBell";
 
 type NavbarProps = {
+  isSidebarOpen: boolean;
   onToggleSidebar: () => void;
 };
 
-export default function Navbar({ onToggleSidebar }: NavbarProps) {
+export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const signOutButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    signOutButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        accountButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [menuOpen]);
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -26,6 +42,8 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
           type="button"
           onClick={onToggleSidebar}
           aria-label="Open menu"
+          aria-expanded={isSidebarOpen}
+          aria-controls="app-sidebar"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#e5e9f0] bg-white md:hidden"
         >
           <svg
@@ -68,8 +86,13 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
 
         <div className="relative">
           <button
+            ref={accountButtonRef}
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-controls="account-menu"
+            aria-haspopup="menu"
+            aria-label={user ? `Account menu for ${user.fullName}` : "Account menu"}
             className="flex items-center gap-2.5"
           >
             <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-[#1f9c7c] text-[13px] font-bold text-white">
@@ -91,9 +114,11 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
                 className="fixed inset-0 z-59"
                 onClick={() => setMenuOpen(false)}
               />
-              <div className="absolute right-0 top-[calc(100%+8px)] z-60 min-w-42.5 overflow-hidden rounded-[10px] border border-[#e5e9f0] bg-white shadow-[0_12px_30px_rgba(23,27,38,0.22)]">
+              <div id="account-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-60 min-w-42.5 overflow-hidden rounded-[10px] border border-[#e5e9f0] bg-white shadow-[0_12px_30px_rgba(23,27,38,0.22)]">
                 <button
+                  ref={signOutButtonRef}
                   type="button"
+                  role="menuitem"
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2.25 px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-[#c23b3b] transition-colors hover:bg-[#fbe9e9]"
                 >

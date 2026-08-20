@@ -92,6 +92,7 @@ enum ImportRowStatus {
   UNMATCHED
   DUPLICATE
   INVALID
+  ENROLLED
 
   @@map("import_row_status")
 }
@@ -263,6 +264,7 @@ model Member {
   school           String
   status           MemberStatus              @default(PENDING)
   report20Matched  Boolean                   @default(false) @map("report20_matched")
+  missingFromReport20At DateTime?            @map("missing_from_report20_at")
   districtId       Int                       @map("district_id")
   createdById      Int?                      @map("created_by_id")
   district         District                  @relation(fields: [districtId], references: [id], onDelete: Restrict)
@@ -495,6 +497,8 @@ model ImportJob {
   memberRows    MemberBulkImportRow[]
   readyRows     Int                   @default(0) @map("ready_rows")
   importedRows  Int                   @default(0) @map("imported_rows")
+  enrolledRows  Int                   @default(0) @map("enrolled_rows")
+  flaggedForRemovalRows Int           @default(0) @map("flagged_for_removal_rows")
 
   @@unique([type, checksum])
   @@index([status])

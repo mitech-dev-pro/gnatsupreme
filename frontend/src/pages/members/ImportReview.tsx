@@ -63,9 +63,6 @@ export default function ImportReview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [committing, setCommitting] = useState(false);
-  const [commitResult, setCommitResult] = useState<{ imported: number; failed: number } | null>(
-    null,
-  );
   const [mappingRowId, setMappingRowId] = useState<number | null>(null);
   const [mappingDistrictId, setMappingDistrictId] = useState("");
   const [mappingBusy, setMappingBusy] = useState(false);
@@ -106,14 +103,23 @@ export default function ImportReview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page, rowStatus]);
 
+  // Staging and committing now both run in the background — poll while the job hasn't finished yet.
+  useEffect(() => {
+    if (!job || (job.status !== "PENDING" && job.status !== "PROCESSING")) return;
+    const timer = setInterval(async () => {
+      await loadJob();
+      await loadRows();
+    }, 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status]);
+
   const handleCommit = async () => {
     setCommitting(true);
     setError("");
     try {
       const res = await api.post(`/imports/members/${id}/commit`);
-      setCommitResult({ imported: res.data.data.imported, failed: res.data.data.failed });
-      await loadJob();
-      await loadRows();
+      setJob(res.data.data);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to commit this import.");
     } finally {
@@ -195,10 +201,9 @@ export default function ImportReview() {
         </div>
       )}
 
-      {commitResult && (
-        <div className="mb-4 rounded-lg bg-[#dff7ee] px-3 py-2 text-[12.5px] font-semibold text-[#17805f]">
-          Enrolled {commitResult.imported} member{commitResult.imported === 1 ? "" : "s"}.
-          {commitResult.failed > 0 && ` ${commitResult.failed} row(s) failed — see FAILED filter below.`}
+      {(job.status === "PENDING" || job.status === "PROCESSING") && (
+        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+          Processing in the background — this can take a while for large files. This page refreshes automatically.
         </div>
       )}
 

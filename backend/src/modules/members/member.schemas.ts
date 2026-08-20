@@ -64,4 +64,5 @@ export const memberQuerySchema = z.object({
   status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"]).optional(),
   regionId: z.coerce.number().int().positive().optional(),
   districtId: z.coerce.number().int().positive().optional(),
+  missingFromReport20: z.coerce.boolean().optional(),
 });

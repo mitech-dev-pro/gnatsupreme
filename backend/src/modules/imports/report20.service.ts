@@ -5,9 +5,9 @@ import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
-import { normalizeDistrictName } from "../geography/district-match.js";
+import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 
-const MAX_ROWS = 50_000;
+const MAX_ROWS = 300_000;
 
 type SourceRow = {
   rowNumber: number;
@@ -15,6 +15,7 @@ type SourceRow = {
   controllerId: string | null;
   fullName: string | null;
   districtName: string | null;
+  regionName: string | null;
   school: string | null;
   ghanaCardId: string | null;
 };
@@ -23,6 +24,7 @@ const aliases = {
   controllerId: ["controllerid", "controller", "employeeno", "employeenumber", "staffid"],
   fullName: ["fullname", "name", "membername", "employeename", "nameofemployee"],
   districtName: ["district", "districtname", "municipality", "mmda"],
+  regionName: ["region", "regionname"],
   school: ["school", "schoolname", "institution", "managementunit"],
   ghanaCardId: ["ghanacardid", "ghanacard", "nationalid"],
 } as const;
@@ -80,6 +82,7 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
       controllerId: field(rawData, aliases.controllerId),
       fullName: field(rawData, aliases.fullName),
       districtName: field(rawData, aliases.districtName),
+      regionName: field(rawData, aliases.regionName),
       school: field(rawData, aliases.school),
       ghanaCardId: field(rawData, aliases.ghanaCardId),
     });
@@ -101,18 +104,33 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  const members = await prisma.member.findMany({
-    where: { controllerId: { in: controllerIds } },
-    include: { district: { select: { name: true } } },
-  });
+  const [members, districts, districtAliases, activeMembers] = await Promise.all([
+    prisma.member.findMany({
+      where: { controllerId: { in: controllerIds } },
+      include: { district: { select: { name: true } } },
+    }),
+    prisma.district.findMany({ include: { region: { select: { name: true } } } }),
+    prisma.districtAlias.findMany({ select: { alias: true, districtId: true } }),
+    // Report 20 is treated as the full national payroll file, so any currently-recognized
+    // member (ACTIVE or already-FLAGGED) not seen in this run is presumed missing from payroll.
+    // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
+    // are already off the books.
+    prisma.member.findMany({
+      where: { status: { in: ["ACTIVE", "FLAGGED"] } },
+      select: { id: true, controllerId: true, missingFromReport20At: true },
+    }),
+  ]);
   const membersByControllerId = new Map(members.map((member) => [member.controllerId, member]));
+  const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
-  const counts = { matched: 0, changed: 0, unmatched: 0, duplicate: 0, invalid: 0 };
+  const enrolledDistrictIds = new Map<string, number>();
+  const counts = { matched: 0, changed: 0, unmatched: 0, duplicate: 0, invalid: 0, enrolled: 0 };
+  const nextControllerIdToCreate: { controllerId: string; data: Prisma.MemberCreateManyInput }[] = [];
 
   const data: Prisma.Report20RowCreateManyInput[] = sourceRows.map((row) => {
     const issues: string[] = [];
-    let status: "MATCHED" | "CHANGED" | "UNMATCHED" | "DUPLICATE" | "INVALID";
+    let status: "MATCHED" | "CHANGED" | "UNMATCHED" | "DUPLICATE" | "INVALID" | "ENROLLED";
     const controllerId = row.controllerId?.replace(/\s+/g, "") ?? null;
     const member = controllerId ? membersByControllerId.get(controllerId) : undefined;
 
@@ -125,8 +143,25 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       status = "DUPLICATE";
       issues.push("Controller ID appears more than once in this file");
     } else if (!member) {
-      status = "UNMATCHED";
-      issues.push("No registered member has this Controller ID");
+      // A Controller ID that's genuinely new gets auto-enrolled as ACTIVE, using only what
+      // Report 20 provides — beneficiary/Ghana Card/DOB/phone are left blank for staff to fill in later.
+      const { district, ambiguous } = row.districtName
+        ? resolveDistrict(row.districtName, row.regionName, districts, aliasMap)
+        : { district: null, ambiguous: false };
+      if (!district) {
+        status = "UNMATCHED";
+        issues.push(
+          !row.districtName
+            ? "New member could not be auto-enrolled: district is required"
+            : ambiguous
+              ? "New member could not be auto-enrolled: district is ambiguous"
+              : "New member could not be auto-enrolled: district was not found",
+        );
+      } else {
+        status = "ENROLLED";
+        enrolledDistrictIds.set(controllerId, district.id);
+        issues.push("Auto-enrolled from Report 20 as a new active member");
+      }
     } else {
       if (normalizeValue(row.fullName) !== normalizeValue(member.fullName)) issues.push("Full name differs");
       if (row.school && normalizeValue(row.school) !== normalizeValue(member.school)) issues.push("School differs");
@@ -155,16 +190,59 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     };
   });
 
+  // Newly-enrolled members need real ids before the Report20Row rows can reference them, so
+  // create them first and then patch memberId onto the corresponding row payloads.
+  const enrolledRowsByControllerId = new Map(
+    data.filter((row) => row.status === "ENROLLED" && row.controllerId).map((row) => [row.controllerId as string, row]),
+  );
+  for (const [controllerId, districtId] of enrolledDistrictIds) {
+    const row = enrolledRowsByControllerId.get(controllerId);
+    if (!row) continue;
+    nextControllerIdToCreate.push({
+      controllerId,
+      data: {
+        controllerId,
+        fullName: row.fullName as string,
+        school: (row.school as string | null) ?? "",
+        districtId,
+        status: "ACTIVE",
+        report20Matched: true,
+      },
+    });
+  }
+
+  const seenControllerIds = seen;
+  const missingMemberIds = activeMembers
+    .filter((member) => !seenControllerIds.has(member.controllerId))
+    .map((member) => member.id);
+  const reappearedMemberIds = activeMembers
+    .filter((member) => seenControllerIds.has(member.controllerId) && member.missingFromReport20At)
+    .map((member) => member.id);
+
   await prisma.$transaction(
-    [
+    async (tx) => {
       // Clears any rows from a previous run of this same job (see rerunReport20) before inserting fresh ones.
-      prisma.report20Row.deleteMany({ where: { importJobId } }),
-      prisma.report20Row.createMany({ data }),
-      prisma.member.updateMany({
-        where: { id: { in: [...matchedMemberIds] } },
-        data: { report20Matched: true },
-      }),
-      prisma.importJob.update({
+      await tx.report20Row.deleteMany({ where: { importJobId } });
+
+      const createdMembers = await Promise.all(
+        nextControllerIdToCreate.map((entry) => tx.member.create({ data: entry.data, select: { id: true, controllerId: true } })),
+      );
+      const createdIdByControllerId = new Map(createdMembers.map((member) => [member.controllerId, member.id]));
+      for (const row of data) {
+        if (row.status === "ENROLLED" && row.controllerId) {
+          row.memberId = createdIdByControllerId.get(row.controllerId);
+        }
+      }
+
+      await tx.report20Row.createMany({ data });
+      await tx.member.updateMany({ where: { id: { in: [...matchedMemberIds] } }, data: { report20Matched: true } });
+      if (missingMemberIds.length) {
+        await tx.member.updateMany({ where: { id: { in: missingMemberIds } }, data: { missingFromReport20At: new Date() } });
+      }
+      if (reappearedMemberIds.length) {
+        await tx.member.updateMany({ where: { id: { in: reappearedMemberIds } }, data: { missingFromReport20At: null } });
+      }
+      await tx.importJob.update({
         where: { id: importJobId },
         data: {
           status: "COMPLETED",
@@ -174,11 +252,14 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
           unmatchedRows: counts.unmatched,
           duplicateRows: counts.duplicate,
           invalidRows: counts.invalid,
+          enrolledRows: counts.enrolled,
+          flaggedForRemovalRows: missingMemberIds.length,
           completedAt: new Date(),
         },
-      }),
-    ],
-    // Default 5s timeout is too short for inserting up to MAX_ROWS rows; scale the ceiling with the importer's own limit.
-    { timeout: 120_000 },
+      });
+    },
+    // Default 5s timeout is far too short for inserting up to MAX_ROWS rows; the job now runs
+    // off the HTTP request path (see import.routes.ts), so there's no user-facing timeout pressure.
+    { timeout: 600_000 },
   );
 }

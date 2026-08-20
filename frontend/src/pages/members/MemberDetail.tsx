@@ -38,6 +38,7 @@ type MemberDetailData = {
   school: string;
   status: string;
   report20Matched: boolean;
+  missingFromReport20At: string | null;
   createdAt: string;
   district: { id: number; name: string; region: { id: number; name: string } };
   spouse: Spouse | null;
@@ -240,19 +241,6 @@ export default function MemberDetail() {
       await load();
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to remove beneficiary.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const verifyPhone = async () => {
-    setBusy(true);
-    setActionError("");
-    try {
-      await api.post(`/members/${id}/verify-phone`);
-      await load();
-    } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to verify phone.");
     } finally {
       setBusy(false);
     }
@@ -690,17 +678,16 @@ export default function MemberDetail() {
             <div id="workflow" className="member-panel member-panel--workflow">
               <div className="member-workflow-heading"><div><h2>Workflow</h2><p>Review eligibility, update status, and view the decision history.</p></div><span className={`member-record__status member-record__status--${member.status.toLowerCase()}`}>{member.status}</span></div>
 
+              {member.missingFromReport20At && (
+                <div className="mb-4 rounded-[9px] border border-[#f0c96b] bg-[#fdf6e3] px-3.5 py-2.5 text-[12.5px] text-[#7a5c00]">
+                  This member was not found in the most recently reconciled Report 20 file (as of{" "}
+                  {formatDate(member.missingFromReport20At)}). Confirm whether they should be removed using the
+                  action below, or leave as-is if this is expected to be temporary — the flag clears
+                  automatically once they reappear in a future Report 20 upload.
+                </div>
+              )}
+
               <div className="mb-5 flex flex-wrap gap-2">
-                {member.phone && !member.phoneVerifiedAt && (
-                  <button
-                    type="button"
-                    onClick={verifyPhone}
-                    disabled={busy}
-                    className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] disabled:opacity-60"
-                  >
-                    Verify Phone
-                  </button>
-                )}
                 {!member.report20Matched && (
                   <button
                     type="button"

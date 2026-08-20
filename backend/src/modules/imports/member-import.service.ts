@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 
-const MAX_ROWS = 50_000;
+const MAX_ROWS = 300_000;
 const aliases = {
   controllerId: ["controllerid", "employeeno", "employeenumber", "staffid"],
   fullName: ["fullname", "nameofemployee", "employeename", "name"],
@@ -196,8 +196,9 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
       prisma.memberBulkImportRow.createMany({ data: rows }),
       prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", totalRows: rows.length, readyRows: counts.READY, invalidRows: counts.INVALID, duplicateRows: counts.DUPLICATE, unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE, completedAt: new Date() } }),
     ],
-    // Default 5s timeout is too short for inserting up to MAX_ROWS rows; scale the ceiling with the importer's own limit.
-    { timeout: 120_000 },
+    // Default 5s timeout is far too short for inserting up to MAX_ROWS rows; this now runs off the
+    // HTTP request path (see member-import.routes.ts), so there's no user-facing timeout pressure.
+    { timeout: 600_000 },
   );
 }
 

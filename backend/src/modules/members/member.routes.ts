@@ -70,7 +70,7 @@ memberRouter.get("/", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const { page, limit, search, status, regionId, districtId } = query.data;
+  const { page, limit, search, status, regionId, districtId, missingFromReport20 } = query.data;
   const requestedScope =
     user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN"
       ? districtId
@@ -82,6 +82,7 @@ memberRouter.get("/", async (request, response) => {
   const where = {
     ...requestedScope,
     ...(status ? { status } : {}),
+    ...(missingFromReport20 ? { missingFromReport20At: { not: null } } : {}),
     ...(search
       ? {
           OR: [

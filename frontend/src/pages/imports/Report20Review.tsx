@@ -12,6 +12,8 @@ type ImportJob = {
   unmatchedRows: number;
   duplicateRows: number;
   invalidRows: number;
+  enrolledRows: number;
+  flaggedForRemovalRows: number;
   errorMessage: string | null;
   createdAt: string;
   file: { originalName: string };
@@ -30,7 +32,7 @@ type ReportRow = {
   member: { id: number; controllerId: string; fullName: string } | null;
 };
 
-const ROW_STATUSES = ["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID"];
+const ROW_STATUSES = ["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID", "ENROLLED"];
 
 const ROW_STATUS_STYLES: Record<string, string> = {
   MATCHED: "bg-[#dff7ee] text-[#17805f]",
@@ -38,6 +40,7 @@ const ROW_STATUS_STYLES: Record<string, string> = {
   UNMATCHED: "bg-[#fbe9e9] text-[#c23b3b]",
   DUPLICATE: "bg-[#fbe9e9] text-[#c23b3b]",
   INVALID: "bg-[#fbe9e9] text-[#c23b3b]",
+  ENROLLED: "bg-[#dff7ee] text-[#17805f]",
 };
 
 function formatDate(iso: string) {
@@ -95,6 +98,17 @@ export default function Report20Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page, rowStatus]);
 
+  // Uploads and re-runs now process in the background — poll while the job hasn't finished yet.
+  useEffect(() => {
+    if (!job || (job.status !== "PENDING" && job.status !== "PROCESSING")) return;
+    const timer = setInterval(async () => {
+      await loadJob();
+      await loadRows();
+    }, 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status]);
+
   const rerun = async () => {
     if (
       !window.confirm(
@@ -109,11 +123,8 @@ export default function Report20Review() {
     try {
       const res = await api.post(`/imports/${id}/rerun`);
       setJob(res.data.data);
-      setRerunMessage(
-        `Re-reconciled: ${res.data.data.matchedRows} matched, ${res.data.data.changedRows} changed, ${res.data.data.unmatchedRows} unmatched.`,
-      );
+      setRerunMessage("Reconciliation is running in the background — this page will update automatically.");
       setPage(1);
-      await loadRows();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to re-run reconciliation.");
     } finally {
@@ -187,14 +198,22 @@ export default function Report20Review() {
         </div>
       )}
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {(job.status === "PENDING" || job.status === "PROCESSING") && (
+        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+          Processing in the background — this can take a while for large files. This page refreshes automatically.
+        </div>
+      )}
+
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-8">
         {[
           ["Total", job.totalRows, "#1e2761"],
           ["Matched", job.matchedRows, "#17805f"],
           ["Changed", job.changedRows, "#b9791a"],
+          ["Enrolled", job.enrolledRows, "#17805f"],
           ["Unmatched", job.unmatchedRows, "#c23b3b"],
           ["Duplicate", job.duplicateRows, "#c23b3b"],
           ["Invalid", job.invalidRows, "#c23b3b"],
+          ["Flagged for removal", job.flaggedForRemovalRows, "#b9791a"],
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-[10px] border border-[#e5e9f0] bg-white p-3">
             <div className="text-[10.5px] font-semibold text-[#5b6472]">{label}</div>

@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import "./MembersList.css";
 
-type MemberRow = { id: number; controllerId: string; fullName: string; school: string; status: string; createdAt: string; spouse: { fullName: string } | null; district: { id: number; name: string; region: { id: number; name: string } } };
+type MemberRow = { id: number; controllerId: string; fullName: string; school: string; status: string; createdAt: string; missingFromReport20At: string | null; spouse: { fullName: string } | null; district: { id: number; name: string; region: { id: number; name: string } } };
 const STATUSES = ["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"];
 const PAGE_TITLES: Record<string, string> = { PENDING: "Pending approvals", REMOVED: "Removed members" };
 
@@ -56,8 +56,9 @@ export default function MembersList() {
   const search = params.get("search") ?? "";
   const status = params.get("status") ?? "";
   const districtId = params.get("districtId") ?? "";
+  const missingFromReport20 = params.get("missingFromReport20") === "1";
   const limit = [5, 10, 20].includes(Number(params.get("limit"))) ? Number(params.get("limit")) : 10;
-  const filtered = Boolean(search || status || districtId);
+  const filtered = Boolean(search || status || districtId || missingFromReport20);
   const pageTitle = PAGE_TITLES[status] ?? "Members";
 
   const regions = useMemo(() => Array.from(new Set(districts.map((item) => item.region.name))).sort(), [districts]);
@@ -72,11 +73,11 @@ export default function MembersList() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const response = await api.get("/members", { params: { page, limit, search: search || undefined, status: status || undefined, districtId: districtId || undefined } });
+      const response = await api.get("/members", { params: { page, limit, search: search || undefined, status: status || undefined, districtId: districtId || undefined, missingFromReport20: missingFromReport20 || undefined } });
       setRows(response.data.data); setTotal(response.data.pagination.total); setTotalPages(Math.max(1, response.data.pagination.totalPages));
     } catch { setError("Members could not be loaded. Check your connection and try again."); }
     finally { setLoading(false); }
-  }, [districtId, limit, page, search, status]);
+  }, [districtId, limit, missingFromReport20, page, search, status]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -95,6 +96,10 @@ export default function MembersList() {
       <select value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })} aria-label="Filter by status"><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select>
       <select value={districtId} onChange={(event) => updateParams({ districtId: event.target.value || null, page: null })} aria-label="Filter by district"><option value="">All districts</option>{regions.map((region) => <optgroup key={region} label={region}>{districts.filter((item) => item.region.name === region).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</select>
       <label className="members-page-size"><span>Show</span><select value={limit} onChange={(event) => updateParams({ limit: event.target.value, page: null })} aria-label="Rows per page">{[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#5b6472", whiteSpace: "nowrap" }}>
+        <input type="checkbox" checked={missingFromReport20} onChange={(event) => updateParams({ missingFromReport20: event.target.checked ? "1" : null, page: null })} />
+        Missing from Report 20
+      </label>
       {filtered && <button className="members-clear" type="button" onClick={clearFilters}>Clear filters</button>}
     </section>
 
@@ -103,8 +108,8 @@ export default function MembersList() {
     <section className="members-table-shell">
       {loading ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error ? <div className="members-state members-state--error"><div>!</div><h2>Could not load members</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div> : rows.length === 0 ? <div className="members-state"><div className="members-state__icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6m-3-3h6"/></svg></div><h2>{filtered ? "No members match these filters" : "Your member register is empty"}</h2><p>{filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."}</p>{filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>}</div> : <>
         {selected.length > 0 && <div className="members-selection"><strong>{selected.length}</strong> selected <button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
-        <div className="members-table-wrap"><table className="members-table"><thead><tr><th className="members-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all members on this page" /></th><th className="members-number">#</th><th>Member</th><th>Controller ID</th><th>School</th><th>District and region</th><th>Spouse</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map((member, index) => <tr key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><td className="members-check"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /></td><td className="members-number">{(page - 1) * limit + index + 1}</td><td><Link to={`/members/${member.id}`}><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><span><strong>{member.fullName}</strong><small>Enrolled {formatEnrolled(member.createdAt)}</small></span></Link></td><td><code>{member.controllerId}</code></td><td title={member.school}>{member.school}</td><td><strong className="members-location">{member.district.name}</strong><small className="members-region">{member.district.region.name}</small></td><td>{member.spouse ? <span className="members-spouse"><strong>{member.spouse.fullName}</strong><small>Recorded</small></span> : <span className="members-none">Not recorded</span>}</td><td><Status value={member.status}/></td><td><ActionMenu member={member}/></td></tr>)}</tbody></table></div>
-        <div className="members-cards">{rows.map((member, index) => <article key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><div><Link to={`/members/${member.id}`}><strong>{(page - 1) * limit + index + 1}. {member.fullName}</strong></Link><small>{member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}</small><span>{member.district.name}, {member.district.region.name}</span><span>{member.spouse?.fullName ? `Spouse: ${member.spouse.fullName}` : "Spouse not recorded"}</span></div><Status value={member.status}/></article>)}</div>
+        <div className="members-table-wrap"><table className="members-table"><thead><tr><th className="members-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all members on this page" /></th><th className="members-number">#</th><th>Member</th><th>Controller ID</th><th>School</th><th>District and region</th><th>Spouse</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map((member, index) => <tr key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><td className="members-check"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /></td><td className="members-number">{(page - 1) * limit + index + 1}</td><td><Link to={`/members/${member.id}`}><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><span><strong>{member.fullName}</strong><small>Enrolled {formatEnrolled(member.createdAt)}</small></span></Link></td><td><code>{member.controllerId}</code></td><td title={member.school}>{member.school}</td><td><strong className="members-location">{member.district.name}</strong><small className="members-region">{member.district.region.name}</small></td><td>{member.spouse ? <span className="members-spouse"><strong>{member.spouse.fullName}</strong><small>Recorded</small></span> : <span className="members-none">Not recorded</span>}</td><td><Status value={member.status}/>{member.missingFromReport20At && <span title="Not found in the most recent Report 20 file" style={{ display: "inline-block", marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</td><td><ActionMenu member={member}/></td></tr>)}</tbody></table></div>
+        <div className="members-cards">{rows.map((member, index) => <article key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><div><Link to={`/members/${member.id}`}><strong>{(page - 1) * limit + index + 1}. {member.fullName}</strong></Link><small>{member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}</small><span>{member.district.name}, {member.district.region.name}</span><span>{member.spouse?.fullName ? `Spouse: ${member.spouse.fullName}` : "Spouse not recorded"}</span></div><div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}><Status value={member.status}/>{member.missingFromReport20At && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</div></article>)}</div>
       </>}
     </section>
 

@@ -5,6 +5,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { z } from "zod";
 
+import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -109,9 +110,9 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
   }
   const currentUser = user(response);
   const storagePath = path.posix.join("member-imports", request.file.filename);
-  let jobId: number;
+  let job;
   try {
-    const job = await prisma.$transaction(async (transaction) => {
+    job = await prisma.$transaction(async (transaction) => {
       const file = await transaction.storedFile.create({
         data: {
           category: "MEMBER_IMPORT",
@@ -126,17 +127,30 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
       });
       return transaction.importJob.create({ data: { type: "MEMBER_BULK", checksum, fileId: file.id, uploadedById: currentUser.id, status: "PROCESSING", startedAt: new Date() } });
     });
-    jobId = job.id;
-    await stageMemberImport(job.id, request.file.path, request.file.mimetype, currentUser);
   } catch (error) {
-    if (typeof jobId! === "number") await prisma.importJob.update({ where: { id: jobId }, data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed", completedAt: new Date() } }).catch(() => undefined);
-    else await removeFile(request.file.path);
-    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "The member file could not be validated", ...(typeof jobId! === "number" ? { importId: jobId } : {}) });
+    await removeFile(request.file.path);
+    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "The member import job could not be created" });
     return;
   }
-  const job = await prisma.importJob.findUnique({ where: { id: jobId }, include: { file: { select: { originalName: true, downloadPath: true } } } });
-  await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_VALIDATED", entityType: "IMPORT_JOB", entityId: jobId, description: `Validated bulk member import ${job?.file.originalName ?? jobId}`, afterData: job ? { totalRows: job.totalRows, readyRows: job.readyRows, invalidRows: job.invalidRows, duplicateRows: job.duplicateRows } : undefined });
-  response.status(201).json({ success: true, data: job });
+
+  const jobId = job.id;
+  const originalName = path.basename(request.file.originalname);
+  // Staging can involve up to MAX_ROWS = 300,000 rows; run it off the request/response cycle so the
+  // upload doesn't hold an HTTP connection open (same fire-and-forget pattern as Report 20 — see
+  // import.routes.ts for the rationale and its Redis/BullMQ upgrade note).
+  void (async () => {
+    try {
+      await stageMemberImport(jobId, request.file!.path, request.file!.mimetype, currentUser);
+    } catch (error) {
+      await prisma.importJob.update({ where: { id: jobId }, data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed", completedAt: new Date() } }).catch(() => undefined);
+      return;
+    }
+    const completed = await prisma.importJob.findUnique({ where: { id: jobId } });
+    await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_VALIDATED", entityType: "IMPORT_JOB", entityId: jobId, description: `Validated bulk member import ${originalName}`, afterData: completed ? { totalRows: completed.totalRows, readyRows: completed.readyRows, invalidRows: completed.invalidRows, duplicateRows: completed.duplicateRows } : undefined });
+  })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while staging member import job"));
+
+  const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId }, include: { file: { select: { originalName: true, downloadPath: true } } } });
+  response.status(202).json({ success: true, data: pendingJob });
 });
 
 memberImportRouter.get("/members/:id", async (request, response) => {
@@ -186,31 +200,40 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
     response.status(404).json({ success: false, message: "Validated member import not found" });
     return;
   }
-  const rows = await prisma.memberBulkImportRow.findMany({ where: { importJobId: job.id, status: "READY" }, orderBy: { rowNumber: "asc" } });
-  let imported = 0;
-  let failed = 0;
-  for (const row of rows) {
-    const extra = bulkRawFields(row.rawData);
-    try {
-      const member = await prisma.$transaction(async (transaction) => {
-        const created = await transaction.member.create({
-          data: {
-            controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, dateOfBirth: row.dateOfBirth, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
-            ...(extra.spouseName ? { spouse: { create: { fullName: extra.spouseName, dateOfBirth: optionalDate(extra.spouseDateOfBirth), ghanaCardId: extra.spouseGhanaCardId } } } : {}),
-            beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName, trusteeGhanaCardId: extra.trusteeGhanaCardId } },
-          },
+  const jobId = job.id;
+  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date() } });
+
+  // Committing can mean creating up to MAX_ROWS members one at a time; run it off the request/response
+  // cycle for the same reason staging and Report 20 reconciliation do (see stageMemberImport above).
+  void (async () => {
+    const rows = await prisma.memberBulkImportRow.findMany({ where: { importJobId: jobId, status: "READY" }, orderBy: { rowNumber: "asc" } });
+    let imported = 0;
+    let failed = 0;
+    for (const row of rows) {
+      const extra = bulkRawFields(row.rawData);
+      try {
+        const member = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.member.create({
+            data: {
+              controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, dateOfBirth: row.dateOfBirth, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
+              ...(extra.spouseName ? { spouse: { create: { fullName: extra.spouseName, dateOfBirth: optionalDate(extra.spouseDateOfBirth), ghanaCardId: extra.spouseGhanaCardId } } } : {}),
+              beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName, trusteeGhanaCardId: extra.trusteeGhanaCardId } },
+            },
+          });
+          await transaction.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "IMPORTED", memberId: created.id } });
+          return created;
         });
-        await transaction.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "IMPORTED", memberId: created.id } });
-        return created;
-      });
-      imported += 1;
-      await recordAudit({ request, actor: currentUser, action: "MEMBER_BULK_ENROLLED", entityType: "MEMBER", entityId: member.id, description: `Bulk enrolled ${member.fullName} (${member.controllerId})`, afterData: { importJobId: job.id, rowNumber: row.rowNumber, status: member.status }, districtId: member.districtId });
-    } catch (error) {
-      failed += 1;
-      await prisma.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "FAILED", issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"] } });
+        imported += 1;
+        await recordAudit({ request, actor: currentUser, action: "MEMBER_BULK_ENROLLED", entityType: "MEMBER", entityId: member.id, description: `Bulk enrolled ${member.fullName} (${member.controllerId})`, afterData: { importJobId: jobId, rowNumber: row.rowNumber, status: member.status }, districtId: member.districtId });
+      } catch (error) {
+        failed += 1;
+        await prisma.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "FAILED", issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"] } });
+      }
     }
-  }
-  const updated = await prisma.importJob.update({ where: { id: job.id }, data: { importedRows: { increment: imported }, readyRows: { decrement: imported + failed }, invalidRows: { increment: failed } } });
-  await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: job.id, description: `Committed bulk member import ${job.id}`, afterData: { imported, failed } });
-  response.json({ success: true, data: { import: updated, imported, failed } });
+    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), importedRows: { increment: imported }, readyRows: { decrement: imported + failed }, invalidRows: { increment: failed } } });
+    await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: jobId, description: `Committed bulk member import ${jobId}`, afterData: { imported, failed, status: updated.status } });
+  })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while committing member import job"));
+
+  const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId } });
+  response.status(202).json({ success: true, data: pendingJob });
 });

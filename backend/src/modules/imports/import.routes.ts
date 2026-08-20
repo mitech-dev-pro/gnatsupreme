@@ -5,6 +5,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { z } from "zod";
 
+import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
@@ -32,7 +33,7 @@ const listSchema = z.object({
 const issueListSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
-  status: z.enum(["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID"]).optional(),
+  status: z.enum(["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID", "ENROLLED"]).optional(),
 });
 
 function user(response: Response) {
@@ -55,6 +56,69 @@ function receiveReport(request: Request, response: Response, next: NextFunction)
 
 async function removeFile(filePath: string) {
   await unlink(filePath).catch(() => undefined);
+}
+
+// Runs parsing + reconciliation off the request/response cycle so large files (up to
+// MAX_ROWS = 300,000) don't hold an HTTP connection open or risk a gateway timeout. This is
+// deliberately the simplest "background job" shape (fire-and-forget within the same process) —
+// a straightforward stepping stone toward a real queue (Redis + BullMQ) later, once one is needed.
+// It does NOT move the CPU-bound parsing work off Node's event loop; other requests can still be
+// delayed while a very large file is being parsed.
+async function runReport20Job(
+  request: Request,
+  currentUser: AuthenticatedUser,
+  job: { id: number },
+  filePath: string,
+  mimeType: string,
+  originalName: string,
+  action: "REPORT20_IMPORTED" | "REPORT20_RECONCILE_RERUN",
+) {
+  try {
+    const rows = await parseReport20(filePath, mimeType);
+    await reconcileReport20(job.id, rows);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
+    await prisma.importJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMessage: message, completedAt: new Date() },
+    });
+    await recordAudit({
+      request,
+      actor: currentUser,
+      action: "REPORT20_IMPORT_FAILED",
+      entityType: "IMPORT_JOB",
+      entityId: job.id,
+      description: `Report 20 processing failed for ${originalName}`,
+      afterData: { status: "FAILED", errorMessage: message },
+    });
+    return;
+  }
+
+  const completedJob = await prisma.importJob.findUnique({ where: { id: job.id } });
+  await recordAudit({
+    request,
+    actor: currentUser,
+    action,
+    entityType: "IMPORT_JOB",
+    entityId: job.id,
+    description:
+      action === "REPORT20_IMPORTED"
+        ? `Imported Report 20 file ${originalName}`
+        : `Re-ran reconciliation for Report 20 file ${originalName} against current members`,
+    afterData: completedJob
+      ? {
+          status: completedJob.status,
+          totalRows: completedJob.totalRows,
+          matchedRows: completedJob.matchedRows,
+          changedRows: completedJob.changedRows,
+          unmatchedRows: completedJob.unmatchedRows,
+          duplicateRows: completedJob.duplicateRows,
+          invalidRows: completedJob.invalidRows,
+          enrolledRows: completedJob.enrolledRows,
+          flaggedForRemovalRows: completedJob.flaggedForRemovalRows,
+        }
+      : undefined,
+  });
 }
 
 const jobInclude = {
@@ -103,18 +167,6 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
     await removeFile(path.join(uploadRoot, duplicate.file.storagePath));
   }
 
-  let rows;
-  try {
-    rows = await parseReport20(request.file.path, request.file.mimetype);
-  } catch (error) {
-    await removeFile(request.file.path);
-    response.status(400).json({
-      success: false,
-      message: error instanceof Error ? error.message : "The report could not be read",
-    });
-    return;
-  }
-
   const currentUser = user(response);
   const storagePath = path.posix.join("report-20", request.file.filename);
   const [storedFile, job] = await prisma
@@ -147,48 +199,14 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
       throw error;
     });
 
-  try {
-    await reconcileReport20(job.id, rows);
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
-    await prisma.importJob.update({
-      where: { id: job.id },
-      data: { status: "FAILED", errorMessage: message, completedAt: new Date() },
-    });
-    await recordAudit({
-      request,
-      actor: currentUser,
-      action: "REPORT20_IMPORT_FAILED",
-      entityType: "IMPORT_JOB",
-      entityId: job.id,
-      description: `Report 20 import failed for ${storedFile.originalName}`,
-      afterData: { status: "FAILED", errorMessage: message },
-    });
-    response.status(500).json({ success: false, message: "The upload was saved, but reconciliation failed", importId: job.id });
-    return;
-  }
+  // Kick off parsing + reconciliation in the background; respond immediately with the
+  // PENDING job so the client isn't stuck holding a connection open for a large file.
+  void runReport20Job(request, currentUser, job, request.file.path, request.file.mimetype, storedFile.originalName, "REPORT20_IMPORTED").catch(
+    (error) => logger.error({ err: error, importJobId: job.id }, "Unhandled error while processing Report 20 job"),
+  );
 
-  const completedJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
-  await recordAudit({
-    request,
-    actor: currentUser,
-    action: "REPORT20_IMPORTED",
-    entityType: "IMPORT_JOB",
-    entityId: job.id,
-    description: `Imported Report 20 file ${storedFile.originalName}`,
-    afterData: completedJob
-      ? {
-          status: completedJob.status,
-          totalRows: completedJob.totalRows,
-          matchedRows: completedJob.matchedRows,
-          changedRows: completedJob.changedRows,
-          unmatchedRows: completedJob.unmatchedRows,
-          duplicateRows: completedJob.duplicateRows,
-          invalidRows: completedJob.invalidRows,
-        }
-      : undefined,
-  });
-  response.status(201).json({ success: true, data: completedJob });
+  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
+  response.status(202).json({ success: true, data: pendingJob });
 });
 
 importRouter.get("/", async (request, response) => {
@@ -235,39 +253,20 @@ importRouter.post("/:id/rerun", async (request, response) => {
     return;
   }
   const currentUser = user(response);
-  let rows;
-  try {
-    rows = await parseReport20(path.join(uploadRoot, job.file.storagePath), job.file.mimeType);
-  } catch (error) {
-    response.status(400).json({
-      success: false,
-      message: error instanceof Error ? error.message : "The stored file could not be re-read",
-    });
-    return;
-  }
+  await prisma.importJob.update({ where: { id: job.id }, data: { status: "PENDING", errorMessage: null, completedAt: null } });
 
-  try {
-    await reconcileReport20(job.id, rows);
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Reconciliation failed";
-    await prisma.importJob.update({ where: { id: job.id }, data: { status: "FAILED", errorMessage: message, completedAt: new Date() } });
-    response.status(500).json({ success: false, message: "Reconciliation could not be completed", importId: job.id });
-    return;
-  }
-
-  const updated = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
-  await recordAudit({
+  void runReport20Job(
     request,
-    actor: currentUser,
-    action: "REPORT20_RECONCILE_RERUN",
-    entityType: "IMPORT_JOB",
-    entityId: job.id,
-    description: `Re-ran reconciliation for Report 20 file ${job.file.originalName} against current members`,
-    afterData: updated
-      ? { status: updated.status, matchedRows: updated.matchedRows, changedRows: updated.changedRows, unmatchedRows: updated.unmatchedRows }
-      : undefined,
-  });
-  response.json({ success: true, data: updated });
+    currentUser,
+    job,
+    path.join(uploadRoot, job.file.storagePath),
+    job.file.mimeType,
+    job.file.originalName,
+    "REPORT20_RECONCILE_RERUN",
+  ).catch((error) => logger.error({ err: error, importJobId: job.id }, "Unhandled error while re-running Report 20 job"));
+
+  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
+  response.status(202).json({ success: true, data: pendingJob });
 });
 
 importRouter.get("/:id/issues", async (request, response) => {

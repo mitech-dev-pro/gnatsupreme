@@ -19,7 +19,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/gnatsupreme/uploads
+ReadWritePaths=/var/lib/gnatsupreme/uploads /var/log/gnatsupreme
 
 [Install]
 WantedBy=multi-user.target

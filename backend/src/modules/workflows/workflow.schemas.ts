@@ -3,6 +3,13 @@ import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 
 export const workflowMemberParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 export const workflowNoteSchema = z.object({ note: z.string().trim().min(2).max(500) });
+export const bulkApproveSchema = z.object({
+  memberIds: z.array(z.number().int().positive()).min(1).max(100).transform((ids) => [...new Set(ids)]),
+});
+export const bulkReturnSchema = z.object({
+  memberIds: z.array(z.number().int().positive()).min(1).max(100).transform((ids) => [...new Set(ids)]),
+  note: z.string().trim().min(2).max(500),
+});
 export const removalSchema = z
   .object({
     reason: z.enum(["DEATH", "DISABILITY", "RETIREMENT", "RESIGNATION", "OTHER"]),

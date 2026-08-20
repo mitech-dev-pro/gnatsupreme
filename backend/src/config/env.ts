@@ -22,6 +22,8 @@ const environmentSchema = z.object({
   MEMBER_OTP_TTL_MINUTES: z.coerce.number().int().min(2).max(10).default(5),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
   API_DOCS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).optional(),
+  LOG_FILE: z.string().trim().min(1).default("logs/app.log"),
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),

@@ -14,6 +14,8 @@ import ImportReview from "@/pages/members/ImportReview";
 import Report20Upload from "@/pages/imports/Report20Upload";
 import Report20Review from "@/pages/imports/Report20Review";
 import MemberHome from "@/pages/member/MemberHome";
+import ChangeRequests from "@/pages/members/ChangeRequests";
+import PendingApprovals from "@/pages/members/PendingApprovals";
 
 export default function App() {
   return (
@@ -30,6 +32,8 @@ export default function App() {
               <Route path="/members/upload" element={<UploadMembers />} />
               <Route path="/members/upload/:id" element={<ImportReview />} />
               <Route path="/members/:id" element={<MemberDetail />} />
+              <Route path="/change-requests" element={<ChangeRequests />} />
+              <Route path="/approvals" element={<PendingApprovals />} />
               <Route path="/imports/report20" element={<Report20Upload />} />
               <Route
                 path="/imports/report20/:id"

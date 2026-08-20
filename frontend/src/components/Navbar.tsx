@@ -38,20 +38,25 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
           </svg>
         </button>
 
-        <div className="hidden items-center gap-3.5 sm:flex">
-          <div className="flex items-center gap-1.5 rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-1 pl-1.5 pr-2.5">
-            <div className="flex h-6.5 w-6.5 items-center justify-center rounded-md bg-[#1e2761] text-xs font-extrabold text-white">
-              G
-            </div>
-            <div className="text-[12.5px] font-bold text-[#171b26]">GNAT</div>
+        <div className="hidden items-center gap-3 sm:flex">
+          <div className="flex h-9 items-center rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-2">
+            <img
+              src="/brand/gnat-logo.png?v=1"
+              alt="GNAT"
+              className="h-7 w-auto max-w-16 object-contain"
+            />
           </div>
-          <div className="h-6.5 w-px bg-[#e5e9f0]" />
-          <div className="flex items-center gap-1.5 rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-1 pl-1.5 pr-2.5">
-            <div className="flex h-6.5 w-6.5 items-center justify-center rounded-md bg-[#1f9c7c] text-xs font-extrabold text-white">
-              mL
-            </div>
-            <div className="text-[12.5px] font-bold text-[#171b26]">
-              miLife
+          <div className="h-6 w-px bg-[#e5e9f0]" />
+          <div className="flex items-center gap-2">
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7a8190] lg:inline">
+              Underwritten by
+            </span>
+            <div className="flex h-9 items-center rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-2.5">
+              <img
+                src="/brand/milife-logo.png?v=1"
+                alt="miLife Insurance"
+                className="h-6 w-auto max-w-22 object-contain"
+              />
             </div>
           </div>
         </div>

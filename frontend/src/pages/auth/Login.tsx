@@ -139,34 +139,27 @@ export default function Login() {
             className="pointer-events-none absolute -right-15 -top-15 h-55 w-55 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_70%)]"
           />
           <div>
-            <div className="mb-6 flex items-center gap-2.5">
-              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/6 py-1.5 pl-1.5 pr-3">
-                <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-[7px] bg-white/18 text-[10.5px] font-extrabold">
-                  GNAT
+            <div className="mb-7 flex items-center gap-3">
+              <div className="flex h-16 w-29 items-center justify-center rounded-[11px] bg-white px-2.5 py-1.5 shadow-[0_5px_16px_rgba(8,13,42,0.24)]">
+                <img
+                  src="/brand/gnat-logo.png?v=1"
+                  alt="GNAT"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <div className="h-10 w-px shrink-0 bg-white/20" />
+              <div>
+                <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                  Underwritten by
                 </div>
-                <div className="leading-tight">
-                  <div className="text-[11.5px] font-bold">GNAT</div>
-                  <small className="block text-[9px] text-white/55">
-                    Logo placeholder
-                  </small>
+                <div className="flex h-12 w-27 items-center justify-center rounded-[10px] bg-white px-2.5 py-1.5 shadow-[0_5px_16px_rgba(8,13,42,0.2)]">
+                  <img
+                    src="/brand/milife-logo.png?v=1"
+                    alt="miLife Insurance"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
               </div>
-              <div className="h-7.5 w-px shrink-0 bg-white/20" />
-              <div className="flex items-center gap-2 rounded-[10px] border-[1.5px] border-dashed border-white/40 bg-white/6 py-1.5 pl-1.5 pr-3">
-                <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-[7px] bg-white/18 text-[10.5px] font-extrabold">
-                  mL
-                </div>
-                <div className="leading-tight">
-                  <div className="text-[11.5px] font-bold">miLife</div>
-                  <small className="block text-[9px] text-white/55">
-                    Logo placeholder
-                  </small>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative z-10 flex h-11.5 w-11.5 items-center justify-center rounded-[9px] border border-white/20 bg-white/16 text-[19px] font-extrabold">
-              SC
             </div>
 
             <div className="my-5 flex h-1.25 w-21 overflow-hidden rounded-[3px]">

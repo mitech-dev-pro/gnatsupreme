@@ -9,6 +9,8 @@ import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 import { memberScope } from "../members/member.access.js";
 import { notifyMember } from "../notifications/notification.service.js";
 import {
+  bulkApproveSchema,
+  bulkReturnSchema,
   changeRequestIdSchema,
   changeRequestQuerySchema,
   createChangeRequestSchema,
@@ -87,6 +89,63 @@ memberWorkflowRouter.post("/:id/verify-phone", async (request, response) => {
   await recordAudit({ request, actor, action: "MEMBER_PHONE_VERIFIED", entityType: "MEMBER", entityId: member.id, description: `Verified the member phone number for ${member.fullName}`, afterData: { phoneVerifiedAt: member.phoneVerifiedAt }, regionId: existing.district.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "PHONE_VERIFIED", title: "Phone number verified", message: "Your phone number has been verified for GNAT Supreme Care member access.", idempotencyKey: `phone-verified:${member.id}:${member.phoneVerifiedAt!.getTime()}` });
   response.json({ success: true, data: { id: member.id, phoneVerifiedAt: member.phoneVerifiedAt } });
+});
+
+memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
+  const body = bulkApproveSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ success: false, message: "Select between 1 and 100 valid members" });
+    return;
+  }
+  const actor = user(response);
+  const results = [];
+  for (const memberId of body.data.memberIds) {
+    try {
+      const existing = await accessibleMember(memberId, actor);
+      if (!existing) { results.push({ memberId, success: false, message: "Member not found or outside your access scope" }); continue; }
+      if (!(existing.status === "PENDING" || existing.status === "RETURNED")) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Member is no longer pending approval" }); continue; }
+      const toStatus = existing.report20Matched ? "ACTIVE" : "FLAGGED";
+      const [member, event] = await prisma.$transaction([
+        prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
+        prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
+      ]);
+      await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Bulk-approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id, bulk: true }, regionId: existing.district.regionId, districtId: existing.districtId });
+      await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
+      results.push({ memberId, success: true, memberName: member.fullName, status: toStatus });
+    } catch (error) {
+      results.push({ memberId, success: false, message: error instanceof Error ? error.message : "Approval failed" });
+    }
+  }
+  const succeeded = results.filter((item) => item.success).length;
+  response.json({ success: true, data: { requested: results.length, succeeded, failed: results.length - succeeded, results } });
+});
+
+memberWorkflowRouter.post("/bulk/return", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
+  const body = bulkReturnSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ success: false, message: "Select valid members and provide a return note" });
+    return;
+  }
+  const actor = user(response);
+  const results = [];
+  for (const memberId of body.data.memberIds) {
+    try {
+      const existing = await accessibleMember(memberId, actor);
+      if (!existing) { results.push({ memberId, success: false, message: "Member not found or outside your access scope" }); continue; }
+      if (!(existing.status === "PENDING" || existing.status === "FLAGGED")) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Member can no longer be returned" }); continue; }
+      const [member, event] = await prisma.$transaction([
+        prisma.member.update({ where: { id: existing.id }, data: { status: "RETURNED" } }),
+        prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "RETURNED", fromStatus: existing.status, toStatus: "RETURNED", note: body.data.note, performedById: actor.id } }),
+      ]);
+      await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Bulk-returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id, bulk: true }, regionId: existing.district.regionId, districtId: existing.districtId });
+      await notifyMember({ memberId: member.id, type: "MEMBER_RETURNED", title: "Membership needs correction", message: `Your membership record was returned for correction: ${body.data.note}`, idempotencyKey: `member-workflow:${event.id}` });
+      results.push({ memberId, success: true, memberName: member.fullName, status: "RETURNED" });
+    } catch (error) {
+      results.push({ memberId, success: false, message: error instanceof Error ? error.message : "Return failed" });
+    }
+  }
+  const succeeded = results.filter((item) => item.success).length;
+  response.json({ success: true, data: { requested: results.length, succeeded, failed: results.length - succeeded, results } });
 });
 
 memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {

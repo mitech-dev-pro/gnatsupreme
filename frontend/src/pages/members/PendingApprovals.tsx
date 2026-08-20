@@ -1,0 +1,77 @@
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import api from "@/lib/api";
+import "./PendingApprovals.css";
+
+type Member = { id: number; controllerId: string; fullName: string; dateOfBirth: string | null; ghanaCardId: string | null; phone: string | null; phoneVerifiedAt: string | null; school: string; report20Matched: boolean; createdAt: string; district: { id: number; name: string; region: { id: number; name: string } }; spouse: unknown | null; beneficiaries: unknown[]; createdBy: { id: number; fullName: string } | null };
+type BulkResult = { requested: number; succeeded: number; failed: number; results: Array<{ memberId: number; success: boolean; memberName?: string; status?: string; message?: string }> };
+
+function Signal({ good, yes, no }: { good: boolean; yes: string; no: string }) { return <span className={`approval-signal ${good ? "good" : "warn"}`}><i>{good ? "✓" : "!"}</i>{good ? yes : no}</span>; }
+
+export default function PendingApprovals() {
+  const [params, setParams] = useSearchParams();
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const limit = [5, 10, 20].includes(Number(params.get("limit"))) ? Number(params.get("limit")) : 10;
+  const search = params.get("search") ?? "";
+  const [searchInput, setSearchInput] = useState(search);
+  const [rows, setRows] = useState<Member[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [preview, setPreview] = useState<Member | null>(null);
+  const [returning, setReturning] = useState(false);
+  const [returnNote, setReturnNote] = useState("");
+  const [result, setResult] = useState<BulkResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const updateParams = (values: Record<string, string | null>) => { const next = new URLSearchParams(params); Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); setParams(next); };
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { const response = await api.get("/members", { params: { status: "PENDING", page, limit, search: search || undefined } }); setRows(response.data.data); setTotal(response.data.pagination.total); setTotalPages(Math.max(1, response.data.pagination.totalPages)); setSelected((current) => current.filter((id) => response.data.data.some((item: Member) => item.id === id))); setPreview((current) => response.data.data.find((item: Member) => item.id === current?.id) ?? null); }
+    catch { setError("Pending members could not be loaded."); }
+    finally { setLoading(false); }
+  }, [limit, page, search]);
+
+  useEffect(() => { void load(); }, [load]);
+  const allSelected = rows.length > 0 && rows.every((item) => selected.includes(item.id));
+  const toggleAll = () => setSelected(allSelected ? [] : rows.map((item) => item.id));
+  const toggle = (id: number) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const submitSearch = (event: FormEvent) => { event.preventDefault(); updateParams({ search: searchInput.trim() || null, page: null }); };
+
+  const bulkApprove = async (memberIds = selected) => {
+    if (!memberIds.length || !window.confirm(`Approve ${memberIds.length} selected member${memberIds.length === 1 ? "" : "s"}? Members without a Report 20 match will become Flagged.`)) return;
+    setBusy(true); setError(""); setResult(null);
+    try { const response = await api.post("/members/bulk/approve", { memberIds }); setResult(response.data.data); setSelected([]); setPreview(null); await load(); }
+    catch (requestError: any) { setError(requestError?.response?.data?.message || "The selected members could not be approved."); }
+    finally { setBusy(false); }
+  };
+
+  const bulkReturn = async () => {
+    if (!selected.length || !returnNote.trim()) return;
+    setBusy(true); setError(""); setResult(null);
+    try { const response = await api.post("/members/bulk/return", { memberIds: selected, note: returnNote.trim() }); setResult(response.data.data); setSelected([]); setReturning(false); setReturnNote(""); await load(); }
+    catch (requestError: any) { setError(requestError?.response?.data?.message || "The selected members could not be returned."); }
+    finally { setBusy(false); }
+  };
+
+  return <main className="approvals-page">
+    <header className="approvals-heading"><div><p>Member administration</p><h1>Pending approvals</h1><span>{total} member{total === 1 ? "" : "s"} waiting for review</span></div><div className="approvals-key"><Signal good yes="Ready" no="Needs attention"/><Signal good={false} yes="" no="Review required"/></div></header>
+    <div className="approvals-toolbar"><form onSubmit={submitSearch}><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search pending members"/><button>Search</button></form><label>Show <select value={limit} onChange={(event) => updateParams({ limit: event.target.value, page: null })}>{[5,10,20].map((size) => <option key={size}>{size}</option>)}</select></label></div>
+    {error && <div className="approvals-alert" role="alert">{error}</div>}
+    {result && <div className={`approvals-result ${result.failed ? "partial" : "success"}`}><strong>{result.succeeded} of {result.requested} completed</strong><span>{result.failed ? `${result.failed} member${result.failed === 1 ? "" : "s"} could not be processed.` : "All selected members were processed successfully."}</span>{result.failed > 0 && <ul>{result.results.filter((item) => !item.success).map((item) => <li key={item.memberId}>{item.memberName || `Member ${item.memberId}`}: {item.message}</li>)}</ul>}<button onClick={() => setResult(null)}>Dismiss</button></div>}
+
+    {selected.length > 0 && <section className="approvals-selection"><div><strong>{selected.length}</strong><span>selected</span></div><button disabled={busy} className="approve" onClick={() => void bulkApprove()}>Approve selected</button><button disabled={busy} className="return" onClick={() => setReturning(true)}>Return selected</button><button className="clear" onClick={() => setSelected([])}>Clear</button></section>}
+    {returning && <section className="approvals-return"><div><h2>Return {selected.length} member{selected.length === 1 ? "" : "s"} for correction</h2><p>The same note will be sent to every selected member.</p></div><textarea autoFocus rows={3} maxLength={500} value={returnNote} onChange={(event) => setReturnNote(event.target.value)} placeholder="Explain what must be corrected"/><footer><span>{returnNote.length}/500</span><button onClick={() => { setReturning(false); setReturnNote(""); }}>Cancel</button><button disabled={busy || returnNote.trim().length < 2} onClick={() => void bulkReturn()}>{busy ? "Returning…" : "Confirm return"}</button></footer></section>}
+
+    <div className={`approvals-layout ${preview ? "has-preview" : ""}`}>
+      <section className="approvals-table-shell">
+        {loading ? <div className="approvals-skeleton">{Array.from({ length: limit }).map((_, index) => <span key={index}/>)}</div> : rows.length === 0 ? <div className="approvals-empty"><div>✓</div><h2>No pending approvals</h2><p>New enrollments awaiting review will appear here.</p><Link to="/members">View all members</Link></div> : <div className="approvals-table-wrap"><table><thead><tr><th><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all on this page"/></th><th>Member</th><th>Location</th><th>Eligibility signals</th><th>Household</th><th>Review</th></tr></thead><tbody>{rows.map((member) => { const identityComplete = Boolean(member.dateOfBirth && member.ghanaCardId); return <tr key={member.id} className={selected.includes(member.id) ? "selected" : ""}><td><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggle(member.id)} aria-label={`Select ${member.fullName}`}/></td><td><Link to={`/members/${member.id}`}><strong>{member.fullName}</strong><span>{member.controllerId} · {member.school}</span></Link></td><td><strong>{member.district.name}</strong><span>{member.district.region.name}</span></td><td><div className="approval-signals"><Signal good={member.report20Matched} yes="Report 20 matched" no="Report 20 unmatched"/><Signal good={Boolean(member.phoneVerifiedAt)} yes="Phone verified" no="Phone unverified"/><Signal good={identityComplete} yes="Identity complete" no="Identity incomplete"/></div></td><td><strong>{member.beneficiaries.length} beneficiar{member.beneficiaries.length === 1 ? "y" : "ies"}</strong><span>{member.spouse ? "Spouse recorded" : "No spouse"}</span></td><td><button className="approval-review-button" onClick={() => setPreview(member)} aria-label={`Review ${member.fullName}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg><span>Review</span></button></td></tr>; })}</tbody></table></div>}
+      </section>
+
+      {preview && <aside className="approval-preview"><header><div><span>Quick review</span><h2>{preview.fullName}</h2><p>{preview.controllerId}</p></div><button onClick={() => setPreview(null)}>×</button></header><dl><div><dt>School</dt><dd>{preview.school}</dd></div><div><dt>District</dt><dd>{preview.district.name}<small>{preview.district.region.name}</small></dd></div><div><dt>Ghana Card</dt><dd>{preview.ghanaCardId || "Not provided"}</dd></div><div><dt>Date of birth</dt><dd>{preview.dateOfBirth ? new Date(preview.dateOfBirth).toLocaleDateString() : "Not provided"}</dd></div><div><dt>Enrolled by</dt><dd>{preview.createdBy?.fullName || "System"}</dd></div></dl><div className="approval-preview__signals"><Signal good={preview.report20Matched} yes="Report 20 matched" no="Will become Flagged"/><Signal good={Boolean(preview.phoneVerifiedAt)} yes="Phone verified" no="Phone unverified"/></div><footer><Link to={`/members/${preview.id}`}>Open full profile</Link><button onClick={() => void bulkApprove([preview.id])}>Approve member</button><button onClick={() => { setSelected([preview.id]); setReturning(true); }}>Return</button></footer></aside>}
+    </div>
+    {!loading && total > 0 && <footer className="approvals-pagination"><span>Showing {(page-1)*limit+1} to {Math.min(page*limit,total)} of {total}</span><div><button disabled={page===1} onClick={() => updateParams({page:String(page-1)})}>Previous</button><span>Page {page} of {totalPages}</span><button disabled={page>=totalPages} onClick={() => updateParams({page:String(page+1)})}>Next</button></div></footer>}
+  </main>;
+}

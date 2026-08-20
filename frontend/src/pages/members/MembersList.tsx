@@ -1,213 +1,113 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
+import { useDistricts } from "@/lib/useDistricts";
+import "./MembersList.css";
 
-type MemberRow = {
-  id: number;
-  controllerId: string;
-  fullName: string;
-  school: string;
-  status: string;
-  district: { id: number; name: string; region: { id: number; name: string } };
-};
-
+type MemberRow = { id: number; controllerId: string; fullName: string; school: string; status: string; createdAt: string; spouse: { fullName: string } | null; district: { id: number; name: string; region: { id: number; name: string } } };
 const STATUSES = ["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"];
+const PAGE_TITLES: Record<string, string> = { PENDING: "Pending approvals", REMOVED: "Removed members" };
 
-const STATUS_STYLES: Record<string, string> = {
-  ACTIVE: "bg-[#dff7ee] text-[#17805f]",
-  PENDING: "bg-[#fbf0dd] text-[#b9791a]",
-  FLAGGED: "bg-[#fbe9e9] text-[#c23b3b]",
-  RETURNED: "bg-[#eeebfb] text-[#6e5ad6]",
-  REMOVED: "bg-[#eef0fa] text-[#5b6472]",
-};
+function Status({ value }: { value: string }) {
+  return <span className={`members-status members-status--${value.toLowerCase()}`}><i />{value.charAt(0) + value.slice(1).toLowerCase()}</span>;
+}
 
-const PAGE_TITLES: Record<string, string> = {
-  PENDING: "Pending Approvals",
-  REMOVED: "Removed / Exits",
-};
+function ActionMenu({ member }: { member: MemberRow }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const reposition = () => setOpen(false);
+    document.addEventListener("click", close);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => { document.removeEventListener("click", close); window.removeEventListener("resize", reposition); window.removeEventListener("scroll", reposition, true); };
+  }, [open]);
+
+  const toggle = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuHeight = ["PENDING", "RETURNED", "FLAGGED"].includes(member.status) ? 124 : 88;
+      setPosition({ top: rect.bottom + menuHeight > window.innerHeight ? rect.top - menuHeight - 5 : rect.bottom + 5, left: Math.max(8, rect.right - 154) });
+    }
+    setOpen((current) => !current);
+  };
+
+  return <><button ref={buttonRef} type="button" className="members-action-trigger" onClick={toggle} aria-expanded={open} aria-label={`Actions for ${member.fullName}`}>•••</button>{open && createPortal(<div className="members-action-popover" style={position} onClick={(event) => event.stopPropagation()} role="menu"><Link to={`/members/${member.id}`} role="menuitem">View profile</Link><Link to={`/members/${member.id}?edit=member`} role="menuitem">Edit member</Link>{["PENDING", "RETURNED", "FLAGGED"].includes(member.status) && <Link to={`/members/${member.id}#workflow`} role="menuitem">Review workflow</Link>}</div>, document.body)}</>;
+}
 
 export default function MembersList() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialStatus = searchParams.get("status") ?? "";
-
+  const [params, setParams] = useSearchParams();
+  const { districts } = useDistricts();
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [status, setStatus] = useState(initialStatus);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const limit = 20;
+  const [searchInput, setSearchInput] = useState(params.get("search") ?? "");
+  const [selected, setSelected] = useState<number[]>([]);
 
-  const pageTitle = PAGE_TITLES[status] ?? "All Members";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const search = params.get("search") ?? "";
+  const status = params.get("status") ?? "";
+  const districtId = params.get("districtId") ?? "";
+  const limit = [5, 10, 20].includes(Number(params.get("limit"))) ? Number(params.get("limit")) : 10;
+  const filtered = Boolean(search || status || districtId);
+  const pageTitle = PAGE_TITLES[status] ?? "Members";
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const res = await api.get("/members", {
-          params: { page, limit, search: search || undefined, status: status || undefined },
-        });
-        if (!cancelled) {
-          setRows(res.data.data);
-          setTotal(res.data.pagination.total);
-          setTotalPages(res.data.pagination.totalPages);
-        }
-      } catch {
-        if (!cancelled) setError("Unable to load members.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [page, search, status]);
+  const regions = useMemo(() => Array.from(new Set(districts.map((item) => item.region.name))).sort(), [districts]);
+  const selectedDistrict = districts.find((item) => String(item.id) === districtId);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    setSearch(searchInput.trim());
+  const updateParams = (values: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+    setParams(next);
   };
 
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[25px] font-extrabold text-[#1e2761]">
-            {pageTitle}
-          </h1>
-          <div className="mt-1 text-[12.5px] text-[#5b6472]">
-            {total} member{total === 1 ? "" : "s"}
-          </div>
-        </div>
-      </div>
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const response = await api.get("/members", { params: { page, limit, search: search || undefined, status: status || undefined, districtId: districtId || undefined } });
+      setRows(response.data.data); setTotal(response.data.pagination.total); setTotalPages(Math.max(1, response.data.pagination.totalPages));
+    } catch { setError("Members could not be loaded. Check your connection and try again."); }
+    finally { setLoading(false); }
+  }, [districtId, limit, page, search, status]);
 
-      <div className="mb-4 flex flex-wrap items-center gap-2.5">
-        <form onSubmit={handleSearchSubmit} className="flex flex-1 min-w-52 gap-2">
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search name, controller ID, Ghana Card, school…"
-            className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#17805f]"
-          >
-            Search
-          </button>
-        </form>
+  useEffect(() => { void load(); }, [load]);
 
-        <select
-          value={status}
-          onChange={(e) => {
-            const next = e.target.value;
-            setStatus(next);
-            setPage(1);
-            setSearchParams(next ? { status: next } : {});
-          }}
-          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
+  const submitSearch = (event: FormEvent) => { event.preventDefault(); updateParams({ search: searchInput.trim() || null, page: null }); };
+  const clearFilters = () => { setSearchInput(""); setParams({}); };
+  const allSelected = rows.length > 0 && rows.every((member) => selected.includes(member.id));
+  const toggleAll = () => setSelected(allSelected ? selected.filter((id) => !rows.some((member) => member.id === id)) : Array.from(new Set([...selected, ...rows.map((member) => member.id)])));
+  const toggleOne = (id: number) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const formatEnrolled = (value: string) => new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-[12.5px]">
-            <thead>
-              <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
-                <th className="px-4 py-2.5">Controller ID</th>
-                <th className="px-4 py-2.5">Name</th>
-                <th className="px-4 py-2.5">School</th>
-                <th className="px-4 py-2.5">District / Region</th>
-                <th className="px-4 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-[#5b6472]">
-                    Loading…
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-[#c23b3b]">
-                    {error}
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-[#5b6472]">
-                    No members found.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((m) => (
-                  <tr key={m.id} className="border-b border-[#e5e9f0] last:border-0 hover:bg-[#fafbfd]">
-                    <td className="px-4 py-2.5">
-                      <Link
-                        to={`/members/${m.id}`}
-                        className="font-semibold text-[#1e2761] hover:underline"
-                      >
-                        {m.controllerId}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{m.fullName}</td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{m.school}</td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">
-                      {m.district.name} · {m.district.region.name}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[m.status] ?? ""}`}
-                      >
-                        {m.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  return <div className="members-page">
+    <header className="members-heading"><div><p>Member administration</p><h1>{pageTitle}</h1><span>{loading ? "Loading records" : `${total.toLocaleString()} ${total === 1 ? "member" : "members"} in your access scope`}</span></div><div><Link className="members-button members-button--quiet" to="/members/upload">Import file</Link><Link className="members-button members-button--primary" to="/members/new"><b>+</b> Add member</Link></div></header>
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    <section className="members-toolbar" aria-label="Member filters">
+      <form onSubmit={submitSearch} className="members-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search name, Controller ID, Ghana Card or school" aria-label="Search members"/><button type="submit">Search</button></form>
+      <select value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })} aria-label="Filter by status"><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select>
+      <select value={districtId} onChange={(event) => updateParams({ districtId: event.target.value || null, page: null })} aria-label="Filter by district"><option value="">All districts</option>{regions.map((region) => <optgroup key={region} label={region}>{districts.filter((item) => item.region.name === region).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</select>
+      <label className="members-page-size"><span>Show</span><select value={limit} onChange={(event) => updateParams({ limit: event.target.value, page: null })} aria-label="Rows per page">{[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+      {filtered && <button className="members-clear" type="button" onClick={clearFilters}>Clear filters</button>}
+    </section>
+
+    {selectedDistrict && <div className="members-filter-note">Showing members in <strong>{selectedDistrict.name}</strong>, {selectedDistrict.region.name}</div>}
+
+    <section className="members-table-shell">
+      {loading ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error ? <div className="members-state members-state--error"><div>!</div><h2>Could not load members</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div> : rows.length === 0 ? <div className="members-state"><div className="members-state__icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6m-3-3h6"/></svg></div><h2>{filtered ? "No members match these filters" : "Your member register is empty"}</h2><p>{filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."}</p>{filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>}</div> : <>
+        {selected.length > 0 && <div className="members-selection"><strong>{selected.length}</strong> selected <button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
+        <div className="members-table-wrap"><table className="members-table"><thead><tr><th className="members-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all members on this page" /></th><th className="members-number">#</th><th>Member</th><th>Controller ID</th><th>School</th><th>District and region</th><th>Spouse</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map((member, index) => <tr key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><td className="members-check"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /></td><td className="members-number">{(page - 1) * limit + index + 1}</td><td><Link to={`/members/${member.id}`}><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><span><strong>{member.fullName}</strong><small>Enrolled {formatEnrolled(member.createdAt)}</small></span></Link></td><td><code>{member.controllerId}</code></td><td title={member.school}>{member.school}</td><td><strong className="members-location">{member.district.name}</strong><small className="members-region">{member.district.region.name}</small></td><td>{member.spouse ? <span className="members-spouse"><strong>{member.spouse.fullName}</strong><small>Recorded</small></span> : <span className="members-none">Not recorded</span>}</td><td><Status value={member.status}/></td><td><ActionMenu member={member}/></td></tr>)}</tbody></table></div>
+        <div className="members-cards">{rows.map((member, index) => <article key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><div><Link to={`/members/${member.id}`}><strong>{(page - 1) * limit + index + 1}. {member.fullName}</strong></Link><small>{member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}</small><span>{member.district.name}, {member.district.region.name}</span><span>{member.spouse?.fullName ? `Spouse: ${member.spouse.fullName}` : "Spouse not recorded"}</span></div><Status value={member.status}/></article>)}</div>
+      </>}
+    </section>
+
+    {!loading && !error && total > 0 && <footer className="members-pagination"><span>Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}</span><div><button disabled={page === 1} onClick={() => updateParams({ page: String(page - 1) })}>Previous</button><span>Page {page} of {totalPages}</span><button disabled={page >= totalPages} onClick={() => updateParams({ page: String(page + 1) })}>Next</button></div></footer>}
+  </div>;
 }

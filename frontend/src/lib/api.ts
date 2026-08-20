@@ -1,5 +1,9 @@
 import axios from "axios";
 
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const apiOrigin = (configuredApiUrl || "http://localhost:4000").replace(/\/+$/, "");
+const apiBaseUrl = apiOrigin.endsWith("/api") ? apiOrigin : `${apiOrigin}/api`;
+
 const PUBLIC_PATHS = ["/login", "/reset-password", "/change-password"];
 
 const isPublicPath = (pathname: string) =>
@@ -8,7 +12,7 @@ const isPublicPath = (pathname: string) =>
   pathname.startsWith("/setup-account/");
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL + "/api",
+  baseURL: apiBaseUrl,
   withCredentials: true,
 });
 

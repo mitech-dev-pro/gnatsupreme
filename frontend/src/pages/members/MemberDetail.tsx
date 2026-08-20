@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const REMOVAL_REASONS = ["DEATH", "DISABILITY", "RETIREMENT", "RESIGNATION", "OTHER"];
@@ -71,11 +72,11 @@ function toDateInput(iso: string | null) {
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
+    <div className="member-data-field">
+      <dt>
         {label}
       </dt>
-      <dd className="mt-0.5 text-[13px] font-medium text-[#171b26]">{value}</dd>
+      <dd>{value}</dd>
     </div>
   );
 }
@@ -196,6 +197,7 @@ export default function MemberDetail() {
   };
 
   const removeSpouse = async () => {
+    if (!window.confirm("Remove this spouse from the member record?")) return;
     setBusy(true);
     setActionError("");
     try {
@@ -229,6 +231,7 @@ export default function MemberDetail() {
   };
 
   const removeBeneficiary = async (beneficiaryId: number) => {
+    if (!window.confirm("Remove this beneficiary from the member record?")) return;
     setBusy(true);
     setActionError("");
     try {
@@ -255,6 +258,7 @@ export default function MemberDetail() {
   };
 
   const approve = async () => {
+    if (!member || !window.confirm(`Approve ${member.fullName}? The resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`)) return;
     setBusy(true);
     setActionError("");
     try {
@@ -304,10 +308,10 @@ export default function MemberDetail() {
   };
 
   return (
-    <div>
+    <div className="member-record">
       <Link
         to="/members"
-        className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+        className="member-record__back"
       >
         &larr; All Members
       </Link>
@@ -320,8 +324,11 @@ export default function MemberDetail() {
         </div>
       ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <header className="member-record__header">
             <div>
+              <div className="member-record__avatar">{member.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div>
+              <div>
+              <p>Member profile</p>
               <h1 className="text-[22px] font-extrabold text-[#1e2761]">
                 {member.fullName}
               </h1>
@@ -329,10 +336,18 @@ export default function MemberDetail() {
                 Controller ID {member.controllerId} · {member.district.name},{" "}
                 {member.district.region.name}
               </div>
+              </div>
             </div>
-            <span className="rounded-full bg-[#eef0fa] px-3 py-1 text-[12px] font-bold text-[#1e2761]">
+            <span className={`member-record__status member-record__status--${member.status.toLowerCase()}`}>
               {member.status}
             </span>
+          </header>
+
+          <div className="member-record__signals">
+            <div><span className={member.phoneVerifiedAt ? "ok" : "warn"}>{member.phoneVerifiedAt ? "✓" : "!"}</span><p>Phone verification<strong>{member.phoneVerifiedAt ? "Verified" : "Not verified"}</strong></p></div>
+            <div><span className={member.report20Matched ? "ok" : "warn"}>{member.report20Matched ? "✓" : "!"}</span><p>Report 20<strong>{member.report20Matched ? "Matched" : "Not matched"}</strong></p></div>
+            <div><span className="neutral">{member.beneficiaries.length}</span><p>Beneficiaries<strong>{member.beneficiaries.length === 1 ? "1 person" : `${member.beneficiaries.length} people`}</strong></p></div>
+            <div><span className="neutral">{member.spouse ? "1" : "0"}</span><p>Spouse<strong>{member.spouse ? "Recorded" : "Not recorded"}</strong></p></div>
           </div>
 
           {actionError && (
@@ -341,8 +356,8 @@ export default function MemberDetail() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
+          <div className="member-record__grid">
+            <div className="member-panel member-panel--details">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Member Details
@@ -440,7 +455,7 @@ export default function MemberDetail() {
               )}
             </div>
 
-            <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
+            <div className="member-panel member-panel--spouse">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">Spouse</h2>
                 {!editingSpouse && (
@@ -523,7 +538,7 @@ export default function MemberDetail() {
               )}
             </div>
 
-            <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5 lg:col-span-2">
+            <div className="member-panel member-panel--beneficiaries">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Beneficiaries ({member.beneficiaries.length}/10)
@@ -605,12 +620,13 @@ export default function MemberDetail() {
                   No beneficiaries on record.
                 </div>
               ) : (
-                <table className="w-full text-left text-[12.5px]">
+                <table className="member-beneficiary-table">
                   <thead>
                     <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                       <th className="py-2">Name</th>
                       <th className="py-2">Relationship</th>
                       <th className="py-2">Date of Birth</th>
+                      <th className="py-2">Trustee</th>
                       <th className="py-2" />
                     </tr>
                   </thead>
@@ -620,6 +636,7 @@ export default function MemberDetail() {
                         <td className="py-2 text-[#171b26]">{b.fullName}</td>
                         <td className="py-2 text-[#5b6472]">{b.relationship}</td>
                         <td className="py-2 text-[#5b6472]">{formatDate(b.dateOfBirth)}</td>
+                        <td className="py-2 text-[#5b6472]">{b.trusteeName ? <><strong className="member-trustee-name">{b.trusteeName}</strong><small className="member-trustee-card">{b.trusteeGhanaCardId || "No Ghana Card"}</small></> : "Not required"}</td>
                         <td className="py-2 text-right">
                           {member.beneficiaries.length > 1 && (
                             <button
@@ -639,10 +656,8 @@ export default function MemberDetail() {
               )}
             </div>
 
-            <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-5 lg:col-span-2">
-              <h2 className="mb-4 text-[15px] font-bold text-[#1e2761]">
-                Workflow
-              </h2>
+            <div id="workflow" className="member-panel member-panel--workflow">
+              <div className="member-workflow-heading"><div><h2>Workflow</h2><p>Review eligibility, update status, and view the decision history.</p></div><span className={`member-record__status member-record__status--${member.status.toLowerCase()}`}>{member.status}</span></div>
 
               <div className="mb-5 flex flex-wrap gap-2">
                 {member.phone && !member.phoneVerifiedAt && (
@@ -775,7 +790,7 @@ export default function MemberDetail() {
                   No workflow events yet.
                 </div>
               ) : (
-                <ul className="divide-y divide-[#e5e9f0]">
+                <ul className="member-workflow-history">
                   {events.map((event) => (
                     <li key={event.id} className="py-2.5">
                       <div className="flex items-center justify-between text-[12.5px]">

@@ -21,7 +21,8 @@ const baseMembersItems: NavSubItem[] = [
   { label: "All Members", target: "all", to: "/members" },
   { label: "Add Member", target: "add", to: "/members/new" },
   { label: "Upload Members", target: "upload", to: "/members/upload" },
-  { label: "Pending Approvals", target: "pending", to: "/members?status=PENDING" },
+  { label: "Pending Approvals", target: "pending", to: "/approvals" },
+  { label: "Change Requests", target: "changes", to: "/change-requests" },
   { label: "Removed / Exits", target: "removed", to: "/members?status=REMOVED" },
 ];
 
@@ -112,7 +113,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     : baseMembersItems;
   const [membersExpanded, setMembersExpanded] = useState(() =>
     location.pathname.startsWith("/members") ||
-    location.pathname.startsWith("/imports/report20"),
+    location.pathname.startsWith("/imports/report20") ||
+    location.pathname.startsWith("/change-requests") ||
+    location.pathname.startsWith("/approvals"),
   );
 
   return (
@@ -129,8 +132,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          <div className="flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-[9px] bg-[#1f9c7c] text-[16px] font-extrabold text-white">
-            SC
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
+            <img
+              src="/brand/gnat-logo.png?v=1"
+              alt="GNAT"
+              className="h-full w-full object-contain"
+            />
           </div>
           <div className="leading-[1.15]">
             <div className="text-[14.5px] font-bold text-white">
@@ -262,7 +269,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
           GNAT Supreme Care &copy; 2026
           <br />
-          Underwritten with miLife Insurance
+          Underwritten by miLife Insurance
         </div>
       </aside>
     </>

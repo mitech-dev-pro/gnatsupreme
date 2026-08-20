@@ -23,7 +23,11 @@ const baseMembersItems: NavSubItem[] = [
   { label: "Upload Members", target: "upload", to: "/members/upload" },
   { label: "Pending Approvals", target: "pending", to: "/approvals" },
   { label: "Change Requests", target: "changes", to: "/change-requests" },
-  { label: "Removed / Exits", target: "removed", to: "/members?status=REMOVED" },
+  {
+    label: "Removed / Exits",
+    target: "removed",
+    to: "/members?status=REMOVED",
+  },
 ];
 
 const report20Item: NavSubItem = {
@@ -36,7 +40,12 @@ const soonItems: { label: string; icon: ReactNode }[] = [
   {
     label: "Transfers",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <path d="M7 7h11l-3-3M17 17H6l3 3" />
       </svg>
     ),
@@ -44,7 +53,12 @@ const soonItems: { label: string; icon: ReactNode }[] = [
   {
     label: "Claims",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <path d="M9 12.5 11 14.5 15.5 9" />
         <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
       </svg>
@@ -53,27 +67,35 @@ const soonItems: { label: string; icon: ReactNode }[] = [
   {
     label: "Reports",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <path d="M3 12h4l2.5 6 4-14L16 12h5" />
       </svg>
     ),
   },
-  {
-    label: "Global Settings",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-      </svg>
-    ),
-  },
 ];
+
+const settingsIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </svg>
+);
 
 const adminItems: { label: string; lock: string; icon: ReactNode }[] = [
   {
     label: "Setup",
     lock: "Regional+",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <path d="M10.6 3.5h2.8l.5 2.4a7 7 0 0 1 1.8 1l2.3-.9 1.4 2.4-1.8 1.6a7 7 0 0 1 0 2.1l1.8 1.6-1.4 2.4-2.3-.9a7 7 0 0 1-1.8 1l-.5 2.4h-2.8l-.5-2.4a7 7 0 0 1-1.8-1l-2.3.9-1.4-2.4 1.8-1.6a7 7 0 0 1 0-2.1L4.6 8.4 6 6l2.3.9a7 7 0 0 1 1.8-1z" />
         <circle cx="12" cy="12" r="2.6" />
       </svg>
@@ -83,7 +105,12 @@ const adminItems: { label: string; lock: string; icon: ReactNode }[] = [
     label: "System",
     lock: "National",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <rect x="3" y="4.5" width="18" height="12" rx="2" />
         <path d="M8 20h8M12 16.5V20" />
       </svg>
@@ -111,11 +138,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const membersItems = canImportReport20
     ? [...baseMembersItems, report20Item]
     : baseMembersItems;
-  const [membersExpanded, setMembersExpanded] = useState(() =>
-    location.pathname.startsWith("/members") ||
-    location.pathname.startsWith("/imports/report20") ||
-    location.pathname.startsWith("/change-requests") ||
-    location.pathname.startsWith("/approvals"),
+  const [membersExpanded, setMembersExpanded] = useState(
+    () =>
+      location.pathname.startsWith("/members") ||
+      location.pathname.startsWith("/imports/report20") ||
+      location.pathname.startsWith("/change-requests") ||
+      location.pathname.startsWith("/approvals"),
   );
 
   return (
@@ -123,7 +151,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div
         onClick={onClose}
         className={`fixed inset-0 z-75 bg-[rgba(23,27,38,0.45)] transition-opacity md:hidden ${
-          isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          isOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
         }`}
       />
       <aside
@@ -199,7 +229,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </button>
             <div
               className={`overflow-hidden transition-[max-height] duration-200 ${
-                membersExpanded ? "max-h-60" : "max-h-0"
+                membersExpanded ? "max-h-70" : "max-h-0"
               }`}
             >
               {membersItems.map((item) =>
@@ -247,6 +277,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className={navSoonBadge}>Soon</span>
             </span>
           ))}
+
+          <NavLink
+            to="/settings"
+            onClick={onClose}
+            className={({ isActive }) =>
+              `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
+            }
+          >
+            <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
+              {settingsIcon}
+            </span>
+            Global Settings
+          </NavLink>
 
           <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-[#7a81a8]">
             ADMINISTRATION

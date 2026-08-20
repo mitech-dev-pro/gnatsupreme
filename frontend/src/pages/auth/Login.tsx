@@ -45,11 +45,19 @@ export default function Login() {
   const [memberError, setMemberError] = useState("");
   const [memberSubmitting, setMemberSubmitting] = useState(false);
 
-  if (!isLoading && user) {
+  if (isLoading || memberLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)]">
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+      </div>
+    );
+  }
+
+  if (user) {
     return <Navigate to={searchParams.get("redirect") || "/"} replace />;
   }
 
-  if (!memberLoading && member) {
+  if (member) {
     return <Navigate to="/member" replace />;
   }
 

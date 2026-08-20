@@ -16,6 +16,7 @@ import Report20Review from "@/pages/imports/Report20Review";
 import MemberHome from "@/pages/member/MemberHome";
 import ChangeRequests from "@/pages/members/ChangeRequests";
 import PendingApprovals from "@/pages/members/PendingApprovals";
+import Settings from "@/pages/Settings";
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
                 path="/imports/report20/:id"
                 element={<Report20Review />}
               />
+              <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>
 

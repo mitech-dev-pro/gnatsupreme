@@ -32,12 +32,31 @@ type BenefitPlan = {
   benefits: BenefitLine[];
 } | null;
 
+type MemberNotification = {
+  id: number;
+  title: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+function timeAgo(iso: string) {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export default function MemberHome() {
   const { member, logout } = useMemberAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<MemberNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,10 +71,29 @@ export default function MemberHome() {
         if (!cancelled) setLoading(false);
       }
     })();
+    (async () => {
+      try {
+        const res = await api.get("/member-portal/notifications");
+        if (!cancelled) {
+          setNotifications(res.data.data);
+          setUnreadCount(res.data.unreadCount);
+        }
+      } catch {
+        // notifications are supplementary — a failed fetch shouldn't block the page
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const markAllNotificationsRead = async () => {
+    await api.patch("/member-portal/notifications/read-all");
+    setNotifications((prev) =>
+      prev.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })),
+    );
+    setUnreadCount(0);
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -184,6 +222,49 @@ export default function MemberHome() {
                 </ul>
               </div>
             )}
+
+            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[15px] font-bold text-[#1e2761]">
+                  Notifications
+                </h2>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllNotificationsRead}
+                    className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {notifications.length === 0 ? (
+                <div className="text-[13px] text-[#5b6472]">
+                  No notifications yet.
+                </div>
+              ) : (
+                <ul className="divide-y divide-[#e5e9f0]">
+                  {notifications.slice(0, 8).map((item) => (
+                    <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#171b26]">
+                          {!item.readAt && (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1f9c7c]" />
+                          )}
+                          {item.title}
+                        </div>
+                        <div className="mt-0.5 text-[12px] text-[#5b6472]">
+                          {item.message}
+                        </div>
+                      </div>
+                      <div className="whitespace-nowrap text-[11px] text-[#9aa2c4]">
+                        {timeAgo(item.createdAt)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         ) : (
           <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#5b6472]">

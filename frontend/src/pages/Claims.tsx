@@ -3,7 +3,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
-import Button from "@/components/ui/Button";
+import { SelectField } from "@/components/ui/FormField";
+import Pagination from "@/components/ui/Pagination";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 type ClaimSubmission = {
   id: number;
@@ -33,12 +35,12 @@ const STATUSES = [
   "SYNCHRONIZED",
 ];
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: "bg-[#fbf0dd] text-[#b9791a]",
-  REDIRECT_READY: "bg-[#eef0fa] text-[#1e2761]",
-  SUBMITTED: "bg-[#eef0fa] text-[#1e2761]",
-  FAILED: "bg-[#fbe9e9] text-[#c23b3b]",
-  SYNCHRONIZED: "bg-[#dff7ee] text-[#17805f]",
+const STATUS_TONES: Record<string, "info" | "success" | "warning" | "danger"> = {
+  PENDING: "warning",
+  REDIRECT_READY: "info",
+  SUBMITTED: "info",
+  FAILED: "danger",
+  SYNCHRONIZED: "success",
 };
 
 function formatDate(iso: string | null) {
@@ -136,13 +138,13 @@ export default function Claims() {
 
       {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
-      <div className="mb-4">
-        <select
+      <div className="mb-4 max-w-52">
+        <SelectField
+          label="Submission status"
           value={status}
           onChange={(e) =>
             updateParams({ status: e.target.value || null, page: null })
           }
-          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
         >
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
@@ -150,7 +152,7 @@ export default function Claims() {
               {s.replace("_", " ")}
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[#e5e9f0] bg-white">
@@ -202,11 +204,9 @@ export default function Claims() {
                       {row.externalClaimId ?? "—"}
                     </td>
                     <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[row.status] ?? ""}`}
-                      >
+                      <StatusBadge tone={STATUS_TONES[row.status] ?? "info"}>
                         {row.status.replace("_", " ")}
-                      </span>
+                      </StatusBadge>
                       {row.status === "FAILED" && row.errorMessage && (
                         <div className="mt-0.5 text-[11px] text-[#c23b3b]">
                           {row.errorMessage}
@@ -227,31 +227,13 @@ export default function Claims() {
         </div>
       </div>
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">
-            Page {page} of {totalPages} · {total} total
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => updateParams({ page: String(page - 1) })}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => updateParams({ page: String(page + 1) })}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        totalItems={total}
+        itemLabel="submissions"
+        onPageChange={(nextPage) => updateParams({ page: String(nextPage) })}
+      />
     </div>
   );
 }

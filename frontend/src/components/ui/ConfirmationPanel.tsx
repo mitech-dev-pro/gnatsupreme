@@ -1,0 +1,4 @@
+import Button from "@/components/ui/Button";
+export default function ConfirmationPanel({ title, description, confirmLabel, busy = false, onConfirm, onCancel }: { title: string; description: string; confirmLabel: string; busy?: boolean; onConfirm: () => void; onCancel: () => void }) {
+  return <section className="rounded-[12px] border border-(--danger-border) bg-(--danger-soft) p-4" aria-labelledby="confirmation-title"><h2 id="confirmation-title" className="text-[14px] font-bold text-(--text-strong)">{title}</h2><p className="mt-1 max-w-[65ch] text-[12.5px] leading-relaxed text-(--text-muted)">{description}</p><div className="mt-4 flex flex-wrap gap-2"><Button variant="danger" loading={busy} loadingLabel="Resetting…" onClick={onConfirm}>{confirmLabel}</Button><Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button></div></section>;
+}

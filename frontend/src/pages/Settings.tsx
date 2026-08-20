@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import Button from "@/components/ui/Button";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 
 const ELEVATED_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN"];
 
@@ -60,6 +62,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -161,13 +164,13 @@ export default function Settings() {
 
   const handleReset = async () => {
     if (!settings) return;
-    if (!window.confirm("Reset all organization settings to their defaults?")) return;
     setError("");
     setSuccess("");
     setSaving(true);
     try {
       await api.post("/settings/organization/reset", { expectedVersion: settings.version });
       setSuccess("Settings reset to defaults.");
+      setConfirmingReset(false);
       await load();
       await loadHistory();
     } catch (err: any) {
@@ -421,18 +424,26 @@ export default function Settings() {
               >
                 {saving ? "Saving…" : "Save Changes"}
               </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={saving}
-                className="rounded-[9px] border border-[#e5e9f0] px-5 py-2.5 text-[13px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9] disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <Button variant="danger" onClick={() => setConfirmingReset(true)} disabled={saving}>
                 Reset to Defaults
-              </button>
+              </Button>
             </div>
           )}
         </form>
       </fieldset>
+
+      {canEdit && confirmingReset && (
+        <div className="mt-5">
+          <ConfirmationPanel
+            title="Reset organization settings?"
+            description="This restores every organization setting to its system default. Your current configuration will remain visible in change history."
+            confirmLabel="Reset all settings"
+            busy={saving}
+            onConfirm={() => void handleReset()}
+            onCancel={() => setConfirmingReset(false)}
+          />
+        </div>
+      )}
 
       {canEdit && history.length > 0 && (
         <div className="mt-6 rounded-[12px] border border-[#e5e9f0] bg-white p-5">

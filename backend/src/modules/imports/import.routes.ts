@@ -220,6 +220,56 @@ importRouter.get("/:id", async (request, response) => {
   response.json({ success: true, data: job });
 });
 
+importRouter.post("/:id/rerun", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid import ID" });
+    return;
+  }
+  const job = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "REPORT_20", status: "COMPLETED" },
+    include: { file: { select: { originalName: true, storagePath: true, mimeType: true } } },
+  });
+  if (!job) {
+    response.status(404).json({ success: false, message: "Completed Report 20 import not found" });
+    return;
+  }
+  const currentUser = user(response);
+  let rows;
+  try {
+    rows = await parseReport20(path.join(uploadRoot, job.file.storagePath), job.file.mimeType);
+  } catch (error) {
+    response.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "The stored file could not be re-read",
+    });
+    return;
+  }
+
+  try {
+    await reconcileReport20(job.id, rows);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Reconciliation failed";
+    await prisma.importJob.update({ where: { id: job.id }, data: { status: "FAILED", errorMessage: message, completedAt: new Date() } });
+    response.status(500).json({ success: false, message: "Reconciliation could not be completed", importId: job.id });
+    return;
+  }
+
+  const updated = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
+  await recordAudit({
+    request,
+    actor: currentUser,
+    action: "REPORT20_RECONCILE_RERUN",
+    entityType: "IMPORT_JOB",
+    entityId: job.id,
+    description: `Re-ran reconciliation for Report 20 file ${job.file.originalName} against current members`,
+    afterData: updated
+      ? { status: updated.status, matchedRows: updated.matchedRows, changedRows: updated.changedRows, unmatchedRows: updated.unmatchedRows }
+      : undefined,
+  });
+  response.json({ success: true, data: updated });
+});
+
 importRouter.get("/:id/issues", async (request, response) => {
   const params = idSchema.safeParse(request.params);
   const query = issueListSchema.safeParse(request.query);

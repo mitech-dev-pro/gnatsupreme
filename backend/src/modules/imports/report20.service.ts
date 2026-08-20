@@ -132,7 +132,9 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       if (row.districtName && normalizeValue(row.districtName) !== normalizeValue(member.district.name)) issues.push("District differs");
       if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)) issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";
-      matchedMemberIds.add(member.id);
+      // Only a clean match counts toward report20Matched — CHANGED means the row was found but
+      // the data disagrees with what's on file, which still needs staff review before it's "matched".
+      if (status === "MATCHED") matchedMemberIds.add(member.id);
     }
     if (controllerId) seen.add(controllerId);
     counts[status.toLowerCase() as keyof typeof counts] += 1;
@@ -154,6 +156,8 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
 
   await prisma.$transaction(
     [
+      // Clears any rows from a previous run of this same job (see rerunReport20) before inserting fresh ones.
+      prisma.report20Row.deleteMany({ where: { importJobId } }),
       prisma.report20Row.createMany({ data }),
       prisma.member.updateMany({
         where: { id: { in: [...matchedMemberIds] } },

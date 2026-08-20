@@ -91,6 +91,7 @@ export default function MemberDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [checkResult, setCheckResult] = useState("");
   const [busy, setBusy] = useState(false);
 
   const [editing, setEditing] = useState(false);
@@ -252,6 +253,36 @@ export default function MemberDetail() {
       await load();
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to verify phone.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const checkReport20 = async () => {
+    setBusy(true);
+    setActionError("");
+    setCheckResult("");
+    try {
+      const res = await api.post(`/members/${id}/check-report20`);
+      const data = res.data.data;
+      if (data.matched) {
+        setCheckResult(
+          data.alreadyMatched
+            ? "Already matched against the latest Report 20 file."
+            : `Matched against ${data.checkedImport.fileName} — status updated.`,
+        );
+        if (!data.alreadyMatched) await load();
+      } else {
+        setCheckResult(
+          data.checkedImport
+            ? `${data.message} (checked ${data.checkedImport.fileName})`
+            : data.message,
+        );
+      }
+    } catch (err: any) {
+      setActionError(
+        err?.response?.data?.message || "Unable to check against Report 20.",
+      );
     } finally {
       setBusy(false);
     }
@@ -670,16 +701,28 @@ export default function MemberDetail() {
                     Verify Phone
                   </button>
                 )}
-                {canReview && ["PENDING", "RETURNED"].includes(member.status) && (
+                {!member.report20Matched && (
                   <button
                     type="button"
-                    onClick={approve}
+                    onClick={checkReport20}
                     disabled={busy}
-                    className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
+                    className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] disabled:opacity-60"
                   >
-                    {member.report20Matched ? "Approve → Active" : "Approve → Flagged"}
+                    Check against Report 20
                   </button>
                 )}
+                {canReview &&
+                  (["PENDING", "RETURNED"].includes(member.status) ||
+                    (member.status === "FLAGGED" && member.report20Matched)) && (
+                    <button
+                      type="button"
+                      onClick={approve}
+                      disabled={busy}
+                      className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
+                    >
+                      {member.report20Matched ? "Approve → Active" : "Approve → Flagged"}
+                    </button>
+                  )}
                 {canReview && ["PENDING", "FLAGGED"].includes(member.status) && (
                   <button
                     type="button"
@@ -700,14 +743,30 @@ export default function MemberDetail() {
                 )}
               </div>
 
-              {canReview &&
-                !member.report20Matched &&
-                ["PENDING", "RETURNED"].includes(member.status) && (
-                  <div className="-mt-3 mb-5 text-[11.5px] text-[#b9791a]">
-                    This member hasn't matched Report 20, so approving will
-                    set the status to Flagged rather than Active.
-                  </div>
-                )}
+              {checkResult && (
+                <div className="-mt-3 mb-5 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12px] font-semibold text-[#1e2761]">
+                  {checkResult}
+                </div>
+              )}
+
+              {canReview && !member.report20Matched && (
+                <>
+                  {["PENDING", "RETURNED"].includes(member.status) && (
+                    <div className="-mt-3 mb-5 text-[11.5px] text-[#b9791a]">
+                      This member hasn't matched Report 20, so approving will
+                      set the status to Flagged rather than Active.
+                    </div>
+                  )}
+                  {member.status === "FLAGGED" && (
+                    <div className="-mt-3 mb-5 text-[11.5px] text-[#b9791a]">
+                      This member is flagged and still isn't matched against
+                      Report 20 — use "Check against Report 20" above, or
+                      re-run reconciliation on the latest upload, and Approve
+                      will become available.
+                    </div>
+                  )}
+                </>
+              )}
 
               {showReturnForm && (
                 <form

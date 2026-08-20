@@ -91,6 +91,63 @@ memberWorkflowRouter.post("/:id/verify-phone", async (request, response) => {
   response.json({ success: true, data: { id: member.id, phoneVerifiedAt: member.phoneVerifiedAt } });
 });
 
+memberWorkflowRouter.post("/:id/check-report20", async (request, response) => {
+  const params = workflowMemberParamsSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid member ID" });
+    return;
+  }
+  const actor = user(response);
+  const existing = await accessibleMember(params.data.id, actor);
+  if (!existing) {
+    response.status(404).json({ success: false, message: "Member not found" });
+    return;
+  }
+  const latestImport = await prisma.importJob.findFirst({
+    where: { type: "REPORT_20", status: "COMPLETED" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, reportMonth: true, completedAt: true, file: { select: { originalName: true } } },
+  });
+  if (!latestImport) {
+    response.json({ success: true, data: { matched: false, checkedImport: null, message: "No Report 20 file has been uploaded yet." } });
+    return;
+  }
+  const row = await prisma.report20Row.findFirst({
+    where: { importJobId: latestImport.id, controllerId: existing.controllerId },
+    select: { status: true, issues: true },
+  });
+  // Only a clean MATCHED row counts — CHANGED means the row was found but its data disagrees with
+  // what's on file, which still needs staff review (see the issues list) before it's a real match.
+  const found = row?.status === "MATCHED";
+  const checkedImport = { id: latestImport.id, fileName: latestImport.file.originalName, reportMonth: latestImport.reportMonth, completedAt: latestImport.completedAt };
+  if (!found) {
+    const issuesList = Array.isArray(row?.issues) ? (row!.issues as string[]) : [];
+    response.json({
+      success: true,
+      data: {
+        matched: false,
+        checkedImport,
+        rowStatus: row?.status ?? null,
+        issues: row?.issues ?? null,
+        message:
+          row?.status === "CHANGED"
+            ? `This member's Controller ID was found in the latest Report 20 file, but the data differs: ${issuesList.join(", ")}.`
+            : row
+              ? "This member's Controller ID appears in the latest Report 20 file, but the row itself needs attention before it can count as a match."
+              : "This member's Controller ID was not found in the latest Report 20 file.",
+      },
+    });
+    return;
+  }
+  if (existing.report20Matched) {
+    response.json({ success: true, data: { matched: true, alreadyMatched: true, checkedImport } });
+    return;
+  }
+  const member = await prisma.member.update({ where: { id: existing.id }, data: { report20Matched: true } });
+  await recordAudit({ request, actor, action: "MEMBER_REPORT20_MATCHED", entityType: "MEMBER", entityId: member.id, description: `Matched ${member.fullName} against Report 20 file ${checkedImport.fileName}`, afterData: { report20Matched: true, importJobId: latestImport.id }, regionId: existing.district.regionId, districtId: existing.districtId });
+  response.json({ success: true, data: { matched: true, alreadyMatched: false, checkedImport, member } });
+});
+
 memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
   const body = bulkApproveSchema.safeParse(request.body);
   if (!body.success) {
@@ -103,7 +160,8 @@ memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATION
     try {
       const existing = await accessibleMember(memberId, actor);
       if (!existing) { results.push({ memberId, success: false, message: "Member not found or outside your access scope" }); continue; }
-      if (!(existing.status === "PENDING" || existing.status === "RETURNED")) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Member is no longer pending approval" }); continue; }
+      if (!(existing.status === "PENDING" || existing.status === "RETURNED" || existing.status === "FLAGGED")) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Member is no longer pending approval" }); continue; }
+      if (existing.status === "FLAGGED" && !existing.report20Matched) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Not yet matched against Report 20" }); continue; }
       const toStatus = existing.report20Matched ? "ACTIVE" : "FLAGGED";
       const [member, event] = await prisma.$transaction([
         prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
@@ -160,8 +218,12 @@ memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONA
     response.status(404).json({ success: false, message: "Member not found" });
     return;
   }
-  if (!(["PENDING", "RETURNED"] as const).includes(existing.status as "PENDING" | "RETURNED")) {
-    response.status(409).json({ success: false, message: "Only pending or returned members can be approved" });
+  if (!(["PENDING", "RETURNED", "FLAGGED"] as const).includes(existing.status as "PENDING" | "RETURNED" | "FLAGGED")) {
+    response.status(409).json({ success: false, message: "Only pending, returned, or flagged members can be approved" });
+    return;
+  }
+  if (existing.status === "FLAGGED" && !existing.report20Matched) {
+    response.status(409).json({ success: false, message: "This member still isn't matched against Report 20 — check or re-run reconciliation before approving to Active" });
     return;
   }
   const toStatus = existing.report20Matched ? "ACTIVE" : "FLAGGED";

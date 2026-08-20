@@ -17,6 +17,8 @@ enum UserRole {
   NATIONAL_ADMIN
   REGIONAL_ADMIN
   DISTRICT_ADMIN
+
+  @@map("user_role")
 }
 
 enum MemberStatus {
@@ -25,6 +27,8 @@ enum MemberStatus {
   FLAGGED
   RETURNED
   REMOVED
+
+  @@map("member_status")
 }
 
 enum BeneficiaryRelationship {
@@ -33,6 +37,8 @@ enum BeneficiaryRelationship {
   PARENT
   SIBLING
   OTHER
+
+  @@map("beneficiary_relationship")
 }
 
 enum FileCategory {
@@ -41,6 +47,8 @@ enum FileCategory {
   REPORT_20
   MEMBER_IMPORT
   OTHER
+
+  @@map("file_category")
 }
 
 enum TransferStatus {
@@ -48,6 +56,8 @@ enum TransferStatus {
   APPROVED
   REJECTED
   CANCELLED
+
+  @@map("transfer_status")
 }
 
 enum ExternalClaimStatus {
@@ -56,11 +66,15 @@ enum ExternalClaimStatus {
   SUBMITTED
   FAILED
   SYNCHRONIZED
+
+  @@map("external_claim_status")
 }
 
 enum ImportType {
   REPORT_20
   MEMBER_BULK
+
+  @@map("import_type")
 }
 
 enum ImportStatus {
@@ -68,6 +82,8 @@ enum ImportStatus {
   PROCESSING
   COMPLETED
   FAILED
+
+  @@map("import_status")
 }
 
 enum ImportRowStatus {
@@ -76,6 +92,8 @@ enum ImportRowStatus {
   UNMATCHED
   DUPLICATE
   INVALID
+
+  @@map("import_row_status")
 }
 
 enum BenefitType {
@@ -83,6 +101,8 @@ enum BenefitType {
   TOTAL_PERMANENT_DISABILITY
   CRITICAL_ILLNESS
   HOSPITALIZATION
+
+  @@map("benefit_type")
 }
 
 enum BulkImportRowStatus {
@@ -93,12 +113,16 @@ enum BulkImportRowStatus {
   OUT_OF_SCOPE
   IMPORTED
   FAILED
+
+  @@map("bulk_import_row_status")
 }
 
 enum MemberWorkflowAction {
   APPROVED
   RETURNED
   REMOVED
+
+  @@map("member_workflow_action")
 }
 
 enum RemovalReason {
@@ -107,6 +131,8 @@ enum RemovalReason {
   RETIREMENT
   RESIGNATION
   OTHER
+
+  @@map("removal_reason")
 }
 
 enum ChangeRequestType {
@@ -115,6 +141,8 @@ enum ChangeRequestType {
   BENEFICIARY_ADD
   BENEFICIARY_UPDATE
   BENEFICIARY_REMOVE
+
+  @@map("change_request_type")
 }
 
 enum ChangeRequestStatus {
@@ -123,11 +151,15 @@ enum ChangeRequestStatus {
   RETURNED
   REJECTED
   CANCELLED
+
+  @@map("change_request_status")
 }
 
 enum NotificationChannel {
   IN_APP
   SMS
+
+  @@map("notification_channel")
 }
 
 enum NotificationStatus {
@@ -136,6 +168,8 @@ enum NotificationStatus {
   SENT
   FAILED
   CANCELLED
+
+  @@map("notification_status")
 }
 
 model Region {
@@ -143,35 +177,38 @@ model Region {
   name      String     @unique
   districts District[]
   users     User[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("regions")
 }
 
 model District {
   id                Int              @id @default(autoincrement())
   name              String
-  regionId          Int
+  regionId          Int              @map("region_id")
   region            Region           @relation(fields: [regionId], references: [id], onDelete: Restrict)
   users             User[]
   members           Member[]
   outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
   incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
 
   @@unique([regionId, name])
   @@index([regionId])
+  @@map("districts")
 }
 
 model User {
   id                          Int                           @id @default(autoincrement())
-  fullName                    String
+  fullName                    String                        @map("full_name")
   email                       String                        @unique
-  passwordHash                String
+  passwordHash                String                        @map("password_hash")
   role                        UserRole
-  isActive                    Boolean                       @default(true)
-  regionId                    Int?
-  districtId                  Int?
+  isActive                    Boolean                       @default(true) @map("is_active")
+  regionId                    Int?                          @map("region_id")
+  districtId                  Int?                          @map("district_id")
   region                      Region?                       @relation(fields: [regionId], references: [id], onDelete: Restrict)
   district                    District?                     @relation(fields: [districtId], references: [id], onDelete: Restrict)
   createdMembers              Member[]                      @relation("MemberCreatedBy")
@@ -189,26 +226,27 @@ model User {
   notifications               Notification[]
   organizationSettingsUpdates OrganizationSettings[]
   organizationSettingVersions OrganizationSettingsVersion[]
-  createdAt                   DateTime                      @default(now())
-  updatedAt                   DateTime                      @updatedAt
+  createdAt                   DateTime                      @default(now()) @map("created_at")
+  updatedAt                   DateTime                      @updatedAt @map("updated_at")
 
   @@index([regionId])
   @@index([districtId])
+  @@map("users")
 }
 
 model Member {
   id               Int                       @id @default(autoincrement())
-  controllerId     String                    @unique
-  fullName         String
-  dateOfBirth      DateTime?                 @db.Date
-  ghanaCardId      String?                   @unique
+  controllerId     String                    @unique @map("controller_id")
+  fullName         String                    @map("full_name")
+  dateOfBirth      DateTime?                 @map("date_of_birth") @db.Date
+  ghanaCardId      String?                   @unique @map("ghana_card_id")
   phone            String?
-  phoneVerifiedAt  DateTime?
+  phoneVerifiedAt  DateTime?                 @map("phone_verified_at")
   school           String
   status           MemberStatus              @default(PENDING)
-  report20Matched  Boolean                   @default(false)
-  districtId       Int
-  createdById      Int?
+  report20Matched  Boolean                   @default(false) @map("report20_matched")
+  districtId       Int                       @map("district_id")
+  createdById      Int?                      @map("created_by_id")
   district         District                  @relation(fields: [districtId], references: [id], onDelete: Restrict)
   createdBy        User?                     @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   spouse           Spouse?
@@ -223,86 +261,93 @@ model Member {
   otpChallenges    MemberOtpChallenge[]
   memberSessions   MemberSession[]
   notifications    Notification[]
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
 
   @@index([districtId])
   @@index([status])
   @@index([fullName])
+  @@map("members")
 }
 
 model Spouse {
   id          Int          @id @default(autoincrement())
-  memberId    Int          @unique
+  memberId    Int          @unique @map("member_id")
   member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  fullName    String
-  dateOfBirth DateTime?    @db.Date
-  ghanaCardId String?      @unique
+  fullName    String       @map("full_name")
+  dateOfBirth DateTime?    @map("date_of_birth") @db.Date
+  ghanaCardId String?      @unique @map("ghana_card_id")
   files       StoredFile[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@map("spouses")
 }
 
 model Beneficiary {
   id                 Int                     @id @default(autoincrement())
-  memberId           Int
+  memberId           Int                     @map("member_id")
   member             Member                  @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  fullName           String
+  fullName           String                  @map("full_name")
   relationship       BeneficiaryRelationship
-  dateOfBirth        DateTime?               @db.Date
-  trusteeName        String?
-  trusteeGhanaCardId String?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  dateOfBirth        DateTime?               @map("date_of_birth") @db.Date
+  trusteeName        String?                 @map("trustee_name")
+  trusteeGhanaCardId String?                 @map("trustee_ghana_card_id")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
 
   @@index([memberId])
+  @@map("beneficiaries")
 }
 
 model RefreshToken {
   id        Int       @id @default(autoincrement())
-  tokenHash String    @unique
-  userId    Int
+  tokenHash String    @unique @map("token_hash")
+  userId    Int       @map("user_id")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  userAgent String?
-  ipAddress String?
-  createdAt DateTime  @default(now())
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model MemberOtpChallenge {
   id          Int       @id @default(autoincrement())
-  publicToken String    @unique
-  memberId    Int
+  publicToken String    @unique @map("public_token")
+  memberId    Int       @map("member_id")
   member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  otpHash     String
-  expiresAt   DateTime
+  otpHash     String    @map("otp_hash")
+  expiresAt   DateTime  @map("expires_at")
   attempts    Int       @default(0)
-  maxAttempts Int       @default(5)
-  consumedAt  DateTime?
-  ipAddress   String?
-  createdAt   DateTime  @default(now())
+  maxAttempts Int       @default(5) @map("max_attempts")
+  consumedAt  DateTime? @map("consumed_at")
+  ipAddress   String?   @map("ip_address")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([memberId, createdAt])
   @@index([expiresAt])
+  @@map("member_otp_challenges")
 }
 
 model MemberSession {
   id        Int       @id @default(autoincrement())
-  tokenHash String    @unique
-  memberId  Int
+  tokenHash String    @unique @map("token_hash")
+  memberId  Int       @map("member_id")
   member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  userAgent String?
-  ipAddress String?
-  createdAt DateTime  @default(now())
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([memberId])
   @@index([expiresAt])
+  @@map("member_sessions")
 }
 
 model Notification {
@@ -312,95 +357,99 @@ model Notification {
   type              String
   title             String
   message           String
-  idempotencyKey    String              @unique
-  userId            Int?
+  idempotencyKey    String              @unique @map("idempotency_key")
+  userId            Int?                @map("user_id")
   user              User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memberId          Int?
+  memberId          Int?                @map("member_id")
   member            Member?             @relation(fields: [memberId], references: [id], onDelete: Cascade)
   destination       String?
   attempts          Int                 @default(0)
-  maxAttempts       Int                 @default(5)
-  nextAttemptAt     DateTime            @default(now())
-  providerMessageId String?
-  lastError         String?
-  sentAt            DateTime?
-  readAt            DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  maxAttempts       Int                 @default(5) @map("max_attempts")
+  nextAttemptAt     DateTime            @default(now()) @map("next_attempt_at")
+  providerMessageId String?             @map("provider_message_id")
+  lastError         String?             @map("last_error")
+  sentAt            DateTime?           @map("sent_at")
+  readAt            DateTime?           @map("read_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   @@index([status, nextAttemptAt])
   @@index([userId, readAt, createdAt])
   @@index([memberId, readAt, createdAt])
   @@index([type])
+  @@map("notifications")
 }
 
 model OrganizationSettings {
   id                   Int                           @id @default(autoincrement())
-  singletonKey         String                        @unique @default("MILIFE")
-  portalName           String                        @default("GNAT Supreme Care")
-  schemeSponsor        String                        @default("GNAT")
+  singletonKey         String                        @unique @default("MILIFE") @map("singleton_key")
+  portalName           String                        @default("GNAT Supreme Care") @map("portal_name")
+  schemeSponsor        String                        @default("GNAT") @map("scheme_sponsor")
   underwriter          String                        @default("miLife Insurance")
-  sidebarMark          String                        @default("GS")
-  primaryColor         String                        @default("#102A43")
-  accentColor          String                        @default("#00A896")
-  memberIdLabel        String                        @default("Controller ID")
-  reconciliationSource String                        @default("CAGD Report 20")
-  subRegionLabel       String                        @default("District")
-  organizationEmail    String?
-  organizationPhone    String?
+  sidebarMark          String                        @default("GS") @map("sidebar_mark")
+  primaryColor         String                        @default("#102A43") @map("primary_color")
+  accentColor          String                        @default("#00A896") @map("accent_color")
+  memberIdLabel        String                        @default("Controller ID") @map("member_id_label")
+  reconciliationSource String                        @default("CAGD Report 20") @map("reconciliation_source")
+  subRegionLabel       String                        @default("District") @map("sub_region_label")
+  organizationEmail    String?                       @map("organization_email")
+  organizationPhone    String?                       @map("organization_phone")
   address              String?
-  websiteUrl           String?
-  privacyNotice        String?
+  websiteUrl           String?                       @map("website_url")
+  privacyNotice        String?                       @map("privacy_notice")
   timezone             String                        @default("Africa/Accra")
   currency             String                        @default("GHS")
   version              Int                           @default(1)
-  updatedById          Int?
+  updatedById          Int?                          @map("updated_by_id")
   updatedBy            User?                         @relation(fields: [updatedById], references: [id], onDelete: SetNull)
   versions             OrganizationSettingsVersion[]
-  createdAt            DateTime                      @default(now())
-  updatedAt            DateTime                      @updatedAt
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  updatedAt            DateTime                      @updatedAt @map("updated_at")
 
   @@index([updatedById])
+  @@map("organization_settings")
 }
 
 model OrganizationSettingsVersion {
   id            Int                  @id @default(autoincrement())
-  settingsId    Int
+  settingsId    Int                  @map("settings_id")
   settings      OrganizationSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
   version       Int
   snapshot      Json
-  changedFields Json
-  changedById   Int?
+  changedFields Json                 @map("changed_fields")
+  changedById   Int?                 @map("changed_by_id")
   changedBy     User?                @relation(fields: [changedById], references: [id], onDelete: SetNull)
-  createdAt     DateTime             @default(now())
+  createdAt     DateTime             @default(now()) @map("created_at")
 
   @@unique([settingsId, version])
   @@index([changedById])
   @@index([createdAt])
+  @@map("organization_settings_versions")
 }
 
 model StoredFile {
   id           Int          @id @default(autoincrement())
   category     FileCategory
-  originalName String
-  storedName   String       @unique
-  mimeType     String
-  sizeBytes    Int
-  storagePath  String       @unique
-  downloadPath String       @unique
-  memberId     Int?
-  spouseId     Int?
-  uploadedById Int
+  originalName String       @map("original_name")
+  storedName   String       @unique @map("stored_name")
+  mimeType     String       @map("mime_type")
+  sizeBytes    Int          @map("size_bytes")
+  storagePath  String       @unique @map("storage_path")
+  downloadPath String       @unique @map("download_path")
+  memberId     Int?         @map("member_id")
+  spouseId     Int?         @map("spouse_id")
+  uploadedById Int          @map("uploaded_by_id")
   member       Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
   spouse       Spouse?      @relation(fields: [spouseId], references: [id], onDelete: SetNull)
   uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  createdAt    DateTime     @default(now())
+  createdAt    DateTime     @default(now()) @map("created_at")
   importJob    ImportJob?
 
   @@index([memberId])
   @@index([spouseId])
   @@index([uploadedById])
   @@index([category])
+  @@map("stored_files")
 }
 
 model ImportJob {
@@ -408,169 +457,176 @@ model ImportJob {
   type          ImportType
   status        ImportStatus          @default(PENDING)
   checksum      String
-  fileId        Int                   @unique
+  fileId        Int                   @unique @map("file_id")
   file          StoredFile            @relation(fields: [fileId], references: [id], onDelete: Restrict)
-  uploadedById  Int
+  uploadedById  Int                   @map("uploaded_by_id")
   uploadedBy    User                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reportMonth   DateTime?             @db.Date
-  totalRows     Int                   @default(0)
-  matchedRows   Int                   @default(0)
-  changedRows   Int                   @default(0)
-  unmatchedRows Int                   @default(0)
-  duplicateRows Int                   @default(0)
-  invalidRows   Int                   @default(0)
-  errorMessage  String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  reportMonth   DateTime?             @map("report_month") @db.Date
+  totalRows     Int                   @default(0) @map("total_rows")
+  matchedRows   Int                   @default(0) @map("matched_rows")
+  changedRows   Int                   @default(0) @map("changed_rows")
+  unmatchedRows Int                   @default(0) @map("unmatched_rows")
+  duplicateRows Int                   @default(0) @map("duplicate_rows")
+  invalidRows   Int                   @default(0) @map("invalid_rows")
+  errorMessage  String?               @map("error_message")
+  startedAt     DateTime?             @map("started_at")
+  completedAt   DateTime?             @map("completed_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
   rows          Report20Row[]
   memberRows    MemberBulkImportRow[]
-  readyRows     Int                   @default(0)
-  importedRows  Int                   @default(0)
+  readyRows     Int                   @default(0) @map("ready_rows")
+  importedRows  Int                   @default(0) @map("imported_rows")
 
   @@unique([type, checksum])
   @@index([status])
   @@index([createdAt])
+  @@map("import_jobs")
 }
 
 model Report20Row {
   id           Int             @id @default(autoincrement())
-  importJobId  Int
+  importJobId  Int             @map("import_job_id")
   importJob    ImportJob       @relation(fields: [importJobId], references: [id], onDelete: Cascade)
-  rowNumber    Int
-  controllerId String?
-  fullName     String?
-  districtName String?
+  rowNumber    Int             @map("row_number")
+  controllerId String?         @map("controller_id")
+  fullName     String?         @map("full_name")
+  districtName String?         @map("district_name")
   school       String?
-  ghanaCardId  String?
+  ghanaCardId  String?         @map("ghana_card_id")
   status       ImportRowStatus
-  memberId     Int?
+  memberId     Int?            @map("member_id")
   member       Member?         @relation(fields: [memberId], references: [id], onDelete: SetNull)
   issues       Json?
-  rawData      Json
-  createdAt    DateTime        @default(now())
+  rawData      Json            @map("raw_data")
+  createdAt    DateTime        @default(now()) @map("created_at")
 
   @@unique([importJobId, rowNumber])
   @@index([importJobId, status])
   @@index([controllerId])
   @@index([memberId])
+  @@map("report20_rows")
 }
 
 model MemberBulkImportRow {
   id              Int                 @id @default(autoincrement())
-  importJobId     Int
+  importJobId     Int                 @map("import_job_id")
   importJob       ImportJob           @relation(fields: [importJobId], references: [id], onDelete: Cascade)
-  rowNumber       Int
-  controllerId    String?
-  fullName        String?
+  rowNumber       Int                 @map("row_number")
+  controllerId    String?             @map("controller_id")
+  fullName        String?             @map("full_name")
   school          String?
-  districtName    String?
-  districtId      Int?
-  dateOfBirth     DateTime?           @db.Date
-  ghanaCardId     String?
+  districtName    String?             @map("district_name")
+  districtId      Int?                @map("district_id")
+  dateOfBirth     DateTime?           @map("date_of_birth") @db.Date
+  ghanaCardId     String?             @map("ghana_card_id")
   phone           String?
-  report20Matched Boolean             @default(false)
+  report20Matched Boolean             @default(false) @map("report20_matched")
   status          BulkImportRowStatus
-  memberId        Int?
+  memberId        Int?                @map("member_id")
   member          Member?             @relation(fields: [memberId], references: [id], onDelete: SetNull)
   issues          Json?
-  rawData         Json
-  createdAt       DateTime            @default(now())
+  rawData         Json                @map("raw_data")
+  createdAt       DateTime            @default(now()) @map("created_at")
 
   @@unique([importJobId, rowNumber])
   @@index([importJobId, status])
   @@index([controllerId])
   @@index([memberId])
   @@index([districtId])
+  @@map("member_bulk_import_rows")
 }
 
 model MemberWorkflowEvent {
   id            Int                  @id @default(autoincrement())
-  memberId      Int
+  memberId      Int                  @map("member_id")
   member        Member               @relation(fields: [memberId], references: [id], onDelete: Cascade)
   action        MemberWorkflowAction
-  fromStatus    MemberStatus
-  toStatus      MemberStatus
+  fromStatus    MemberStatus         @map("from_status")
+  toStatus      MemberStatus         @map("to_status")
   reason        RemovalReason?
   note          String?
-  performedById Int
+  performedById Int                  @map("performed_by_id")
   performedBy   User                 @relation(fields: [performedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime             @default(now())
+  createdAt     DateTime             @default(now()) @map("created_at")
 
   @@index([memberId, createdAt])
   @@index([action])
   @@index([performedById])
+  @@map("member_workflow_events")
 }
 
 model MemberChangeRequest {
   id                  Int                 @id @default(autoincrement())
-  memberId            Int
+  memberId            Int                 @map("member_id")
   member              Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
   type                ChangeRequestType
   status              ChangeRequestStatus @default(PENDING)
-  targetBeneficiaryId Int?
-  proposedData        Json?
-  requestNote         String?
-  requestedById       Int?
+  targetBeneficiaryId Int?                @map("target_beneficiary_id")
+  proposedData        Json?               @map("proposed_data")
+  requestNote         String?             @map("request_note")
+  requestedById       Int?                @map("requested_by_id")
   requestedBy         User?               @relation("ChangeRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
-  reviewedById        Int?
+  reviewedById        Int?                @map("reviewed_by_id")
   reviewedBy          User?               @relation("ChangeReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewNote          String?
-  requestedAt         DateTime            @default(now())
-  reviewedAt          DateTime?
-  updatedAt           DateTime            @updatedAt
+  reviewNote          String?             @map("review_note")
+  requestedAt         DateTime            @default(now()) @map("requested_at")
+  reviewedAt          DateTime?           @map("reviewed_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
 
   @@index([memberId, status])
   @@index([requestedById])
   @@index([reviewedById])
   @@index([requestedAt])
+  @@map("member_change_requests")
 }
 
 model BenefitPlanVersion {
   id               Int             @id @default(autoincrement())
-  effectiveFrom    DateTime        @unique @db.Date
-  monthlyPremium   Decimal         @db.Decimal(12, 2)
-  collectionMethod String
+  effectiveFrom    DateTime        @unique @map("effective_from") @db.Date
+  monthlyPremium   Decimal         @map("monthly_premium") @db.Decimal(12, 2)
+  collectionMethod String          @map("collection_method")
   note             String?
-  createdById      Int
+  createdById      Int             @map("created_by_id")
   createdBy        User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
   benefits         BenefitAmount[]
-  createdAt        DateTime        @default(now())
+  createdAt        DateTime        @default(now()) @map("created_at")
 
   @@index([effectiveFrom])
   @@index([createdById])
+  @@map("benefit_plan_versions")
 }
 
 model BenefitAmount {
   id            Int                @id @default(autoincrement())
-  planVersionId Int
+  planVersionId Int                @map("plan_version_id")
   planVersion   BenefitPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
   type          BenefitType
   enabled       Boolean            @default(true)
-  memberAmount  Decimal            @db.Decimal(14, 2)
-  spouseAmount  Decimal?           @db.Decimal(14, 2)
+  memberAmount  Decimal            @map("member_amount") @db.Decimal(14, 2)
+  spouseAmount  Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
 
   @@unique([planVersionId, type])
   @@index([type])
+  @@map("benefit_amounts")
 }
 
 model AuditLog {
   id          Int      @id @default(autoincrement())
-  actorId     Int?
+  actorId     Int?     @map("actor_id")
   actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  actorEmail  String?
+  actorEmail  String?  @map("actor_email")
   action      String
-  entityType  String
-  entityId    String?
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
   description String
-  beforeData  Json?
-  afterData   Json?
-  regionId    Int?
-  districtId  Int?
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
+  beforeData  Json?    @map("before_data")
+  afterData   Json?    @map("after_data")
+  regionId    Int?     @map("region_id")
+  districtId  Int?     @map("district_id")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([actorId])
   @@index([action])
@@ -578,56 +634,59 @@ model AuditLog {
   @@index([regionId])
   @@index([districtId])
   @@index([createdAt])
+  @@map("audit_logs")
 }
 
 model MemberTransfer {
   id             Int            @id @default(autoincrement())
-  memberId       Int
+  memberId       Int            @map("member_id")
   member         Member         @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  fromDistrictId Int
+  fromDistrictId Int            @map("from_district_id")
   fromDistrict   District       @relation("TransferFromDistrict", fields: [fromDistrictId], references: [id], onDelete: Restrict)
-  toDistrictId   Int
+  toDistrictId   Int            @map("to_district_id")
   toDistrict     District       @relation("TransferToDistrict", fields: [toDistrictId], references: [id], onDelete: Restrict)
-  requestedById  Int
+  requestedById  Int            @map("requested_by_id")
   requestedBy    User           @relation("TransferRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  reviewedById   Int?
+  reviewedById   Int?           @map("reviewed_by_id")
   reviewedBy     User?          @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
   status         TransferStatus @default(PENDING)
-  activeKey      String?        @unique
+  activeKey      String?        @unique @map("active_key")
   reason         String
-  reviewNote     String?
-  requestedAt    DateTime       @default(now())
-  reviewedAt     DateTime?
-  effectiveAt    DateTime?
-  updatedAt      DateTime       @updatedAt
+  reviewNote     String?        @map("review_note")
+  requestedAt    DateTime       @default(now()) @map("requested_at")
+  reviewedAt     DateTime?      @map("reviewed_at")
+  effectiveAt    DateTime?      @map("effective_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@index([memberId])
   @@index([fromDistrictId])
   @@index([toDistrictId])
   @@index([status])
   @@index([requestedAt])
+  @@map("member_transfers")
 }
 
 model ExternalClaimSubmission {
   id              Int                 @id @default(autoincrement())
-  memberId        Int
+  memberId        Int                 @map("member_id")
   member          Member              @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  submittedById   Int
+  submittedById   Int                 @map("submitted_by_id")
   submittedBy     User                @relation(fields: [submittedById], references: [id], onDelete: Restrict)
   provider        String              @default("MANKRADO")
-  idempotencyKey  String              @unique
-  externalClaimId String?             @unique
-  formUrl         String?
+  idempotencyKey  String              @unique @map("idempotency_key")
+  externalClaimId String?             @unique @map("external_claim_id")
+  formUrl         String?             @map("form_url")
   status          ExternalClaimStatus @default(PENDING)
-  errorCode       String?
-  errorMessage    String?
-  submittedAt     DateTime?
-  lastSyncedAt    DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  errorCode       String?             @map("error_code")
+  errorMessage    String?             @map("error_message")
+  submittedAt     DateTime?           @map("submitted_at")
+  lastSyncedAt    DateTime?           @map("last_synced_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
 
   @@index([memberId])
   @@index([submittedById])
   @@index([status])
   @@index([createdAt])
+  @@map("external_claim_submissions")
 }

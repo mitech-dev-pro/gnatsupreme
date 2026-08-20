@@ -57,47 +57,69 @@ export default function Report20Review() {
   const [rowStatus, setRowStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunMessage, setRerunMessage] = useState("");
   const limit = 50;
 
+  const loadJob = async () => {
+    try {
+      const res = await api.get(`/imports/${id}`);
+      setJob(res.data.data);
+    } catch {
+      setError("Unable to load this import.");
+    }
+  };
+
+  const loadRows = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/imports/${id}/issues`, {
+        params: { page, limit, status: rowStatus || undefined },
+      });
+      setRows(res.data.data);
+      setTotalPages(res.data.pagination.totalPages);
+    } catch {
+      setError("Unable to load rows.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get(`/imports/${id}`);
-        if (!cancelled) setJob(res.data.data);
-      } catch {
-        if (!cancelled) setError("Unable to load this import.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    loadJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const res = await api.get(`/imports/${id}/issues`, {
-          params: { page, limit, status: rowStatus || undefined },
-        });
-        if (!cancelled) {
-          setRows(res.data.data);
-          setTotalPages(res.data.pagination.totalPages);
-        }
-      } catch {
-        if (!cancelled) setError("Unable to load rows.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page, rowStatus]);
+
+  const rerun = async () => {
+    if (
+      !window.confirm(
+        "Re-run reconciliation for this file against the current members list? This replaces the existing rows for this upload.",
+      )
+    ) {
+      return;
+    }
+    setRerunning(true);
+    setError("");
+    setRerunMessage("");
+    try {
+      const res = await api.post(`/imports/${id}/rerun`);
+      setJob(res.data.data);
+      setRerunMessage(
+        `Re-reconciled: ${res.data.data.matchedRows} matched, ${res.data.data.changedRows} changed, ${res.data.data.unmatchedRows} unmatched.`,
+      );
+      setPage(1);
+      await loadRows();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Unable to re-run reconciliation.");
+    } finally {
+      setRerunning(false);
+    }
+  };
 
   if (!job && error) {
     return (
@@ -130,10 +152,34 @@ export default function Report20Review() {
             {job.reportMonth ? ` · ${formatDate(job.reportMonth)}` : ""}
           </div>
         </div>
-        <span className="rounded-full bg-[#eef0fa] px-3 py-1 text-[12px] font-bold text-[#1e2761]">
-          {job.status}
-        </span>
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-full bg-[#eef0fa] px-3 py-1 text-[12px] font-bold text-[#1e2761]">
+            {job.status}
+          </span>
+          {job.status === "COMPLETED" && (
+            <button
+              type="button"
+              onClick={rerun}
+              disabled={rerunning}
+              className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:border-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {rerunning ? "Re-running…" : "Re-run Reconciliation"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {rerunMessage && (
+        <div className="mb-4 rounded-lg bg-[#dff7ee] px-3 py-2 text-[12.5px] font-semibold text-[#17805f]">
+          {rerunMessage}
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
+          {error}
+        </div>
+      )}
 
       {job.errorMessage && (
         <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">

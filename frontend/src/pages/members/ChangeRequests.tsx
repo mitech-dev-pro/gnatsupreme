@@ -4,15 +4,78 @@ import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import "./ChangeRequests.css";
 
-type RequestItem = { id: number; type: string; status: string; proposedData: Record<string, unknown> | null; targetBeneficiaryId: number | null; requestNote: string | null; reviewNote: string | null; requestedAt: string; reviewedAt: string | null; member: { id: number; controllerId: string; fullName: string; status: string }; requestedBy: { id: number; fullName: string }; reviewedBy: { id: number; fullName: string } | null };
-type MemberData = { id: number; fullName: string; dateOfBirth: string | null; ghanaCardId: string | null; phone: string | null; school: string; spouse: Record<string, unknown> | null; beneficiaries: Array<Record<string, unknown> & { id: number; fullName: string }> };
-const TYPES = ["MEMBER_DETAILS", "SPOUSE", "BENEFICIARY_ADD", "BENEFICIARY_UPDATE", "BENEFICIARY_REMOVE"];
+type RequestItem = {
+  id: number;
+  type: string;
+  status: string;
+  proposedData: Record<string, unknown> | null;
+  targetBeneficiaryId: number | null;
+  requestNote: string | null;
+  reviewNote: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  member: {
+    id: number;
+    controllerId: string;
+    fullName: string;
+    status: string;
+  };
+  requestedBy: { id: number; fullName: string } | null;
+  reviewedBy: { id: number; fullName: string } | null;
+};
+type MemberData = {
+  id: number;
+  fullName: string;
+  dateOfBirth: string | null;
+  ghanaCardId: string | null;
+  phone: string | null;
+  school: string;
+  spouse: Record<string, unknown> | null;
+  beneficiaries: Array<
+    Record<string, unknown> & { id: number; fullName: string }
+  >;
+};
+const TYPES = [
+  "MEMBER_DETAILS",
+  "SPOUSE",
+  "BENEFICIARY_ADD",
+  "BENEFICIARY_UPDATE",
+  "BENEFICIARY_REMOVE",
+];
 const STATUSES = ["PENDING", "APPROVED", "RETURNED", "REJECTED", "CANCELLED"];
 const REVIEW_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"];
-const labels: Record<string, string> = { MEMBER_DETAILS: "Member details", SPOUSE: "Spouse details", BENEFICIARY_ADD: "Add beneficiary", BENEFICIARY_UPDATE: "Update beneficiary", BENEFICIARY_REMOVE: "Remove beneficiary", fullName: "Full name", dateOfBirth: "Date of birth", ghanaCardId: "Ghana Card ID", phone: "Phone", school: "School", relationship: "Relationship", trusteeName: "Trustee name", trusteeGhanaCardId: "Trustee Ghana Card ID" };
+const labels: Record<string, string> = {
+  MEMBER_DETAILS: "Member details",
+  SPOUSE: "Spouse details",
+  BENEFICIARY_ADD: "Add beneficiary",
+  BENEFICIARY_UPDATE: "Update beneficiary",
+  BENEFICIARY_REMOVE: "Remove beneficiary",
+  fullName: "Full name",
+  dateOfBirth: "Date of birth",
+  ghanaCardId: "Ghana Card ID",
+  phone: "Phone",
+  school: "School",
+  relationship: "Relationship",
+  trusteeName: "Trustee name",
+  trusteeGhanaCardId: "Trustee Ghana Card ID",
+};
 
-const pretty = (value: unknown) => value === null || value === undefined || value === "" ? "Not provided" : typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : String(value).replaceAll("_", " ");
-const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const pretty = (value: unknown) =>
+  value === null || value === undefined || value === ""
+    ? "Not provided"
+    : typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)
+      ? new Date(value).toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : String(value).replaceAll("_", " ");
+const date = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
 export default function ChangeRequests() {
   const { user } = useAuth();
@@ -29,59 +92,396 @@ export default function ChangeRequests() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const [reviewNote, setReviewNote] = useState("");
-  const [decision, setDecision] = useState<"APPROVE" | "RETURN" | "REJECT" | null>(null);
+  const [decision, setDecision] = useState<
+    "APPROVE" | "RETURN" | "REJECT" | null
+  >(null);
   const [busy, setBusy] = useState(false);
   const canReview = Boolean(user && REVIEW_ROLES.includes(user.role));
 
-  const updateParams = (values: Record<string, string | null>) => { const next = new URLSearchParams(params); Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); setParams(next); };
+  const updateParams = (values: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(values).forEach(([key, value]) =>
+      value ? next.set(key, value) : next.delete(key),
+    );
+    setParams(next);
+  };
   const load = useCallback(async () => {
-    setLoading(true); setError("");
-    try { const response = await api.get("/change-requests", { params: { page, limit: 20, status: status || undefined, type: type || undefined } }); const next = response.data.data as RequestItem[]; setItems(next); setTotal(response.data.pagination.total); setTotalPages(Math.max(1, response.data.pagination.totalPages)); setSelected((current) => next.find((item) => item.id === current?.id) ?? next[0] ?? null); }
-    catch { setError("Change requests could not be loaded."); }
-    finally { setLoading(false); }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.get("/change-requests", {
+        params: {
+          page,
+          limit: 20,
+          status: status || undefined,
+          type: type || undefined,
+        },
+      });
+      const next = response.data.data as RequestItem[];
+      setItems(next);
+      setTotal(response.data.pagination.total);
+      setTotalPages(Math.max(1, response.data.pagination.totalPages));
+      setSelected(
+        (current) =>
+          next.find((item) => item.id === current?.id) ?? next[0] ?? null,
+      );
+    } catch {
+      setError("Change requests could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
   }, [page, status, type]);
 
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!selected) { setMember(null); return; } let cancelled = false; setDetailLoading(true); api.get(`/members/${selected.member.id}`).then((response) => { if (!cancelled) setMember(response.data.data); }).catch(() => { if (!cancelled) setMember(null); }).finally(() => { if (!cancelled) setDetailLoading(false); }); return () => { cancelled = true; }; }, [selected]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    if (!selected) {
+      setMember(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    api
+      .get(`/members/${selected.member.id}`)
+      .then((response) => {
+        if (!cancelled) setMember(response.data.data);
+      })
+      .catch(() => {
+        if (!cancelled) setMember(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   const currentSource = () => {
     if (!member || !selected) return {};
-    if (selected.type === "MEMBER_DETAILS") return member as unknown as Record<string, unknown>;
+    if (selected.type === "MEMBER_DETAILS")
+      return member as unknown as Record<string, unknown>;
     if (selected.type === "SPOUSE") return member.spouse ?? {};
-    if (selected.type.includes("BENEFICIARY") && selected.targetBeneficiaryId) return member.beneficiaries.find((item) => item.id === selected.targetBeneficiaryId) ?? {};
+    if (selected.type.includes("BENEFICIARY") && selected.targetBeneficiaryId)
+      return (
+        member.beneficiaries.find(
+          (item) => item.id === selected.targetBeneficiaryId,
+        ) ?? {}
+      );
     return {};
   };
   const proposed = selected?.proposedData ?? {};
-  const compareKeys = Array.from(new Set([...Object.keys(currentSource()), ...Object.keys(proposed)])).filter((key) => !["id", "memberId", "createdAt", "updatedAt"].includes(key));
+  const compareKeys = Array.from(
+    new Set([...Object.keys(currentSource()), ...Object.keys(proposed)]),
+  ).filter(
+    (key) => !["id", "memberId", "createdAt", "updatedAt"].includes(key),
+  );
 
   const review = async () => {
     if (!selected || !decision) return;
-    if (decision !== "APPROVE" && !reviewNote.trim()) { setError("A review note is required when returning or rejecting a request."); return; }
-    setBusy(true); setError("");
-    try { await api.patch(`/change-requests/${selected.id}/review`, { action: decision, note: reviewNote.trim() || null }); setDecision(null); setReviewNote(""); await load(); }
-    catch (requestError: any) { setError(requestError?.response?.data?.message || "The review could not be completed."); }
-    finally { setBusy(false); }
+    if (decision !== "APPROVE" && !reviewNote.trim()) {
+      setError(
+        "A review note is required when returning or rejecting a request.",
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api.patch(`/change-requests/${selected.id}/review`, {
+        action: decision,
+        note: reviewNote.trim() || null,
+      });
+      setDecision(null);
+      setReviewNote("");
+      await load();
+    } catch (requestError: any) {
+      setError(
+        requestError?.response?.data?.message ||
+          "The review could not be completed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
-  return <main className="change-page">
-    <header className="change-heading"><div><p>Member administration</p><h1>Change requests</h1><span>{total} {status.toLowerCase()} request{total === 1 ? "" : "s"} in your access scope</span></div></header>
-    <div className="change-filters"><select value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })}><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select><select value={type} onChange={(event) => updateParams({ type: event.target.value || null, page: null })}><option value="">All request types</option>{TYPES.map((item) => <option key={item} value={item}>{labels[item]}</option>)}</select></div>
-    {error && <div className="change-alert" role="alert">{error}</div>}
-    <div className="change-workspace">
-      <section className="change-queue">
-        <div className="change-queue__title"><h2>Requests</h2><span>{total}</span></div>
-        {loading ? <div className="change-skeleton">{Array.from({ length: 5 }).map((_, index) => <span key={index}/>)}</div> : items.length === 0 ? <div className="change-empty"><strong>No requests found</strong><p>Requests matching these filters will appear here.</p></div> : <ul>{items.map((item) => <li key={item.id}><button className={selected?.id === item.id ? "active" : ""} onClick={() => { setSelected(item); setDecision(null); setReviewNote(""); }}><span className={`change-type change-type--${item.type.toLowerCase()}`}>{labels[item.type]}</span><strong>{item.member.fullName}</strong><small>{item.member.controllerId} · Requested {date(item.requestedAt)}</small><i className={`change-status change-status--${item.status.toLowerCase()}`}>{item.status}</i></button></li>)}</ul>}
-        {totalPages > 1 && <footer><button disabled={page === 1} onClick={() => updateParams({ page: String(page - 1) })}>Previous</button><span>{page} / {totalPages}</span><button disabled={page >= totalPages} onClick={() => updateParams({ page: String(page + 1) })}>Next</button></footer>}
-      </section>
+  return (
+    <main className="change-page">
+      <header className="change-heading">
+        <div>
+          <p>Member administration</p>
+          <h1>Change requests</h1>
+          <span>
+            {total} {status.toLowerCase()} request{total === 1 ? "" : "s"} in
+            your access scope
+          </span>
+        </div>
+      </header>
+      <div className="change-filters">
+        <select
+          value={status}
+          onChange={(event) =>
+            updateParams({ status: event.target.value || null, page: null })
+          }
+        >
+          <option value="">All statuses</option>
+          {STATUSES.map((item) => (
+            <option key={item} value={item}>
+              {item.charAt(0) + item.slice(1).toLowerCase()}
+            </option>
+          ))}
+        </select>
+        <select
+          value={type}
+          onChange={(event) =>
+            updateParams({ type: event.target.value || null, page: null })
+          }
+        >
+          <option value="">All request types</option>
+          {TYPES.map((item) => (
+            <option key={item} value={item}>
+              {labels[item]}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && (
+        <div className="change-alert" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="change-workspace">
+        <section className="change-queue">
+          <div className="change-queue__title">
+            <h2>Requests</h2>
+            <span>{total}</span>
+          </div>
+          {loading ? (
+            <div className="change-skeleton">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <span key={index} />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="change-empty">
+              <strong>No requests found</strong>
+              <p>Requests matching these filters will appear here.</p>
+            </div>
+          ) : (
+            <ul>
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    className={selected?.id === item.id ? "active" : ""}
+                    onClick={() => {
+                      setSelected(item);
+                      setDecision(null);
+                      setReviewNote("");
+                    }}
+                  >
+                    <span
+                      className={`change-type change-type--${item.type.toLowerCase()}`}
+                    >
+                      {labels[item.type]}
+                    </span>
+                    <strong>{item.member.fullName}</strong>
+                    <small>
+                      {item.member.controllerId} · Requested{" "}
+                      {date(item.requestedAt)}
+                    </small>
+                    <i
+                      className={`change-status change-status--${item.status.toLowerCase()}`}
+                    >
+                      {item.status}
+                    </i>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {totalPages > 1 && (
+            <footer>
+              <button
+                disabled={page === 1}
+                onClick={() => updateParams({ page: String(page - 1) })}
+              >
+                Previous
+              </button>
+              <span>
+                {page} / {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => updateParams({ page: String(page + 1) })}
+              >
+                Next
+              </button>
+            </footer>
+          )}
+        </section>
 
-      <section className="change-detail">
-        {!selected ? <div className="change-empty"><strong>Select a request</strong><p>Choose a request to inspect its proposed changes.</p></div> : detailLoading ? <div className="change-detail-skeleton"><span/><span/><span/></div> : <>
-          <header><div><span>{labels[selected.type]}</span><h2>{selected.member.fullName}</h2><p>Requested by {selected.requestedBy.fullName} on {date(selected.requestedAt)}</p></div><Link to={`/members/${selected.member.id}`}>View member profile</Link></header>
-          {selected.requestNote && <div className="change-request-note"><span>Request note</span><p>{selected.requestNote}</p></div>}
-          <div className="change-comparison"><div className="change-comparison__heading"><h3>{selected.type === "BENEFICIARY_REMOVE" ? "Record to remove" : "Proposed changes"}</h3><span>Current value</span><span>Requested value</span></div>{compareKeys.length === 0 ? <p className="change-no-data">No field data accompanies this request.</p> : compareKeys.map((key) => { const before = currentSource()[key]; const after = selected.type === "BENEFICIARY_REMOVE" ? null : proposed[key]; const changed = pretty(before) !== pretty(after); return <div className={`change-row ${changed ? "is-changed" : ""}`} key={key}><strong>{labels[key] ?? key.replaceAll("_", " ")}</strong><span>{pretty(before)}</span><span>{selected.type === "BENEFICIARY_REMOVE" ? "Will be removed" : pretty(after)}</span></div>; })}</div>
-          {selected.status === "PENDING" && canReview ? <div className="change-review"><h3>Review decision</h3><div className="change-decisions"><button className={decision === "APPROVE" ? "approve active" : "approve"} onClick={() => setDecision("APPROVE")}>Approve</button><button className={decision === "RETURN" ? "return active" : "return"} onClick={() => setDecision("RETURN")}>Return for correction</button><button className={decision === "REJECT" ? "reject active" : "reject"} onClick={() => setDecision("REJECT")}>Reject</button></div>{decision && <div className="change-note"><label>Review note {decision === "APPROVE" ? <small>Optional</small> : <small>Required</small>}</label><textarea rows={3} maxLength={500} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder={decision === "APPROVE" ? "Add an internal note if needed" : "Explain what the member needs to correct"}/><div><span>{reviewNote.length}/500</span><button disabled={busy || (decision !== "APPROVE" && !reviewNote.trim())} onClick={() => void review()}>{busy ? "Saving…" : `Confirm ${decision.toLowerCase()}`}</button></div></div>}</div> : selected.status !== "PENDING" ? <div className="change-reviewed"><strong>{selected.status}</strong><p>{selected.reviewNote || "No review note was recorded."}</p><span>{selected.reviewedBy ? `Reviewed by ${selected.reviewedBy.fullName}` : "Review completed"}{selected.reviewedAt ? ` on ${date(selected.reviewedAt)}` : ""}</span></div> : <div className="change-reviewed"><strong>Review access required</strong><p>Your role can view this request but cannot decide it.</p></div>}
-        </>}
-      </section>
-    </div>
-  </main>;
+        <section className="change-detail">
+          {!selected ? (
+            <div className="change-empty">
+              <strong>Select a request</strong>
+              <p>Choose a request to inspect its proposed changes.</p>
+            </div>
+          ) : detailLoading ? (
+            <div className="change-detail-skeleton">
+              <span />
+              <span />
+              <span />
+            </div>
+          ) : (
+            <>
+              <header>
+                <div>
+                  <span>{labels[selected.type]}</span>
+                  <h2>{selected.member.fullName}</h2>
+                  <p>Requested on {date(selected.requestedAt)}</p>
+                </div>
+                <Link to={`/members/${selected.member.id}`}>
+                  View member profile
+                </Link>
+              </header>
+              {selected.requestNote && (
+                <div className="change-request-note">
+                  <span>Request note</span>
+                  <p>{selected.requestNote}</p>
+                </div>
+              )}
+              <div className="change-comparison">
+                <div className="change-comparison__heading">
+                  <h3>
+                    {selected.type === "BENEFICIARY_REMOVE"
+                      ? "Record to remove"
+                      : "Proposed changes"}
+                  </h3>
+                  <span>Current value</span>
+                  <span>Requested value</span>
+                </div>
+                {compareKeys.length === 0 ? (
+                  <p className="change-no-data">
+                    No field data accompanies this request.
+                  </p>
+                ) : (
+                  compareKeys.map((key) => {
+                    const before = currentSource()[key];
+                    const after =
+                      selected.type === "BENEFICIARY_REMOVE"
+                        ? null
+                        : proposed[key];
+                    const changed = pretty(before) !== pretty(after);
+                    return (
+                      <div
+                        className={`change-row ${changed ? "is-changed" : ""}`}
+                        key={key}
+                      >
+                        <strong>
+                          {labels[key] ?? key.replaceAll("_", " ")}
+                        </strong>
+                        <span>{pretty(before)}</span>
+                        <span>
+                          {selected.type === "BENEFICIARY_REMOVE"
+                            ? "Will be removed"
+                            : pretty(after)}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {selected.status === "PENDING" && canReview ? (
+                <div className="change-review">
+                  <h3>Review decision</h3>
+                  <div className="change-decisions">
+                    <button
+                      className={
+                        decision === "APPROVE" ? "approve active" : "approve"
+                      }
+                      onClick={() => setDecision("APPROVE")}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className={
+                        decision === "RETURN" ? "return active" : "return"
+                      }
+                      onClick={() => setDecision("RETURN")}
+                    >
+                      Return for correction
+                    </button>
+                    <button
+                      className={
+                        decision === "REJECT" ? "reject active" : "reject"
+                      }
+                      onClick={() => setDecision("REJECT")}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                  {decision && (
+                    <div className="change-note">
+                      <label>
+                        Review note{" "}
+                        {decision === "APPROVE" ? (
+                          <small>Optional</small>
+                        ) : (
+                          <small>Required</small>
+                        )}
+                      </label>
+                      <textarea
+                        rows={3}
+                        maxLength={500}
+                        value={reviewNote}
+                        onChange={(event) => setReviewNote(event.target.value)}
+                        placeholder={
+                          decision === "APPROVE"
+                            ? "Add an internal note if needed"
+                            : "Explain what the member needs to correct"
+                        }
+                      />
+                      <div>
+                        <span>{reviewNote.length}/500</span>
+                        <button
+                          disabled={
+                            busy ||
+                            (decision !== "APPROVE" && !reviewNote.trim())
+                          }
+                          onClick={() => void review()}
+                        >
+                          {busy
+                            ? "Saving…"
+                            : `Confirm ${decision.toLowerCase()}`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : selected.status !== "PENDING" ? (
+                <div className="change-reviewed">
+                  <strong>{selected.status}</strong>
+                  <p>{selected.reviewNote || "No review note was recorded."}</p>
+                  <span>
+                    {selected.reviewedBy
+                      ? `Reviewed by ${selected.reviewedBy.fullName}`
+                      : "Review completed"}
+                    {selected.reviewedAt
+                      ? ` on ${date(selected.reviewedAt)}`
+                      : ""}
+                  </span>
+                </div>
+              ) : (
+                <div className="change-reviewed">
+                  <strong>Review access required</strong>
+                  <p>Your role can view this request but cannot decide it.</p>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }

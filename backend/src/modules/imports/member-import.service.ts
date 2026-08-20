@@ -3,6 +3,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
+import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 
 const MAX_ROWS = 50_000;
 const aliases = {
@@ -95,6 +96,8 @@ async function findManyChunked<T>(ids: string[], run: (batch: string[]) => Promi
 export async function stageMemberImport(jobId: number, filePath: string, mimeType: string, user: AuthenticatedUser) {
   const sourceRows = await spreadsheetRows(filePath, mimeType);
   const districts = await prisma.district.findMany({ include: { region: { select: { name: true } } } });
+  const districtAliases = await prisma.districtAlias.findMany({ select: { alias: true, districtId: true } });
+  const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
   const controllerIds = [...new Set(sourceRows.map((row) => readField(row.data, aliases.controllerId)?.replace(/\s/g, "")).filter((id): id is string => Boolean(id)))];
   const ghanaCards = [...new Set(sourceRows.flatMap((row) => [readField(row.data, aliases.ghanaCardId)?.toUpperCase(), readField(row.data, aliases.spouseGhanaCardId)?.toUpperCase()]).filter((id): id is string => Boolean(id)))];
   const [existingMembers, existingCards, existingSpouseCards, reportRows] = await Promise.all([
@@ -118,8 +121,9 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     const districtName = readField(data, aliases.district);
     const regionName = readField(data, aliases.region);
     const ghanaCardId = readField(data, aliases.ghanaCardId)?.toUpperCase() ?? null;
-    const candidates = districts.filter((district) => normalized(district.name) === normalized(districtName ?? "") && (!regionName || normalized(district.region.name) === normalized(regionName)));
-    const district = candidates.length === 1 ? candidates[0] : null;
+    const { district, ambiguous: districtAmbiguous } = districtName
+      ? resolveDistrict(districtName, regionName, districts, aliasMap)
+      : { district: null, ambiguous: false };
     const beneficiaryName = readField(data, aliases.beneficiaryName);
     const relationshipValue = readField(data, aliases.beneficiaryRelationship);
     const relationship = parseRelationship(relationshipValue);
@@ -133,7 +137,7 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     if (!fullName || fullName.length < 2) issues.push("Full name is required");
     if (!school || school.length < 2) issues.push("School is required");
     if (!districtName) issues.push("District is required");
-    else if (!district) issues.push(candidates.length > 1 ? "District is ambiguous; include Region" : "District was not found");
+    else if (!district) issues.push(districtAmbiguous ? "District is ambiguous; include Region" : "District was not found");
     if (!beneficiaryName) issues.push("Beneficiary name is required");
     if (!relationship) issues.push("Beneficiary relationship must be CHILD, SPOUSE, PARENT, SIBLING, or OTHER");
     if (ghanaCardId && !/^GHA-\d{9}-\d$/.test(ghanaCardId)) issues.push("Ghana Card ID has an invalid format");

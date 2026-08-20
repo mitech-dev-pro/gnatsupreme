@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
+import { normalizeDistrictName } from "../geography/district-match.js";
 
 const MAX_ROWS = 50_000;
 
@@ -129,7 +130,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     } else {
       if (normalizeValue(row.fullName) !== normalizeValue(member.fullName)) issues.push("Full name differs");
       if (row.school && normalizeValue(row.school) !== normalizeValue(member.school)) issues.push("School differs");
-      if (row.districtName && normalizeValue(row.districtName) !== normalizeValue(member.district.name)) issues.push("District differs");
+      if (row.districtName && normalizeDistrictName(row.districtName) !== normalizeDistrictName(member.district.name)) issues.push("District differs");
       if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)) issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";
       // Only a clean match counts toward report20Matched — CHANGED means the row was found but

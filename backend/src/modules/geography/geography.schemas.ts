@@ -23,3 +23,8 @@ export const districtUpdateSchema = districtCreateSchema.partial().refine(
 export const districtQuerySchema = z.object({
   regionId: z.coerce.number().int().positive().optional(),
 });
+
+export const districtAliasCreateSchema = z.object({
+  alias: z.string().trim().min(2).max(150),
+  districtId: z.coerce.number().int().positive(),
+});

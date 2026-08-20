@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
+import { useDistricts } from "@/lib/useDistricts";
 
 type ImportJob = {
   id: number;
@@ -49,8 +50,11 @@ const ROW_STATUS_STYLES: Record<string, string> = {
   FAILED: "bg-[#fbe9e9] text-[#c23b3b]",
 };
 
+const DISTRICT_ISSUE_PATTERN = /district/i;
+
 export default function ImportReview() {
   const { id } = useParams();
+  const { districts } = useDistricts();
   const [job, setJob] = useState<ImportJob | null>(null);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [page, setPage] = useState(1);
@@ -62,6 +66,10 @@ export default function ImportReview() {
   const [commitResult, setCommitResult] = useState<{ imported: number; failed: number } | null>(
     null,
   );
+  const [mappingRowId, setMappingRowId] = useState<number | null>(null);
+  const [mappingDistrictId, setMappingDistrictId] = useState("");
+  const [mappingBusy, setMappingBusy] = useState(false);
+  const [mappingMessage, setMappingMessage] = useState("");
   const limit = 50;
 
   const loadJob = async () => {
@@ -113,6 +121,29 @@ export default function ImportReview() {
     }
   };
 
+  const submitDistrictMapping = async (row: ImportRow) => {
+    if (!row.districtName || !mappingDistrictId) return;
+    setMappingBusy(true);
+    setMappingMessage("");
+    try {
+      await api.post("/districts/aliases", {
+        alias: row.districtName,
+        districtId: Number(mappingDistrictId),
+      });
+      setMappingMessage(
+        `Mapped "${row.districtName}" — re-upload this file to pick up the fix.`,
+      );
+      setMappingRowId(null);
+      setMappingDistrictId("");
+    } catch (err: any) {
+      setMappingMessage(
+        err?.response?.data?.message || "Unable to save this district mapping.",
+      );
+    } finally {
+      setMappingBusy(false);
+    }
+  };
+
   if (loading && !job) {
     return <div className="text-[13px] text-[#5b6472]">Loading…</div>;
   }
@@ -155,6 +186,12 @@ export default function ImportReview() {
       {error && (
         <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
           {error}
+        </div>
+      )}
+
+      {mappingMessage && (
+        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+          {mappingMessage}
         </div>
       )}
 
@@ -225,40 +262,101 @@ export default function ImportReview() {
                 <th className="px-4 py-2.5">District</th>
                 <th className="px-4 py-2.5">Status</th>
                 <th className="px-4 py-2.5">Issues</th>
+                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
                     No rows found.
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-b border-[#e5e9f0] last:border-0">
-                    <td className="px-4 py-2.5 text-[#5b6472]">{row.rowNumber}</td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{row.controllerId ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{row.fullName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-[#c23b3b]">
-                      {row.issues && row.issues.length > 0 ? row.issues.join("; ") : "—"}
-                    </td>
-                  </tr>
-                ))
+                rows.map((row) => {
+                  const hasDistrictIssue =
+                    row.districtName &&
+                    row.issues?.some((issue) => DISTRICT_ISSUE_PATTERN.test(issue));
+                  return (
+                    <Fragment key={row.id}>
+                      <tr className="border-b border-[#e5e9f0] last:border-0">
+                        <td className="px-4 py-2.5 text-[#5b6472]">{row.rowNumber}</td>
+                        <td className="px-4 py-2.5 text-[#171b26]">{row.controllerId ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-[#171b26]">{row.fullName ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-[#c23b3b]">
+                          {row.issues && row.issues.length > 0 ? row.issues.join("; ") : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {hasDistrictIssue && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMappingRowId((current) =>
+                                  current === row.id ? null : row.id,
+                                )
+                              }
+                              className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
+                            >
+                              Map District
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {mappingRowId === row.id && (
+                        <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] last:border-0">
+                          <td colSpan={7} className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-[12.5px] text-[#5b6472]">
+                                Map "{row.districtName}" to:
+                              </span>
+                              <select
+                                value={mappingDistrictId}
+                                onChange={(e) => setMappingDistrictId(e.target.value)}
+                                className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
+                              >
+                                <option value="">Select a district…</option>
+                                {districts.map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name} · {d.region.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => submitDistrictMapping(row)}
+                                disabled={mappingBusy || !mappingDistrictId}
+                                className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {mappingBusy ? "Saving…" : "Save Mapping"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMappingRowId(null)}
+                                className="text-[11.5px] font-semibold text-[#5b6472]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

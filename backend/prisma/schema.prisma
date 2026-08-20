@@ -192,12 +192,29 @@ model District {
   members           Member[]
   outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
   incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
+  aliases           DistrictAlias[]
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
   @@unique([regionId, name])
   @@index([regionId])
   @@map("districts")
+}
+
+// A staff-curated mapping from a raw district spelling seen in an uploaded file (Report 20, bulk
+// member import) to the correct district — for genuine misspellings/variants that deterministic
+// suffix-stripping (see district-match.ts) can't safely resolve on its own.
+model DistrictAlias {
+  id          Int      @id @default(autoincrement())
+  alias       String   @unique
+  districtId  Int      @map("district_id")
+  district    District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  createdById Int?     @map("created_by_id")
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([districtId])
+  @@map("district_aliases")
 }
 
 model User {
@@ -226,6 +243,7 @@ model User {
   notifications               Notification[]
   organizationSettingsUpdates OrganizationSettings[]
   organizationSettingVersions OrganizationSettingsVersion[]
+  districtAliasesCreated      DistrictAlias[]
   createdAt                   DateTime                      @default(now()) @map("created_at")
   updatedAt                   DateTime                      @updatedAt @map("updated_at")
 

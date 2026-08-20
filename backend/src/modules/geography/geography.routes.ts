@@ -6,6 +6,7 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
+  districtAliasCreateSchema,
   districtCreateSchema,
   districtQuerySchema,
   districtUpdateSchema,
@@ -304,6 +305,78 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
     beforeData: { name: district.name, regionId: district.regionId },
     regionId: district.regionId,
     districtId: district.id,
+  });
+  response.status(204).send();
+});
+
+// Staff-curated mappings from a raw district spelling (seen in an uploaded file) to the correct
+// district — see src/modules/geography/district-match.ts for how these get used during import.
+districtRouter.get("/aliases", async (_request, response) => {
+  const aliases = await prisma.districtAlias.findMany({
+    include: {
+      district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
+      createdBy: { select: { id: true, fullName: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  response.json({ success: true, data: aliases });
+});
+
+districtRouter.post("/aliases", geographyManagers, async (request, response) => {
+  const parsed = districtAliasCreateSchema.safeParse(request.body);
+  if (!parsed.success) return validationFailure(response, parsed.error);
+
+  const district = await prisma.district.findUnique({ where: { id: parsed.data.districtId } });
+  if (!district) {
+    response.status(400).json({ success: false, message: "Selected district does not exist" });
+    return;
+  }
+
+  const duplicate = await prisma.districtAlias.findFirst({
+    where: { alias: { equals: parsed.data.alias, mode: "insensitive" } },
+  });
+  if (duplicate) {
+    response.status(409).json({ success: false, message: "This spelling is already mapped to a district" });
+    return;
+  }
+
+  const actor = currentUser(response);
+  const alias = await prisma.districtAlias.create({
+    data: { alias: parsed.data.alias, districtId: district.id, createdById: actor.id },
+  });
+  await recordAudit({
+    request,
+    actor,
+    action: "DISTRICT_ALIAS_CREATED",
+    entityType: "DISTRICT_ALIAS",
+    entityId: alias.id,
+    description: `Mapped "${alias.alias}" to district ${district.name}`,
+    afterData: { alias: alias.alias, districtId: district.id },
+    regionId: district.regionId,
+    districtId: district.id,
+  });
+  response.status(201).json({ success: true, data: alias });
+});
+
+districtRouter.delete("/aliases/:id", geographyManagers, async (request, response) => {
+  const params = idParamsSchema.safeParse(request.params);
+  if (!params.success) return validationFailure(response, params.error);
+
+  const alias = await prisma.districtAlias.findUnique({ where: { id: params.data.id } });
+  if (!alias) {
+    response.status(404).json({ success: false, message: "District alias not found" });
+    return;
+  }
+
+  await prisma.districtAlias.delete({ where: { id: params.data.id } });
+  await recordAudit({
+    request,
+    actor: currentUser(response),
+    action: "DISTRICT_ALIAS_DELETED",
+    entityType: "DISTRICT_ALIAS",
+    entityId: alias.id,
+    description: `Removed district alias "${alias.alias}"`,
+    beforeData: { alias: alias.alias, districtId: alias.districtId },
   });
   response.status(204).send();
 });

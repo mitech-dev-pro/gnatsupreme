@@ -10,7 +10,7 @@ const jsonRateLimitHandler = (_request: Request, response: Response) => {
 
 export const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 300,
+  limit: 400,
   standardHeaders: true,
   legacyHeaders: false,
   handler: jsonRateLimitHandler,
@@ -48,6 +48,5 @@ export const memberOtpVerifyRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: jsonRateLimitHandler,
 });
-
 
 //this middleware sets up rate limiting for different types of requests. The `apiRateLimiter` allows 300 requests per 15 minutes, the `loginRateLimiter` allows 5 failed login attempts per 15 minutes (skipping successful logins), and the `refreshRateLimiter` allows 30 requests per minute. If a client exceeds the limit, a 429 Too Many Requests response is sent with a JSON message.

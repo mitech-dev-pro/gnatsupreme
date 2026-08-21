@@ -680,7 +680,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
             {section === "coverage" && benefitPlan && (
               <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="coverage-heading">
                 <header className="border-b border-(--border-default) px-4 py-4 sm:px-5">
-                  <h2 id="coverage-heading" className="text-[15px] font-bold text-(--brand-primary)">Your benefit plan</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="coverage-heading" className="text-[15px] font-bold text-(--brand-primary)">Your benefit plan</h2><a href="/policy/terms-and-conditions.pdf" target="_blank" rel="noopener noreferrer" className="rounded-[8px] border border-(--border-default) px-3 py-1.5 text-[11px] font-bold text-(--brand-primary) no-underline hover:bg-(--surface-subtle)">View Terms &amp; Conditions ↗</a></div>
                   <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-3">
                     <div><dt className="text-(--text-muted)">Effective from</dt><dd className="font-semibold text-(--ink)">{new Date(benefitPlan.effectiveFrom).toLocaleDateString()}</dd></div>
                     <div><dt className="text-(--text-muted)">Monthly premium</dt><dd className="font-semibold text-(--ink)">{formatCurrency(benefitPlan.monthlyPremium, settings.currency)}</dd></div>

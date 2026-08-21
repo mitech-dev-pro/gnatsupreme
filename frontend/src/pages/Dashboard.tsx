@@ -7,7 +7,12 @@ import "./Dashboard.css";
 type DashboardData = {
   members: { total: number; active: number; pending: number; flagged: number; returned: number; removed: number };
   coverage: { spouses: number; beneficiaries: number };
-  report20: { matchedMembers: number; unmatchedMembers: number; matchRate: number; latestImport: { reportMonth: string; status: string } | null };
+  report20: {
+    matchedMembers: number;
+    unmatchedMembers: number;
+    matchRate: number;
+    latestImport: { id: number; reportMonth: string; status: string; unmatchedRows: number } | null;
+  };
   transfers: { pending: number };
   claims: Record<string, number>;
   enrollmentGrowth: { month: string; count: number }[];
@@ -84,7 +89,22 @@ export default function Dashboard() {
 
       <section className="dash-panel dash-health"><div className="dash-panel__heading"><div><h2>Operational health</h2><p>Items requiring review</p></div></div>
         <div className="dash-health__score"><div style={{ "--score": `${data.report20.matchRate * 3.6}deg` } as CSSProperties}><strong>{data.report20.matchRate}%</strong><span>matched</span></div><p>Report 20 reconciliation</p></div>
-        <ul><li><span className="amber"/>Pending transfers <strong>{data.transfers.pending}</strong></li><li><span className="red"/>Flagged members <strong>{data.members.flagged}</strong></li><li><span className="navy"/>Unmatched records <strong>{data.report20.unmatchedMembers}</strong></li></ul>
+        <ul>
+          <li><span className="amber"/>Pending transfers <strong>{data.transfers.pending}</strong></li>
+          <li><span className="red"/>Flagged members <strong>{data.members.flagged}</strong></li>
+          <li>
+            <span className="navy"/>Unmatched in latest file{" "}
+            <strong>
+              {data.report20.latestImport ? (
+                <Link to={`/imports/report20/${data.report20.latestImport.id}`}>
+                  {data.report20.latestImport.unmatchedRows.toLocaleString()}
+                </Link>
+              ) : (
+                0
+              )}
+            </strong>
+          </li>
+        </ul>
         <Link className="dash-text-link" to="/imports/report20">Review Report 20 <span>→</span></Link>
       </section>
     </div>

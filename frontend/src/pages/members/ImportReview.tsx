@@ -13,6 +13,7 @@ type ImportJob = {
   id: number;
   status: string;
   totalRows: number;
+  processedRows: number;
   readyRows: number;
   invalidRows: number;
   duplicateRows: number;
@@ -179,7 +180,11 @@ export default function ImportReview() {
 
       {(job.status === "PENDING" || job.status === "PROCESSING") && (
         <div className="mb-4"><Alert tone="info">
-          Processing in the background — this can take a while for large files. This page refreshes automatically.
+          {job.totalRows > 0 ? <div>
+            <div className="mb-1.5 flex items-center justify-between gap-3"><span>Processing row {job.processedRows.toLocaleString()} of {job.totalRows.toLocaleString()}</span><span>{Math.min(100, Math.round((job.processedRows / job.totalRows) * 100))}%</span></div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/60"><div className="h-full rounded-full bg-(--action-primary) transition-[width] duration-500" style={{ width: `${Math.min(100, Math.round((job.processedRows / job.totalRows) * 100))}%` }} /></div>
+            <p className="mt-1.5 text-[11px] font-normal">Processing continues in the background. This page refreshes automatically.</p>
+          </div> : "Reading the file. This can take a moment for large uploads."}
         </Alert></div>
       )}
 

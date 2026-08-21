@@ -103,6 +103,13 @@ dashboardRouter.get("/", async (_request, response) => {
 
   const statusCounts = Object.fromEntries(statusGroups.map((group) => [group.status, group._count._all]));
   const totalMembers = statusGroups.reduce((total, group) => total + group._count._all, 0);
+  // Operational health is measured from Report 20's own POV — the latest file's row-level
+  // results — not from the members table's cumulative report20Matched flag, which only reflects
+  // whichever run last touched each member and can't represent "how does the current roster
+  // compare to the most recent file" on its own.
+  const latestImportMatchRate = latestImport && latestImport.totalRows
+    ? Number(((latestImport.matchedRows / latestImport.totalRows) * 100).toFixed(1))
+    : 0;
   const enrollmentCounts = new Map<string, number>();
   for (const member of enrollments) {
     const key = monthStart(member.createdAt).toISOString().slice(0, 7);
@@ -128,9 +135,14 @@ dashboardRouter.get("/", async (_request, response) => {
       },
       coverage: { spouses: totalSpouses, beneficiaries: totalBeneficiaries },
       report20: {
+        // Member-table facts: how many currently-known members carry a clean report20Matched
+        // flag right now (a roster-side view — can include matches from before the latest file).
         matchedMembers: report20Matched,
         unmatchedMembers: Math.max(totalMembers - report20Matched, 0),
-        matchRate: totalMembers ? Number(((report20Matched / totalMembers) * 100).toFixed(1)) : 0,
+        // Report 20's own POV: the latest file's row-level reconciliation result. This is what
+        // "Operational health" on the dashboard shows, since it answers "how well does the
+        // current roster reconcile against the most recent file" directly, with no staleness risk.
+        matchRate: latestImportMatchRate,
         latestImport,
       },
       transfers: { pending: pendingTransfers },

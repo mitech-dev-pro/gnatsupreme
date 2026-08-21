@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { formatCurrency } from "@/lib/currency";
@@ -296,10 +295,11 @@ function BeneficiaryForm({
   );
 }
 
-export default function MemberHome() {
+export type MemberPortalSection = "overview" | "profile" | "household" | "coverage" | "requests" | "claims" | "notifications" | "help";
+
+export default function MemberHome({ section = "overview" }: { section?: MemberPortalSection }) {
   const { settings } = useOrganizationSettings();
-  const { member, logout } = useMemberAuth();
-  const navigate = useNavigate();
+  useMemberAuth();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
   const [loading, setLoading] = useState(true);
@@ -362,11 +362,6 @@ export default function MemberHome() {
     setUnreadCount(0);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
-  };
-
   const afterRequestSubmitted = async () => {
     await loadRequests();
   };
@@ -394,53 +389,14 @@ export default function MemberHome() {
   const spousePending = pendingFor("SPOUSE");
 
   return (
-    <div className="h-screen overflow-y-auto bg-[#f4f6fa] px-5 py-8 sm:px-10">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-7 flex flex-col gap-5 rounded-[14px] border border-[#e5e9f0] bg-white px-5 py-4 shadow-[0_5px_18px_rgba(30,39,97,0.06)] sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <img
-              src="/brand/gnat-logo.png?v=1"
-              alt="GNAT"
-              className="h-14 w-24 shrink-0 object-contain"
-            />
-            <div className="h-10 w-px bg-[#e5e9f0]" />
-            <div>
-              <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-                Welcome, {member?.fullName}
-              </h1>
-              <div className="text-[12.5px] text-[#5b6472]">
-                {settings.memberIdLabel} {member?.controllerId}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-4 sm:justify-end">
-            <div className="text-right">
-              <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#7a8190]">
-                Underwritten by
-              </div>
-              <img
-                src="/brand/milife-logo.png?v=1"
-                alt="miLife Insurance"
-                className="mt-1 h-7 w-20 object-contain"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9]"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-
+    <div>
         {loading ? (
           <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#5b6472]">
             Loading your profile…
           </div>
         ) : profile ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:gap-5">
+            {(section === "overview" || section === "profile") && <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2 xl:col-span-1">
               <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
                 Coverage
               </h2>
@@ -470,9 +426,9 @@ export default function MemberHome() {
                   </dd>
                 </div>
               </dl>
-            </div>
+            </div>}
 
-            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
+            {(section === "overview" || section === "household") && <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">Spouse</h2>
                 {!editingSpouse &&
@@ -515,9 +471,9 @@ export default function MemberHome() {
                   onSubmitted={afterRequestSubmitted}
                 />
               )}
-            </div>
+            </div>}
 
-            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+            {(section === "overview" || section === "household") && <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Beneficiaries ({profile.beneficiaries.length}/10)
@@ -597,10 +553,10 @@ export default function MemberHome() {
                   onSubmitted={afterRequestSubmitted}
                 />
               )}
-            </div>
+            </div>}
 
-            {benefitPlan && (
-              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+            {(section === "overview" || section === "coverage") && benefitPlan && (
+              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
                 <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
                   Benefit Plan
                 </h2>
@@ -624,8 +580,8 @@ export default function MemberHome() {
               </div>
             )}
 
-            {requests.length > 0 && (
-              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+            {(section === "overview" || section === "requests") && requests.length > 0 && (
+              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
                 <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">My Requests</h2>
                 <ul className="divide-y divide-[#e5e9f0]">
                   {requests.slice(0, 10).map((r) => (
@@ -645,8 +601,9 @@ export default function MemberHome() {
                 </ul>
               </div>
             )}
+            {section === "requests" && requests.length === 0 && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 text-[12.5px] text-(--text-muted) md:col-span-2">You have not submitted any change requests yet.</div>}
 
-            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+            {(section === "overview" || section === "notifications") && <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Notifications
@@ -687,14 +644,17 @@ export default function MemberHome() {
                   ))}
                 </ul>
               )}
-            </div>
+            </div>}
+
+            {section === "claims" && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 md:col-span-2"><h2 className="text-[15px] font-bold text-(--text-strong)">Claims</h2><p className="mt-1 max-w-[65ch] text-[12.5px] text-(--text-muted)">Your submitted claims and their processing status will appear here.</p></div>}
+
+            {section === "help" && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 md:col-span-2"><h2 className="text-[15px] font-bold text-(--text-strong)">Help and support</h2><p className="mt-1 text-[12.5px] text-(--text-muted)">Contact {settings.schemeSponsor} if you need help with your membership record.</p><div className="mt-4 flex flex-wrap gap-2 text-[12px]">{settings.organizationPhone && <a className="rounded-[9px] border border-(--border-default) px-3 py-2 font-semibold text-(--text-strong) no-underline" href={`tel:${settings.organizationPhone}`}>Call {settings.organizationPhone}</a>}{settings.organizationEmail && <a className="rounded-[9px] border border-(--border-default) px-3 py-2 font-semibold text-(--text-strong) no-underline" href={`mailto:${settings.organizationEmail}`}>Email support</a>}</div>{settings.privacyNotice && <div className="mt-5 border-t border-(--border-default) pt-4"><h3 className="text-[13px] font-bold text-(--text-strong)">Privacy notice</h3><p className="mt-1 max-w-[75ch] whitespace-pre-wrap text-[12px] leading-relaxed text-(--text-muted)">{settings.privacyNotice}</p></div>}</div>}
           </div>
         ) : (
           <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#5b6472]">
             We couldn't load your profile.
           </div>
         )}
-      </div>
     </div>
   );
 }

@@ -18,6 +18,7 @@ const ImportReview = lazy(() => import("@/pages/members/ImportReview"));
 const Report20Upload = lazy(() => import("@/pages/imports/Report20Upload"));
 const Report20Review = lazy(() => import("@/pages/imports/Report20Review"));
 const MemberHome = lazy(() => import("@/pages/member/MemberHome"));
+const MemberPortalLayout = lazy(() => import("@/components/member/MemberPortalLayout"));
 const ChangeRequests = lazy(() => import("@/pages/members/ChangeRequests"));
 const PendingApprovals = lazy(() => import("@/pages/members/PendingApprovals"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -67,7 +68,16 @@ export default function App() {
           </Route>
 
           <Route element={<MemberProtectedRoute />}>
-            <Route path="/member" element={<MemberHome />} />
+            <Route path="/member" element={<MemberPortalLayout />}>
+              <Route index element={<MemberHome section="overview" />} />
+              <Route path="profile" element={<MemberHome section="profile" />} />
+              <Route path="household" element={<MemberHome section="household" />} />
+              <Route path="coverage" element={<MemberHome section="coverage" />} />
+              <Route path="requests" element={<MemberHome section="requests" />} />
+              <Route path="claims" element={<MemberHome section="claims" />} />
+              <Route path="notifications" element={<MemberHome section="notifications" />} />
+              <Route path="help" element={<MemberHome section="help" />} />
+            </Route>
           </Route>
 
           <Route path="*" element={<Navigate to="/login" replace />} />

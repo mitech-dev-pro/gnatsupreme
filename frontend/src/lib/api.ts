@@ -37,13 +37,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// AuthContext and MemberAuthContext both probe their own /refresh endpoint on every page load,
+// regardless of which portal is active, so it's normal for exactly one of them to 401 (e.g. a
+// staff user has no member session, so /member-auth/refresh always fails for them). Both contexts
+// already catch that failure themselves — redirecting here on top of that would bounce a
+// perfectly-logged-in user back to /login just because the *other* role's probe failed.
+const REFRESH_PROBE_PATHS = ["/auth/refresh", "/member-auth/refresh"];
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const code = error?.response?.data?.error?.code;
+    const requestUrl = error?.config?.url ?? "";
+    const isRefreshProbe = REFRESH_PROBE_PATHS.some((path) => requestUrl.endsWith(path));
 
     if (
       (code === "UNAUTHENTICATED" || error?.response?.status === 401) &&
+      !isRefreshProbe &&
       !isPublicPath(window.location.pathname)
     ) {
       window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;

@@ -670,12 +670,24 @@ export default function MemberHome() {
 
             {benefitPlan && (
               <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
-                <h2 className="mb-1 text-[15px] font-bold text-[#1e2761]">
-                  Coverage
-                </h2>
-                <p className="mb-4 text-[12px] text-[#5b6472]">
-                  Your policy benefits, effective {formatDate(benefitPlan.effectiveFrom)}.
-                </p>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="mb-1 text-[15px] font-bold text-[#1e2761]">
+                      Coverage
+                    </h2>
+                    <p className="text-[12px] text-[#5b6472]">
+                      Your policy benefits, effective {formatDate(benefitPlan.effectiveFrom)}.
+                    </p>
+                  </div>
+                  <a
+                    href="/policy/terms-and-conditions.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={chipButtonNavy}
+                  >
+                    View Terms &amp; Conditions ↗
+                  </a>
+                </div>
                 <div className="-mx-5 overflow-x-auto px-5">
                   <table className="w-full min-w-[560px] border-collapse text-left text-[12.5px]">
                     <thead>

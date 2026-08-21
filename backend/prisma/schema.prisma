@@ -499,6 +499,7 @@ model ImportJob {
   importedRows  Int                   @default(0) @map("imported_rows")
   enrolledRows  Int                   @default(0) @map("enrolled_rows")
   flaggedForRemovalRows Int           @default(0) @map("flagged_for_removal_rows")
+  processedRows Int                   @default(0) @map("processed_rows")
 
   @@unique([type, checksum])
   @@index([status])

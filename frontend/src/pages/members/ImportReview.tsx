@@ -7,6 +7,7 @@ type ImportJob = {
   id: number;
   status: string;
   totalRows: number;
+  processedRows: number;
   readyRows: number;
   invalidRows: number;
   duplicateRows: number;
@@ -104,13 +105,16 @@ export default function ImportReview() {
   }, [id, page, rowStatus]);
 
   // Staging and committing now both run in the background — poll while the job hasn't finished yet.
+  // Job status/progress polls quickly (it's a cheap single-row read); the row list polls less
+  // often since it's a bigger query and doesn't change meaningfully every couple of seconds.
   useEffect(() => {
     if (!job || (job.status !== "PENDING" && job.status !== "PROCESSING")) return;
-    const timer = setInterval(async () => {
-      await loadJob();
-      await loadRows();
-    }, 3000);
-    return () => clearInterval(timer);
+    const jobTimer = setInterval(loadJob, 1500);
+    const rowsTimer = setInterval(loadRows, 5000);
+    return () => {
+      clearInterval(jobTimer);
+      clearInterval(rowsTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.status]);
 
@@ -202,8 +206,25 @@ export default function ImportReview() {
       )}
 
       {(job.status === "PENDING" || job.status === "PROCESSING") && (
-        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
-          Processing in the background — this can take a while for large files. This page refreshes automatically.
+        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-3 text-[12.5px] font-semibold text-[#1e2761]">
+          {job.totalRows > 0 ? (
+            <>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span>
+                  Processing row {job.processedRows.toLocaleString()} of {job.totalRows.toLocaleString()}
+                </span>
+                <span>{Math.min(100, Math.round((job.processedRows / job.totalRows) * 100))}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/60">
+                <div
+                  className="h-full rounded-full bg-[#1f9c7c] transition-[width] duration-500"
+                  style={{ width: `${Math.min(100, Math.round((job.processedRows / job.totalRows) * 100))}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            "Reading the file… this can take a moment for large uploads."
+          )}
         </div>
       )}
 

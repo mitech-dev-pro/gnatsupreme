@@ -95,6 +95,7 @@ async function findManyChunked<T>(ids: string[], run: (batch: string[]) => Promi
 
 export async function stageMemberImport(jobId: number, filePath: string, mimeType: string, user: AuthenticatedUser) {
   const sourceRows = await spreadsheetRows(filePath, mimeType);
+  await prisma.importJob.update({ where: { id: jobId }, data: { totalRows: sourceRows.length, processedRows: 0 } });
   const districts = await prisma.district.findMany({ include: { region: { select: { name: true } } } });
   const districtAliases = await prisma.districtAlias.findMany({ select: { alias: true, districtId: true } });
   const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
@@ -194,7 +195,7 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
   await prisma.$transaction(
     [
       prisma.memberBulkImportRow.createMany({ data: rows }),
-      prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", totalRows: rows.length, readyRows: counts.READY, invalidRows: counts.INVALID, duplicateRows: counts.DUPLICATE, unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE, completedAt: new Date() } }),
+      prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", totalRows: rows.length, processedRows: rows.length, readyRows: counts.READY, invalidRows: counts.INVALID, duplicateRows: counts.DUPLICATE, unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE, completedAt: new Date() } }),
     ],
     // Default 5s timeout is far too short for inserting up to MAX_ROWS rows; this now runs off the
     // HTTP request path (see member-import.routes.ts), so there's no user-facing timeout pressure.

@@ -7,10 +7,12 @@ import { z } from "zod";
 
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import { spawnWorker } from "../../lib/spawn-worker.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { hasValidReport20Signature, memberImportFileUpload, uploadRoot } from "../files/file.storage.js";
-import { bulkRawFields, stageMemberImport } from "./member-import.service.js";
+import { bulkRawFields } from "./member-import.service.js";
+import type { MemberImportWorkerData } from "./member-import.worker.js";
 import { sha256File } from "./report20.service.js";
 
 export const memberImportRouter = Router();
@@ -135,19 +137,20 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
 
   const jobId = job.id;
   const originalName = path.basename(request.file.originalname);
-  // Staging can involve up to MAX_ROWS = 300,000 rows; run it off the request/response cycle so the
-  // upload doesn't hold an HTTP connection open (same fire-and-forget pattern as Report 20 — see
-  // import.routes.ts for the rationale and its Redis/BullMQ upgrade note).
-  void (async () => {
-    try {
-      await stageMemberImport(jobId, request.file!.path, request.file!.mimetype, currentUser);
-    } catch (error) {
-      await prisma.importJob.update({ where: { id: jobId }, data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed", completedAt: new Date() } }).catch(() => undefined);
-      return;
-    }
-    const completed = await prisma.importJob.findUnique({ where: { id: jobId } });
-    await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_VALIDATED", entityType: "IMPORT_JOB", entityId: jobId, description: `Validated bulk member import ${originalName}`, afterData: completed ? { totalRows: completed.totalRows, readyRows: completed.readyRows, invalidRows: completed.invalidRows, duplicateRows: completed.duplicateRows } : undefined });
-  })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while staging member import job"));
+  // Staging can involve up to MAX_ROWS = 300,000 rows; run it on a worker_thread so the CPU-bound
+  // parse doesn't block the main thread's event loop for the whole server (see report20.worker.ts
+  // for the full rationale — this is the same fix applied to the same class of problem).
+  const memberImportWorkerData: MemberImportWorkerData = {
+    importJobId: jobId,
+    filePath: request.file.path,
+    mimeType: request.file.mimetype,
+    originalName,
+    actorUser: currentUser,
+    auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
+  };
+  spawnWorker(import.meta.url, "member-import.worker", memberImportWorkerData, (error) =>
+    logger.error({ err: error, importJobId: jobId }, "Unhandled error while staging member import job"),
+  );
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId }, include: { file: { select: { originalName: true, downloadPath: true } } } });
   response.status(202).json({ success: true, data: pendingJob });
@@ -201,14 +204,20 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
     return;
   }
   const jobId = job.id;
-  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date() } });
+  const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
+  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date(), totalRows: readyCount, processedRows: 0 } });
 
   // Committing can mean creating up to MAX_ROWS members one at a time; run it off the request/response
   // cycle for the same reason staging and Report 20 reconciliation do (see stageMemberImport above).
+  // Each row needs its own nested spouse/beneficiary creates, so unlike Report 20's flat auto-enroll
+  // this can't be batched with createManyAndReturn — but progress is still reported periodically so
+  // a long commit isn't a silent black box.
+  const PROGRESS_EVERY = 200;
   void (async () => {
     const rows = await prisma.memberBulkImportRow.findMany({ where: { importJobId: jobId, status: "READY" }, orderBy: { rowNumber: "asc" } });
     let imported = 0;
     let failed = 0;
+    let processed = 0;
     for (const row of rows) {
       const extra = bulkRawFields(row.rawData);
       try {
@@ -229,8 +238,12 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
         failed += 1;
         await prisma.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "FAILED", issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"] } });
       }
+      processed += 1;
+      if (processed % PROGRESS_EVERY === 0) {
+        await prisma.importJob.update({ where: { id: jobId }, data: { processedRows: processed } });
+      }
     }
-    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), importedRows: { increment: imported }, readyRows: { decrement: imported + failed }, invalidRows: { increment: failed } } });
+    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), processedRows: processed, importedRows: { increment: imported }, readyRows: { decrement: imported + failed }, invalidRows: { increment: failed } } });
     await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: jobId, description: `Committed bulk member import ${jobId}`, afterData: { imported, failed, status: updated.status } });
   })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while committing member import job"));
 

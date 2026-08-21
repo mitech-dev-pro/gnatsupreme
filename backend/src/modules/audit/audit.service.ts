@@ -5,8 +5,17 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
+// Most callers run inside an HTTP request and pass the real Express Request. Background work
+// (e.g. worker_threads processing an upload) has no Request object, so it passes the two fields
+// recordAudit actually needs off of one instead.
+type AuditRequestSource = Request | { ip?: string | null; userAgent?: string | null };
+
+function isExpressRequest(source: AuditRequestSource): source is Request {
+  return typeof (source as Request).get === "function";
+}
+
 type AuditInput = {
-  request: Request;
+  request: AuditRequestSource;
   actor?: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null;
   actorEmail?: string | null;
   action: string;
@@ -39,7 +48,7 @@ export async function recordAudit(input: AuditInput) {
         regionId: input.regionId ?? input.actor?.regionId ?? null,
         districtId: input.districtId ?? input.actor?.districtId ?? null,
         ipAddress: input.request.ip?.slice(0, 64),
-        userAgent: input.request.get("user-agent")?.slice(0, 500),
+        userAgent: (isExpressRequest(input.request) ? input.request.get("user-agent") : input.request.userAgent)?.slice(0, 500),
       },
     });
   } catch (error) {

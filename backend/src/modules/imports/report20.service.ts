@@ -42,6 +42,12 @@ function field(rawData: Record<string, string>, names: readonly string[]) {
   return entry?.[1]?.trim() || null;
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 export async function sha256File(filePath: string) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(filePath)) hash.update(chunk);
@@ -94,7 +100,7 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
 export async function reconcileReport20(importJobId: number, sourceRows: SourceRow[]) {
   await prisma.importJob.update({
     where: { id: importJobId },
-    data: { status: "PROCESSING", startedAt: new Date() },
+    data: { status: "PROCESSING", startedAt: new Date(), totalRows: sourceRows.length, processedRows: 0 },
   });
 
   const controllerIds = [
@@ -211,6 +217,28 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     });
   }
 
+  // Auto-enrolling new members is the dominant cost for a file with many first-time Controller
+  // IDs (each is its own row), so it's done as its own batched, progress-reporting phase ahead of
+  // the final transaction rather than one-by-one inside it — both faster (bulk insert per batch
+  // instead of N individual creates) and lets polling clients see live progress on a long import.
+  const createdIdByControllerId = new Map<string, number>();
+  const ENROLL_BATCH_SIZE = 2_000;
+  let enrolledSoFar = 0;
+  for (const batch of chunk(nextControllerIdToCreate, ENROLL_BATCH_SIZE)) {
+    const created = await prisma.member.createManyAndReturn({
+      data: batch.map((entry) => entry.data),
+      select: { id: true, controllerId: true },
+    });
+    for (const member of created) createdIdByControllerId.set(member.controllerId, member.id);
+    enrolledSoFar += batch.length;
+    await prisma.importJob.update({ where: { id: importJobId }, data: { processedRows: enrolledSoFar } });
+  }
+  for (const row of data) {
+    if (row.status === "ENROLLED" && row.controllerId) {
+      row.memberId = createdIdByControllerId.get(row.controllerId);
+    }
+  }
+
   const seenControllerIds = seen;
   const missingMemberIds = activeMembers
     .filter((member) => !seenControllerIds.has(member.controllerId))
@@ -223,18 +251,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     async (tx) => {
       // Clears any rows from a previous run of this same job (see rerunReport20) before inserting fresh ones.
       await tx.report20Row.deleteMany({ where: { importJobId } });
-
-      const createdMembers = await Promise.all(
-        nextControllerIdToCreate.map((entry) => tx.member.create({ data: entry.data, select: { id: true, controllerId: true } })),
-      );
-      const createdIdByControllerId = new Map(createdMembers.map((member) => [member.controllerId, member.id]));
-      for (const row of data) {
-        if (row.status === "ENROLLED" && row.controllerId) {
-          row.memberId = createdIdByControllerId.get(row.controllerId);
-        }
-      }
-
-      await tx.report20Row.createMany({ data });
+      for (const batch of chunk(data, 20_000)) await tx.report20Row.createMany({ data: batch });
       await tx.member.updateMany({ where: { id: { in: [...matchedMemberIds] } }, data: { report20Matched: true } });
       if (missingMemberIds.length) {
         await tx.member.updateMany({ where: { id: { in: missingMemberIds } }, data: { missingFromReport20At: new Date() } });
@@ -247,6 +264,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         data: {
           status: "COMPLETED",
           totalRows: sourceRows.length,
+          processedRows: sourceRows.length,
           matchedRows: counts.matched,
           changedRows: counts.changed,
           unmatchedRows: counts.unmatched,

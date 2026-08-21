@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { Alert, EmptyState } from "@/components/ui/Feedback";
+import PageHeader from "@/components/ui/PageHeader";
+import Pagination from "@/components/ui/Pagination";
+import StatusBadge from "@/components/ui/StatusBadge";
 import "./ChangeRequests.css";
 
 type RequestItem = { id: number; type: string; status: string; proposedData: Record<string, unknown> | null; targetBeneficiaryId: number | null; requestNote: string | null; reviewNote: string | null; requestedAt: string; reviewedAt: string | null; member: { id: number; controllerId: string; fullName: string; status: string }; requestedBy: { id: number; fullName: string }; reviewedBy: { id: number; fullName: string } | null };
@@ -64,14 +68,14 @@ export default function ChangeRequests() {
   };
 
   return <main className="change-page">
-    <header className="change-heading"><div><p>Member administration</p><h1>Change requests</h1><span>{total} {status.toLowerCase()} request{total === 1 ? "" : "s"} in your access scope</span></div></header>
-    <div className="change-filters"><select value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })}><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select><select value={type} onChange={(event) => updateParams({ type: event.target.value || null, page: null })}><option value="">All request types</option>{TYPES.map((item) => <option key={item} value={item}>{labels[item]}</option>)}</select></div>
-    {error && <div className="change-alert" role="alert">{error}</div>}
+    <PageHeader eyebrow="Member administration" title="Change requests" description={`${total.toLocaleString()} ${status.toLowerCase()} request${total === 1 ? "" : "s"} in your access scope`} />
+    <div className="change-filters" aria-label="Change request filters"><select aria-label="Filter by status" value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })}><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select><select aria-label="Filter by request type" value={type} onChange={(event) => updateParams({ type: event.target.value || null, page: null })}><option value="">All request types</option>{TYPES.map((item) => <option key={item} value={item}>{labels[item]}</option>)}</select></div>
+    {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
     <div className="change-workspace">
       <section className="change-queue">
         <div className="change-queue__title"><h2>Requests</h2><span>{total}</span></div>
-        {loading ? <div className="change-skeleton">{Array.from({ length: 5 }).map((_, index) => <span key={index}/>)}</div> : items.length === 0 ? <div className="change-empty"><strong>No requests found</strong><p>Requests matching these filters will appear here.</p></div> : <ul>{items.map((item) => <li key={item.id}><button className={selected?.id === item.id ? "active" : ""} onClick={() => { setSelected(item); setDecision(null); setReviewNote(""); }}><span className={`change-type change-type--${item.type.toLowerCase()}`}>{labels[item.type]}</span><strong>{item.member.fullName}</strong><small>{item.member.controllerId} · Requested {date(item.requestedAt)}</small><i className={`change-status change-status--${item.status.toLowerCase()}`}>{item.status}</i></button></li>)}</ul>}
-        {totalPages > 1 && <footer><button disabled={page === 1} onClick={() => updateParams({ page: String(page - 1) })}>Previous</button><span>{page} / {totalPages}</span><button disabled={page >= totalPages} onClick={() => updateParams({ page: String(page + 1) })}>Next</button></footer>}
+        {loading ? <div className="change-skeleton">{Array.from({ length: 5 }).map((_, index) => <span key={index}/>)}</div> : items.length === 0 ? <EmptyState title="No requests found" description="Requests matching these filters will appear here." /> : <ul>{items.map((item) => <li key={item.id}><button aria-pressed={selected?.id === item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => { setSelected(item); setDecision(null); setReviewNote(""); }}><span className={`change-type change-type--${item.type.toLowerCase()}`}>{labels[item.type]}</span><strong>{item.member.fullName}</strong><small>{item.member.controllerId} · Requested {date(item.requestedAt)}</small><StatusBadge tone={item.status === "APPROVED" ? "success" : item.status === "PENDING" || item.status === "RETURNED" ? "warning" : "danger"}>{item.status.charAt(0) + item.status.slice(1).toLowerCase()}</StatusBadge></button></li>)}</ul>}
+        {totalPages > 1 && <div className="px-3 pb-3"><Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="requests" onPageChange={(nextPage) => updateParams({ page: String(nextPage) })} /></div>}
       </section>
 
       <section className="change-detail">

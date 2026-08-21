@@ -13,6 +13,7 @@ const benefitSchema = z.object({
   enabled: z.boolean(),
   memberAmount: moneySchema,
   spouseAmount: moneySchema.nullable(),
+  note: z.string().trim().max(500).nullable().optional(),
 });
 
 export const createBenefitPlanSchema = z.object({
@@ -36,6 +37,12 @@ export const createBenefitPlanSchema = z.object({
     criticalIllness: benefitSchema,
     hospitalization: benefitSchema,
   }),
+}).superRefine((value, context) => {
+  for (const key of ["criticalIllness", "hospitalization"] as const) {
+    if (value.benefits[key].spouseAmount !== null) {
+      context.addIssue({ code: "custom", path: ["benefits", key, "spouseAmount"], message: "Spouse cover is not available for this benefit" });
+    }
+  }
 });
 
 export const benefitPlanIdSchema = z.object({ id: z.coerce.number().int().positive() });

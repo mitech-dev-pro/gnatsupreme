@@ -5,6 +5,7 @@ import { env } from "../../config/env.js";
 export type SmsMessage = {
   to: string;
   message: string;
+  type?: string;
 };
 
 export type SmsResult = {
@@ -17,7 +18,13 @@ export interface SmsProvider {
 
 class ConsoleSmsProvider implements SmsProvider {
   async send(input: SmsMessage) {
-    console.info(`[DEV SMS] To: ${input.to}\n${input.message}`);
+    const code = input.message.match(/\b\d{4,8}\b/)?.[0];
+    if (code) {
+      const audience = input.type?.startsWith("MEMBER_") ? "MEMBER" : "STAFF";
+      console.info(`${audience} SMS: ${code}`);
+    } else {
+      console.info(`[DEV SMS] To: ${input.to}\n${input.message}`);
+    }
     return { providerMessageId: `console-${randomUUID()}` };
   }
 }

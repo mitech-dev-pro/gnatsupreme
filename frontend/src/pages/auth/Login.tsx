@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
+import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -21,6 +22,7 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 export default function Login() {
+  const { settings } = useOrganizationSettings();
   const { user, isLoading, login } = useAuth();
   const {
     member,
@@ -35,6 +37,7 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,6 +47,19 @@ export default function Login() {
   const [challengeToken, setChallengeToken] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberSubmitting, setMemberSubmitting] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
+  const otpFormRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
+
+  useEffect(() => {
+    if (otp.length === 6 && memberStep === "otp" && !memberSubmitting) otpFormRef.current?.requestSubmit();
+  }, [otp, memberStep]);
 
   if (isLoading || memberLoading) {
     return (
@@ -88,7 +104,7 @@ export default function Login() {
     setMemberError("");
 
     if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError("Enter a valid Controller ID (4 to 7 digits).");
+      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
       return;
     }
 
@@ -97,6 +113,8 @@ export default function Login() {
       const res = await requestOtp(controllerId.trim());
       setChallengeToken(res.challengeToken);
       setMemberStep("otp");
+      setResendSeconds(60);
+      setResendMessage("");
     } catch (err: any) {
       setMemberError(
         err?.response?.data?.message || "Unable to send a verification code.",
@@ -129,12 +147,32 @@ export default function Login() {
     }
   };
 
+  const handleResendOtp = async () => {
+    if (resendSeconds > 0 || memberSubmitting) return;
+    setMemberSubmitting(true);
+    setMemberError("");
+    setResendMessage("");
+    try {
+      const response = await requestOtp(controllerId.trim());
+      setChallengeToken(response.challengeToken);
+      setOtp("");
+      setResendSeconds(60);
+      setResendMessage("A new verification code has been sent.");
+    } catch (err: any) {
+      setMemberError(err?.response?.data?.message || "Unable to resend the verification code.");
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
   const handleMemberModeChange = (nextMode: "staff" | "member") => {
     setMode(nextMode);
     setMemberStep("id");
     setOtp("");
     setChallengeToken("");
     setMemberError("");
+    setResendMessage("");
+    setResendSeconds(0);
   };
 
   return (
@@ -178,11 +216,11 @@ export default function Login() {
             </div>
 
             <h1 className="relative z-10 mb-2.5 text-[22px] font-extrabold tracking-tight">
-              GNAT Supreme Care
+              {settings.portalName}
             </h1>
             <p className="relative z-10 text-[13px] leading-relaxed text-white/80">
-              Member Portal for GNAT's health scheme, underwritten with miLife
-              Insurance. Sign in with your district, regional, or national
+              Member Portal for {settings.schemeSponsor}'s health scheme, underwritten with {settings.underwriter}.
+              Sign in with your district, regional, or national
               administrator account.
             </p>
 
@@ -209,7 +247,7 @@ export default function Login() {
           </div>
 
           <div className="relative z-10 mt-6 text-[10.5px] text-white/55">
-            Sign in with the staff account issued to you by GNAT Supreme Care.
+            Sign in with the staff account issued to you by {settings.portalName}.
           </div>
         </div>
 
@@ -256,7 +294,7 @@ export default function Login() {
                 <circle cx="12" cy="8" r="3.4" />
                 <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" />
               </svg>
-              Member Login
+              Member Access
             </button>
           </div>
 
@@ -322,13 +360,32 @@ export default function Login() {
                     </svg>
                     <input
                       id="login-password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       autoComplete="current-password"
-                      className={inputClasses}
+                      className={`${inputClasses} pr-10`}
                     />
+                    <button
+                      type="button"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-[7px] text-[#5b6472] transition hover:bg-[#eef0fa] hover:text-[#1e2761] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]"
+                    >
+                      {showPassword ? (
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+                          <path d="m3 3 18 18" />
+                          <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c6 0 9.5 8 9.5 8a17 17 0 0 1-2.1 3.3M6.6 6.6C4 8.4 2.5 12 2.5 12S6 20 12 20c1.3 0 2.5-.4 3.6-1" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+                          <path d="M2.5 12S6 4 12 4s9.5 8 9.5 8S18 20 12 20 2.5 12 2.5 12Z" strokeLinejoin="round" />
+                          <circle cx="12" cy="12" r="2.5" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -343,15 +400,16 @@ export default function Login() {
             </>
           ) : memberStep === "id" ? (
             <>
+              <div className="mb-5 flex items-center gap-2 text-[10.5px] font-bold" aria-label="Step 1 of 2, verify membership">
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">1</span><span className="text-[#1e2761]">Verify membership</span><span className="h-px flex-1 bg-[#dfe4ec]"/><span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">2</span><span className="text-[#7b8492]">Enter SMS code</span>
+              </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Check your membership
+                Member access
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your Controller ID and we'll text a verification code to
+                Enter your {settings.memberIdLabel} and we'll text a verification code to
                 your registered phone
               </div>
-
-              {memberError && <ErrorBanner message={memberError} />}
 
               <form onSubmit={handleRequestOtp} noValidate>
                 <div className="mb-3.5">
@@ -359,7 +417,7 @@ export default function Login() {
                     htmlFor="controller-id"
                     className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
                   >
-                    Controller ID
+                    {settings.memberIdLabel}
                   </label>
                   <div className="relative">
                     <svg
@@ -376,12 +434,17 @@ export default function Login() {
                     <input
                       id="controller-id"
                       value={controllerId}
-                      onChange={(e) => setControllerId(e.target.value)}
+                      onChange={(e) => { setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7)); setMemberError(""); }}
                       placeholder="e.g. 1188204"
                       inputMode="numeric"
+                      autoComplete="username"
+                      maxLength={7}
+                      aria-invalid={Boolean(memberError)}
+                      aria-describedby={memberError ? "member-id-error" : "member-id-help"}
                       className={inputClasses}
                     />
                   </div>
+                  {memberError ? <p id="member-id-error" role="alert" className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]">{memberError}</p> : <p id="member-id-help" className="mt-1.5 text-[11px] text-[#5b6472]">Use the ID shown on your membership record or payslip.</p>}
                 </div>
 
                 <button
@@ -392,20 +455,26 @@ export default function Login() {
                   {memberSubmitting ? "Sending code…" : "Send Verification Code"}
                 </button>
               </form>
+              <div className="mt-5 border-t border-[#edf0f5] pt-4 text-[11px] leading-relaxed text-[#5b6472]">
+                We use the SMS code only to verify access to your membership record.
+                {(settings.organizationPhone || settings.organizationEmail) && <p className="mt-2">Need help? {settings.organizationPhone && <a className="font-semibold text-[#1e2761]" href={`tel:${settings.organizationPhone}`}>{settings.organizationPhone}</a>}{settings.organizationPhone && settings.organizationEmail ? " · " : ""}{settings.organizationEmail && <a className="font-semibold text-[#1e2761]" href={`mailto:${settings.organizationEmail}`}>{settings.organizationEmail}</a>}</p>}
+                {settings.privacyNotice && <details className="mt-2"><summary className="cursor-pointer font-semibold text-[#1e2761]">Privacy notice</summary><p className="mt-1 max-h-24 overflow-y-auto pr-2">{settings.privacyNotice}</p></details>}
+              </div>
             </>
           ) : (
             <>
+              <div className="mb-5 flex items-center gap-2 text-[10.5px] font-bold" aria-label="Step 2 of 2, enter SMS code">
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#dff7ee] text-[#17805f]">✓</span><span className="text-[#5b6472]">Membership found</span><span className="h-px flex-1 bg-[#1f9c7c]"/><span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">2</span><span className="text-[#1e2761]">Enter SMS code</span>
+              </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Enter verification code
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
                 We've sent a 6-digit code by SMS to the phone on file for
-                Controller ID {controllerId}
+                {settings.memberIdLabel} {controllerId}
               </div>
 
-              {memberError && <ErrorBanner message={memberError} />}
-
-              <form onSubmit={handleVerifyOtp} noValidate>
+              <form ref={otpFormRef} onSubmit={handleVerifyOtp} noValidate>
                 <div className="mb-3.5">
                   <label
                     htmlFor="member-otp"
@@ -414,34 +483,36 @@ export default function Login() {
                     Verification code
                   </label>
                   <div className="relative">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
-                    >
-                      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
-                      <path d="M4 7l8 6 8-6" />
-                    </svg>
                     <input
                       id="member-otp"
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      placeholder="e.g. 482913"
+                      onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setMemberError(""); }}
+                      placeholder="000000"
                       maxLength={6}
                       inputMode="numeric"
-                      className={inputClasses}
+                      autoComplete="one-time-code"
+                      enterKeyHint="done"
+                      aria-invalid={Boolean(memberError)}
+                      aria-describedby={memberError ? "member-otp-error" : "member-otp-help"}
+                      className={`${inputClasses} py-3 text-center font-mono text-[20px] font-bold tracking-[0.45em] text-[#1e2761]`}
                     />
                   </div>
+                  {memberError ? <p id="member-otp-error" role="alert" className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]">{memberError}</p> : <p id="member-otp-help" className="mt-1.5 text-[11px] text-[#5b6472]">Enter or paste the complete six-digit code.</p>}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={memberSubmitting}
+                  disabled={memberSubmitting || otp.length !== 6}
                   className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {memberSubmitting ? "Verifying…" : "Verify & Sign In"}
+                </button>
+
+                <div className="mt-3 text-center text-[11.5px] text-[#5b6472]" aria-live="polite">
+                  {resendMessage || (resendSeconds > 0 ? `You can request another code in ${resendSeconds}s` : "Didn't receive the code?")}
+                </div>
+                <button type="button" onClick={() => void handleResendOtp()} disabled={memberSubmitting || resendSeconds > 0} className="mt-1.5 w-full text-center text-[11.5px] font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:text-[#9aa3b2]">
+                  Resend code
                 </button>
 
                 <button
@@ -450,12 +521,15 @@ export default function Login() {
                     setMemberStep("id");
                     setOtp("");
                     setMemberError("");
+                    setResendMessage("");
+                    setResendSeconds(0);
                   }}
                   className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
                 >
-                  &larr; Back
+                  Use a different {settings.memberIdLabel}
                 </button>
               </form>
+              {(settings.organizationPhone || settings.organizationEmail) && <p className="mt-4 text-center text-[11px] text-[#5b6472]">Phone number outdated? Contact {settings.organizationPhone || settings.organizationEmail}.</p>}
             </>
           )}
         </div>

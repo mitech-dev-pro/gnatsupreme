@@ -3,6 +3,10 @@ import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
+import { Alert, EmptyState } from "@/components/ui/Feedback";
+import PageHeader from "@/components/ui/PageHeader";
+import Pagination from "@/components/ui/Pagination";
+import StatusBadge from "@/components/ui/StatusBadge";
 import "./MembersList.css";
 
 type MemberRow = { id: number; controllerId: string; fullName: string; school: string; status: string; createdAt: string; missingFromReport20At: string | null; spouse: { fullName: string } | null; district: { id: number; name: string; region: { id: number; name: string } } };
@@ -10,7 +14,8 @@ const STATUSES = ["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"];
 const PAGE_TITLES: Record<string, string> = { PENDING: "Pending approvals", REMOVED: "Removed members" };
 
 function Status({ value }: { value: string }) {
-  return <span className={`members-status members-status--${value.toLowerCase()}`}><i />{value.charAt(0) + value.slice(1).toLowerCase()}</span>;
+  const tone = value === "ACTIVE" ? "success" : value === "PENDING" || value === "RETURNED" ? "warning" : value === "FLAGGED" || value === "REMOVED" ? "danger" : "neutral";
+  return <StatusBadge tone={tone}>{value.charAt(0) + value.slice(1).toLowerCase()}</StatusBadge>;
 }
 
 function ActionMenu({ member }: { member: MemberRow }) {
@@ -89,7 +94,7 @@ export default function MembersList() {
   const formatEnrolled = (value: string) => new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
 
   return <div className="members-page">
-    <header className="members-heading"><div><p>Member administration</p><h1>{pageTitle}</h1><span>{loading ? "Loading records" : `${total.toLocaleString()} ${total === 1 ? "member" : "members"} in your access scope`}</span></div><div><Link className="members-button members-button--quiet" to="/members/upload">Import file</Link><Link className="members-button members-button--primary" to="/members/new"><b>+</b> Add member</Link></div></header>
+    <PageHeader eyebrow="Member administration" title={pageTitle} description={loading ? "Loading records" : `${total.toLocaleString()} ${total === 1 ? "member" : "members"} in your access scope`} actions={<><Link className="members-button members-button--quiet" to="/members/upload">Import file</Link><Link className="members-button members-button--primary" to="/members/new"><b aria-hidden="true">+</b> Add member</Link></>} />
 
     <section className="members-toolbar" aria-label="Member filters">
       <form onSubmit={submitSearch} className="members-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search name, Controller ID, Ghana Card or school" aria-label="Search members"/><button type="submit">Search</button></form>
@@ -105,14 +110,15 @@ export default function MembersList() {
 
     {selectedDistrict && <div className="members-filter-note">Showing members in <strong>{selectedDistrict.name}</strong>, {selectedDistrict.region.name}</div>}
 
-    <section className="members-table-shell">
-      {loading ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error ? <div className="members-state members-state--error"><div>!</div><h2>Could not load members</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div> : rows.length === 0 ? <div className="members-state"><div className="members-state__icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6m-3-3h6"/></svg></div><h2>{filtered ? "No members match these filters" : "Your member register is empty"}</h2><p>{filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."}</p>{filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>}</div> : <>
+    {error && <div className="mb-3"><Alert tone="error">{error} <button className="ml-2 underline" onClick={() => void load()}>Try again</button></Alert></div>}
+    <section className="members-table-shell" aria-label="Member register">
+      {loading ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error ? null : rows.length === 0 ? <EmptyState title={filtered ? "No members match these filters" : "Your member register is empty"} description={filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."} action={filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>} /> : <>
         {selected.length > 0 && <div className="members-selection"><strong>{selected.length}</strong> selected <button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
         <div className="members-table-wrap"><table className="members-table"><thead><tr><th className="members-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all members on this page" /></th><th className="members-number">#</th><th>Member</th><th>Controller ID</th><th>School</th><th>District and region</th><th>Spouse</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map((member, index) => <tr key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><td className="members-check"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /></td><td className="members-number">{(page - 1) * limit + index + 1}</td><td><Link to={`/members/${member.id}`}><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><span><strong>{member.fullName}</strong><small>Enrolled {formatEnrolled(member.createdAt)}</small></span></Link></td><td><code>{member.controllerId}</code></td><td title={member.school}>{member.school}</td><td><strong className="members-location">{member.district.name}</strong><small className="members-region">{member.district.region.name}</small></td><td>{member.spouse ? <span className="members-spouse"><strong>{member.spouse.fullName}</strong><small>Recorded</small></span> : <span className="members-none">Not recorded</span>}</td><td><Status value={member.status}/>{member.missingFromReport20At && <span title="Not found in the most recent Report 20 file" style={{ display: "inline-block", marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</td><td><ActionMenu member={member}/></td></tr>)}</tbody></table></div>
         <div className="members-cards">{rows.map((member, index) => <article key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><div><Link to={`/members/${member.id}`}><strong>{(page - 1) * limit + index + 1}. {member.fullName}</strong></Link><small>{member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}</small><span>{member.district.name}, {member.district.region.name}</span><span>{member.spouse?.fullName ? `Spouse: ${member.spouse.fullName}` : "Spouse not recorded"}</span></div><div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}><Status value={member.status}/>{member.missingFromReport20At && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</div></article>)}</div>
       </>}
     </section>
 
-    {!loading && !error && total > 0 && <footer className="members-pagination"><span>Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}</span><div><button disabled={page === 1} onClick={() => updateParams({ page: String(page - 1) })}>Previous</button><span>Page {page} of {totalPages}</span><button disabled={page >= totalPages} onClick={() => updateParams({ page: String(page + 1) })}>Next</button></div></footer>}
+    {!loading && !error && total > 0 && <Pagination page={page} totalPages={totalPages} totalItems={total} itemLabel="members" onPageChange={(nextPage) => updateParams({ page: String(nextPage) })} />}
   </div>;
 }

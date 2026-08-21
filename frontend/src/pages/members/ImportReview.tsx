@@ -2,6 +2,12 @@ import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
+import Button from "@/components/ui/Button";
+import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import PageHeader from "@/components/ui/PageHeader";
+import Pagination from "@/components/ui/Pagination";
+import StatusBadge from "@/components/ui/StatusBadge";
+import TableFrame from "@/components/ui/TableFrame";
 
 type ImportJob = {
   id: number;
@@ -40,15 +46,7 @@ const ROW_STATUSES = [
   "FAILED",
 ];
 
-const ROW_STATUS_STYLES: Record<string, string> = {
-  READY: "bg-[#dff7ee] text-[#17805f]",
-  INVALID: "bg-[#fbe9e9] text-[#c23b3b]",
-  DUPLICATE: "bg-[#fbe9e9] text-[#c23b3b]",
-  EXISTING: "bg-[#fbf0dd] text-[#b9791a]",
-  OUT_OF_SCOPE: "bg-[#fbf0dd] text-[#b9791a]",
-  IMPORTED: "bg-[#dff7ee] text-[#17805f]",
-  FAILED: "bg-[#fbe9e9] text-[#c23b3b]",
-};
+const statusTone = (status: string): "success" | "danger" | "warning" | "neutral" => ["READY", "IMPORTED", "COMPLETED"].includes(status) ? "success" : ["INVALID", "DUPLICATE", "FAILED"].includes(status) ? "danger" : ["EXISTING", "OUT_OF_SCOPE", "PENDING", "PROCESSING"].includes(status) ? "warning" : "neutral";
 
 const DISTRICT_ISSUE_PATTERN = /district/i;
 
@@ -151,14 +149,12 @@ export default function ImportReview() {
   };
 
   if (loading && !job) {
-    return <div className="text-[13px] text-[#5b6472]">Loading…</div>;
+    return <div className="rounded-[12px] border border-(--border-default) bg-(--surface-raised) p-5"><table className="w-full"><tbody><TableSkeleton columns={4} rows={5} /></tbody></table></div>;
   }
 
   if (error && !job) {
     return (
-      <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#c23b3b]">
-        {error}
-      </div>
+      <Alert tone="error">{error}</Alert>
     );
   }
 
@@ -175,36 +171,16 @@ export default function ImportReview() {
         &larr; All Members
       </Link>
 
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-            {job.file.originalName}
-          </h1>
-          <div className="mt-1 text-[12.5px] text-[#5b6472]">
-            Uploaded by {job.uploadedBy.fullName}
-          </div>
-        </div>
-        <span className="rounded-full bg-[#eef0fa] px-3 py-1 text-[12px] font-bold text-[#1e2761]">
-          {job.status}
-        </span>
-      </div>
+      <PageHeader eyebrow="Member import review" title={job.file.originalName} description={`Uploaded by ${job.uploadedBy.fullName}`} actions={<StatusBadge tone={statusTone(job.status)}>{job.status.charAt(0) + job.status.slice(1).toLowerCase()}</StatusBadge>} />
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
-      {mappingMessage && (
-        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
-          {mappingMessage}
-        </div>
-      )}
+      {mappingMessage && <div className="mb-4"><Alert tone="info">{mappingMessage}</Alert></div>}
 
       {(job.status === "PENDING" || job.status === "PROCESSING") && (
-        <div className="mb-4 rounded-lg bg-[#eef0fa] px-3 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+        <div className="mb-4"><Alert tone="info">
           Processing in the background — this can take a while for large files. This page refreshes automatically.
-        </div>
+        </Alert></div>
       )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -227,14 +203,13 @@ export default function ImportReview() {
 
       {canCommit && (
         <div className="mb-5">
-          <button
-            type="button"
+          <Button
             onClick={handleCommit}
-            disabled={committing}
-            className="rounded-[9px] bg-[#1f9c7c] px-5 py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+            loading={committing}
+            loadingLabel="Enrolling…"
           >
             {committing ? "Enrolling…" : `Enroll ${job.readyRows} Ready Row(s)`}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -256,9 +231,7 @@ export default function ImportReview() {
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-[12.5px]">
+      <TableFrame label="Import rows" className="min-w-[720px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">Row</th>
@@ -271,17 +244,9 @@ export default function ImportReview() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading ? <TableSkeleton columns={7} /> : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
-                    Loading…
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
-                    No rows found.
-                  </td>
+                  <td colSpan={7}><EmptyState title="No rows found" description="Rows matching this status filter will appear here." /></td>
                 </tr>
               ) : (
                 rows.map((row) => {
@@ -296,11 +261,7 @@ export default function ImportReview() {
                         <td className="px-4 py-2.5 text-[#171b26]">{row.fullName ?? "—"}</td>
                         <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
                         <td className="px-4 py-2.5">
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
-                          >
-                            {row.status}
-                          </span>
+                          <StatusBadge tone={statusTone(row.status)}>{row.status.replaceAll("_", " ").toLowerCase()}</StatusBadge>
                         </td>
                         <td className="px-4 py-2.5 text-[#c23b3b]">
                           {row.issues && row.issues.length > 0 ? row.issues.join("; ") : "—"}
@@ -364,35 +325,9 @@ export default function ImportReview() {
                 })
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-[12.5px]">
-          <span className="text-[#5b6472]">
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} itemLabel="rows" onPageChange={setPage} />
     </div>
   );
 }

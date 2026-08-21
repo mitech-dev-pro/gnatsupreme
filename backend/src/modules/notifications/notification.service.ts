@@ -123,7 +123,7 @@ export async function processNotificationById(id: number) {
   });
   if (claimed.count !== 1) return notification;
   try {
-    const result = await smsProvider.send({ to: notification.destination, message: notification.message });
+    const result = await smsProvider.send({ to: notification.destination, message: notification.message, type: notification.type });
     return prisma.notification.update({
       where: { id },
       data: { status: "SENT", attempts: { increment: 1 }, providerMessageId: result.providerMessageId, lastError: null, sentAt: new Date() },

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import Button from "@/components/ui/Button";
+import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import PageHeader from "@/components/ui/PageHeader";
+import StatusBadge from "@/components/ui/StatusBadge";
+import TableFrame from "@/components/ui/TableFrame";
 
 type ImportJob = {
   id: number;
@@ -23,12 +28,7 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const JOB_STATUS_STYLES: Record<string, string> = {
-  PENDING: "bg-[#fbf0dd] text-[#b9791a]",
-  PROCESSING: "bg-[#fbf0dd] text-[#b9791a]",
-  COMPLETED: "bg-[#dff7ee] text-[#17805f]",
-  FAILED: "bg-[#fbe9e9] text-[#c23b3b]",
-};
+const jobTone = (status: string): "success" | "danger" | "warning" => status === "COMPLETED" ? "success" : status === "FAILED" ? "danger" : "warning";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -168,15 +168,7 @@ export default function UploadMembers() {
         &larr; All Members
       </Link>
 
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-          Upload Members
-        </h1>
-        <button
-          type="button"
-          onClick={downloadTemplate}
-          className="flex items-center gap-1.5 rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12px] font-semibold text-[#1e2761] transition hover:border-[#1f9c7c]"
-        >
+      <PageHeader eyebrow="Member administration" title="Upload members" description="Validate every row before enrolling new member records." actions={<Button variant="secondary" size="sm" onClick={downloadTemplate}>
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -187,9 +179,8 @@ export default function UploadMembers() {
             <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
             <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
           </svg>
-          Download Template
-        </button>
-      </div>
+          Download template
+        </Button>} />
       <div className="mb-5 text-[12.5px] text-[#5b6472]">
         Upload a CSV or XLSX file with Controller ID, Full Name, School, and
         District columns. Each row also needs a beneficiary name and
@@ -203,11 +194,7 @@ export default function UploadMembers() {
         validate every row before anything is enrolled.
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
       <form
         onSubmit={handleSubmit}
@@ -258,32 +245,28 @@ export default function UploadMembers() {
           </div>
         )}
 
-        <button
+        <Button
           type="submit"
-          disabled={uploading || !file}
-          className="mt-5 rounded-[9px] bg-[#1f9c7c] px-5 py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={!file}
+          loading={uploading}
+          loadingLabel={uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Validating…"}
+          className="mt-5"
         >
           {uploading
             ? uploadProgress < 100
               ? `Uploading… ${uploadProgress}%`
               : "Validating…"
             : "Upload & Validate"}
-        </button>
+        </Button>
       </form>
 
       <h2 className="mb-3 mt-8 text-[15px] font-bold text-[#1e2761]">
         Recent Uploads
       </h2>
 
-      {jobsError && (
-        <div className="mb-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">
-          {jobsError}
-        </div>
-      )}
+      {jobsError && <div className="mb-4"><Alert tone="error">{jobsError}</Alert></div>}
 
-      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-[12.5px]">
+      <TableFrame label="Recent member uploads" className="min-w-[820px]">
             <thead>
               <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="px-4 py-2.5">File</th>
@@ -297,17 +280,9 @@ export default function UploadMembers() {
               </tr>
             </thead>
             <tbody>
-              {jobsLoading ? (
+              {jobsLoading ? <TableSkeleton columns={8} /> : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-[#5b6472]">
-                    Loading…
-                  </td>
-                </tr>
-              ) : jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-[#5b6472]">
-                    {jobsError ? "—" : "No uploads yet."}
-                  </td>
+                  <td colSpan={8}>{!jobsError && <EmptyState title="No uploads yet" description="Upload a member file to begin validation." />}</td>
                 </tr>
               ) : (
                 jobs.map((job) => (
@@ -337,19 +312,13 @@ export default function UploadMembers() {
                     </td>
                     <td className="px-4 py-2.5 text-[#171b26]">{job.importedRows}</td>
                     <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${JOB_STATUS_STYLES[job.status] ?? ""}`}
-                      >
-                        {job.status}
-                      </span>
+                      <StatusBadge tone={jobTone(job.status)}>{job.status.charAt(0) + job.status.slice(1).toLowerCase()}</StatusBadge>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+      </TableFrame>
     </div>
   );
 }

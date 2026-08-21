@@ -62,6 +62,15 @@ benefitRouter.get("/history", async (request, response) => {
   });
 });
 
+benefitRouter.get("/schedule", async (_request, response) => {
+  const now = new Date();
+  const [current, next] = await Promise.all([
+    prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { lte: now } }, include: planInclude, orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }] }),
+    prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { gt: now } }, include: planInclude, orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }] }),
+  ]);
+  response.json({ success: true, data: { current, next } });
+});
+
 benefitRouter.get("/:id", async (request, response) => {
   const params = benefitPlanIdSchema.safeParse(request.params);
   if (!params.success) {
@@ -122,6 +131,7 @@ benefitRouter.post(
             enabled: benefit.enabled,
             memberAmount: benefit.memberAmount,
             spouseAmount: benefit.spouseAmount,
+            note: benefit.note,
           })),
         },
       },

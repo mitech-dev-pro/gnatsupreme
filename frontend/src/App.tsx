@@ -1,30 +1,33 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/AuthContext";
 import { MemberAuthProvider } from "@/lib/MemberAuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import MemberProtectedRoute from "@/components/MemberProtectedRoute";
 import AppLayout from "@/components/AppLayout";
-import Login from "@/pages/auth/Login";
-import Dashboard from "@/pages/Dashboard";
-import MembersList from "@/pages/members/MembersList";
-import MemberDetail from "@/pages/members/MemberDetail";
-import AddMember from "@/pages/members/AddMember";
-import UploadMembers from "@/pages/members/UploadMembers";
-import ImportReview from "@/pages/members/ImportReview";
-import Report20Upload from "@/pages/imports/Report20Upload";
-import Report20Review from "@/pages/imports/Report20Review";
-import MemberHome from "@/pages/member/MemberHome";
-import ChangeRequests from "@/pages/members/ChangeRequests";
-import PendingApprovals from "@/pages/members/PendingApprovals";
-import Settings from "@/pages/Settings";
-import Transfers from "@/pages/Transfers";
-import Claims from "@/pages/Claims";
-import Reports from "@/pages/Reports";
-import Setup from "@/pages/Setup";
-import System from "@/pages/System";
-import Unauthorized from "@/pages/Unauthorized";
-import NotFound from "@/pages/NotFound";
+import AppLoading from "@/components/ui/AppLoading";
 import RoleProtectedRoute from "@/components/RoleProtectedRoute";
+
+const Login = lazy(() => import("@/pages/auth/Login"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const MembersList = lazy(() => import("@/pages/members/MembersList"));
+const MemberDetail = lazy(() => import("@/pages/members/MemberDetail"));
+const AddMember = lazy(() => import("@/pages/members/AddMember"));
+const UploadMembers = lazy(() => import("@/pages/members/UploadMembers"));
+const ImportReview = lazy(() => import("@/pages/members/ImportReview"));
+const Report20Upload = lazy(() => import("@/pages/imports/Report20Upload"));
+const Report20Review = lazy(() => import("@/pages/imports/Report20Review"));
+const MemberHome = lazy(() => import("@/pages/member/MemberHome"));
+const ChangeRequests = lazy(() => import("@/pages/members/ChangeRequests"));
+const PendingApprovals = lazy(() => import("@/pages/members/PendingApprovals"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const Transfers = lazy(() => import("@/pages/Transfers"));
+const Claims = lazy(() => import("@/pages/Claims"));
+const Reports = lazy(() => import("@/pages/Reports"));
+const Setup = lazy(() => import("@/pages/Setup"));
+const System = lazy(() => import("@/pages/System"));
+const Unauthorized = lazy(() => import("@/pages/Unauthorized"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const NATIONAL_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN"];
 const REGIONAL_ROLES = [...NATIONAL_ROLES, "REGIONAL_ADMIN"];
@@ -33,7 +36,8 @@ export default function App() {
   return (
     <AuthProvider>
       <MemberAuthProvider>
-        <Routes>
+        <Suspense fallback={<AppLoading label="Loading page" />}>
+          <Routes>
           <Route path="/login" element={<Login />} />
 
           <Route element={<ProtectedRoute />}>
@@ -67,7 +71,8 @@ export default function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </MemberAuthProvider>
     </AuthProvider>
   );

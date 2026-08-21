@@ -4,6 +4,9 @@ import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import "./AddMember.css";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import { Alert } from "@/components/ui/Feedback";
+import PageHeader from "@/components/ui/PageHeader";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -129,13 +132,13 @@ export default function AddMember() {
 
   return <main className="enroll-page">
     <Link to="/members" className="enroll-back" onClick={(event) => { if (isDirty) { event.preventDefault(); setConfirmation("exit"); } }}>← Members</Link>
-    <header className="enroll-heading"><div><p>Member administration</p><h1>{reviewing ? "Review enrollment" : "New member enrollment"}</h1><span>{reviewing ? "Confirm the information before creating the member record." : "New members begin in Pending status and require workflow approval."}</span></div>{!reviewing && <div className="enroll-progress"><strong>{completedRequired}/{requiredValues.length}</strong><span>required fields complete</span></div>}</header>
+    <PageHeader eyebrow="Member administration" title={reviewing ? "Review enrollment" : "New member enrollment"} description={reviewing ? "Confirm the information before creating the member record." : "New members begin in Pending status and require workflow approval."} actions={!reviewing ? <div className="enroll-progress" aria-live="polite"><strong>{completedRequired}/{requiredValues.length}</strong><span>required fields complete</span></div> : undefined} />
 
-    {submitError && <div className="enroll-alert" role="alert"><strong>Enrollment needs attention</strong><span>{submitError}</span></div>}
+    {submitError && <div className="mb-4"><Alert tone="error"><strong>Enrollment needs attention:</strong> {submitError}</Alert></div>}
     {confirmation && <ConfirmationPanel title={confirmation === "exit" ? "Discard this unfinished enrollment?" : "Discard the spouse information entered?"} description={confirmation === "exit" ? "The member, employment, household, and beneficiary information entered on this page will be lost." : "The spouse fields will be cleared. Spouse details can still be added after enrollment."} confirmLabel={confirmation === "exit" ? "Discard enrollment" : "Discard spouse details"} onConfirm={() => { if (confirmation === "exit") navigate("/members"); else { setIncludeSpouse(false); setSpouseName(""); setSpouseDob(""); setSpouseGhanaCardId(""); setConfirmation(null); } }} onCancel={() => setConfirmation(null)} />}
 
     {reviewing ? <section className="enroll-review">
-      <div className="enroll-review__heading"><div><p>Ready for confirmation</p><h2>{fullName}</h2><span>Controller ID {controllerId}</span></div><span className="enroll-pending">Pending</span></div>
+      <div className="enroll-review__heading"><div><p>Ready for confirmation</p><h2>{fullName}</h2><span>Controller ID {controllerId}</span></div><StatusBadge tone="warning">Pending</StatusBadge></div>
       <div className="enroll-review__grid"><section><h3>Member information</h3><dl><SummaryRow label="Date of birth" value={dateOfBirth}/><SummaryRow label="Ghana Card" value={ghanaCardId}/><SummaryRow label="Phone" value={phone}/></dl></section><section><h3>Employment and location</h3><dl><SummaryRow label="School" value={school}/><SummaryRow label="District" value={selectedDistrict?.name}/><SummaryRow label="Region" value={selectedDistrict?.region.name}/></dl></section><section><h3>Spouse</h3><dl>{includeSpouse ? <><SummaryRow label="Name" value={spouseName}/><SummaryRow label="Date of birth" value={spouseDob}/><SummaryRow label="Ghana Card" value={spouseGhanaCardId}/></> : <SummaryRow label="Recorded" value="No"/>}</dl></section><section><h3>Beneficiaries ({beneficiaries.length})</h3><ol>{beneficiaries.map((item, index) => <li key={index}><strong>{item.fullName}</strong><span>{item.relationship.toLowerCase()}{item.dateOfBirth ? `, born ${item.dateOfBirth}` : ""}</span></li>)}</ol></section></div>
       <footer className="enroll-review__actions"><button type="button" onClick={() => setReviewing(false)}>Back to edit</button><button className="primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? "Enrolling…" : "Enroll member"}</button></footer>
     </section> : <div className="enroll-workspace">

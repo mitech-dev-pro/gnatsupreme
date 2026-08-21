@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
+import { formatCurrency } from "@/lib/currency";
+import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 
 type Beneficiary = {
   id: number;
@@ -24,13 +26,26 @@ type MemberProfile = {
 
 type BenefitLine = {
   type: string;
-  amount: string;
+  enabled: boolean;
+  memberAmount: string;
+  spouseAmount: string | null;
+  note: string | null;
 };
 
 type BenefitPlan = {
   effectiveFrom: string;
+  monthlyPremium: string;
+  collectionMethod: string;
+  note: string | null;
   benefits: BenefitLine[];
 } | null;
+
+const BENEFIT_LABELS: Record<string, string> = {
+  DEATH: "Death / Funeral Benefit",
+  TOTAL_PERMANENT_DISABILITY: "Total Permanent Disability",
+  CRITICAL_ILLNESS: "Critical Illness",
+  HOSPITALIZATION: "Hospitalisation",
+};
 
 type MemberNotification = {
   id: number;
@@ -50,6 +65,7 @@ function timeAgo(iso: string) {
 }
 
 export default function MemberHome() {
+  const { settings } = useOrganizationSettings();
   const { member, logout } = useMemberAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
@@ -116,7 +132,7 @@ export default function MemberHome() {
                 Welcome, {member?.fullName}
               </h1>
               <div className="text-[12.5px] text-[#5b6472]">
-                Controller ID {member?.controllerId}
+                {settings.memberIdLabel} {member?.controllerId}
               </div>
             </div>
           </div>
@@ -165,7 +181,7 @@ export default function MemberHome() {
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-[#5b6472]">District</dt>
+                  <dt className="text-[#5b6472]">{settings.subRegionLabel}</dt>
                   <dd className="font-semibold text-[#171b26]">
                     {profile.district.name}
                   </dd>
@@ -210,13 +226,20 @@ export default function MemberHome() {
                 <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
                   Benefit Plan
                 </h2>
-                <ul className="grid grid-cols-1 gap-2 text-[13px] sm:grid-cols-2">
-                  {benefitPlan.benefits.map((b) => (
-                    <li key={b.type} className="flex justify-between">
-                      <span className="text-[#5b6472]">{b.type}</span>
-                      <span className="font-semibold text-[#171b26]">
-                        {b.amount}
-                      </span>
+                <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-[#5b6472]">
+                  <span>Effective {new Date(benefitPlan.effectiveFrom).toLocaleDateString()}</span>
+                  <span>{formatCurrency(benefitPlan.monthlyPremium, settings.currency)} monthly premium</span>
+                  <span>{benefitPlan.collectionMethod}</span>
+                </div>
+                {benefitPlan.note && <p className="mb-4 max-w-[70ch] text-[12.5px] text-[#5b6472]">{benefitPlan.note}</p>}
+                <ul className="divide-y divide-[#e5e9f0] text-[13px]">
+                  {benefitPlan.benefits.filter((benefit) => benefit.enabled).map((b) => (
+                    <li key={b.type} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <span className="font-semibold text-[#1e2761]">{BENEFIT_LABELS[b.type] ?? b.type}</span>
+                        <span className="font-semibold text-[#171b26]">Member {formatCurrency(b.memberAmount, settings.currency)}{b.spouseAmount !== null ? ` · Spouse ${formatCurrency(b.spouseAmount, settings.currency)}` : ""}</span>
+                      </div>
+                      {b.note && <p className="mt-1 max-w-[70ch] text-[12px] leading-relaxed text-[#5b6472]">{b.note}</p>}
                     </li>
                   ))}
                 </ul>

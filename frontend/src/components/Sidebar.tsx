@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 
 type NavSubItem = {
   label: string;
@@ -127,7 +128,7 @@ const adminItems: { label: string; to: string; lock: string; roles: string[]; ic
 
 const navItemBase =
   "flex items-center gap-2.75 rounded-[9px] px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
-const navItemActive = "bg-[#1f9c7c] text-white hover:bg-[#1f9c7c]";
+const navItemActive = "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
 const navSoonBadge =
   "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
 
@@ -139,6 +140,7 @@ type SidebarProps = {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
+  const { settings } = useOrganizationSettings();
   const canImportReport20 = user
     ? ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role)
     : false;
@@ -168,21 +170,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       />
       <aside
         id="app-sidebar"
+        style={{ backgroundColor: settings.primaryColor }}
         className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] py-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
-            <img
-              src="/brand/gnat-logo.png?v=1"
-              alt="GNAT"
-              className="h-full w-full object-contain"
-            />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 text-[13px] font-extrabold text-[#1e2761] shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
+            {settings.sidebarMark}
           </div>
           <div className="leading-[1.15]">
             <div className="text-[14.5px] font-bold text-white">
-              GNAT Supreme Care
+              {settings.portalName}
             </div>
             <div className="text-[10.5px] tracking-[0.3px] text-[#9aa2c4]">
               Member Portal · v1.0
@@ -343,9 +342,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
-          GNAT Supreme Care &copy; 2026
+          {settings.schemeSponsor} &copy; {new Date().getFullYear()}
           <br />
-          Underwritten by miLife Insurance
+          Underwritten by {settings.underwriter}
         </div>
       </aside>
     </>

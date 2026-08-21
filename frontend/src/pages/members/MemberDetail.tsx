@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import { Alert, TableSkeleton } from "@/components/ui/Feedback";
+import StatusBadge from "@/components/ui/StatusBadge";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -339,11 +341,9 @@ export default function MemberDetail() {
       </Link>
 
       {loading ? (
-        <div className="text-[13px] text-[#5b6472]">Loading…</div>
+        <div className="rounded-[12px] border border-(--border-default) bg-(--surface-raised) p-5"><table className="w-full"><tbody><TableSkeleton columns={3} rows={5} /></tbody></table></div>
       ) : error || !member ? (
-        <div className="rounded-[12px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#c23b3b]">
-          {error || "Member not found."}
-        </div>
+        <Alert tone="error">{error || "Member not found."}</Alert>
       ) : (
         <>
           <header className="member-record__header">
@@ -360,9 +360,7 @@ export default function MemberDetail() {
               </div>
               </div>
             </div>
-            <span className={`member-record__status member-record__status--${member.status.toLowerCase()}`}>
-              {member.status}
-            </span>
+            <StatusBadge tone={member.status === "ACTIVE" ? "success" : member.status === "PENDING" || member.status === "RETURNED" ? "warning" : "danger"}>{member.status.charAt(0) + member.status.slice(1).toLowerCase()}</StatusBadge>
           </header>
 
           <div className="member-record__signals">

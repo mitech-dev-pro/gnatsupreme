@@ -627,6 +627,7 @@ model BenefitAmount {
   enabled       Boolean            @default(true)
   memberAmount  Decimal            @map("member_amount") @db.Decimal(14, 2)
   spouseAmount  Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
+  note          String?
 
   @@unique([planVersionId, type])
   @@index([type])

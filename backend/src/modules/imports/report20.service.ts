@@ -130,6 +130,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
   const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
+  const changedMemberIds = new Set<number>();
   const enrolledDistrictIds = new Map<string, number>();
   const counts = { matched: 0, changed: 0, unmatched: 0, duplicate: 0, invalid: 0, enrolled: 0 };
   const nextControllerIdToCreate: { controllerId: string; data: Prisma.MemberCreateManyInput }[] = [];
@@ -176,7 +177,11 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       status = issues.length ? "CHANGED" : "MATCHED";
       // Only a clean match counts toward report20Matched — CHANGED means the row was found but
       // the data disagrees with what's on file, which still needs staff review before it's "matched".
+      // report20Matched must move both ways: a member matched in an earlier run who now comes back
+      // CHANGED (or drops out of the file entirely — see missingMemberIds below) needs the flag
+      // cleared, otherwise it silently goes stale and no longer reflects the latest reconciliation.
       if (status === "MATCHED") matchedMemberIds.add(member.id);
+      else changedMemberIds.add(member.id);
     }
     if (controllerId) seen.add(controllerId);
     counts[status.toLowerCase() as keyof typeof counts] += 1;
@@ -253,6 +258,13 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       await tx.report20Row.deleteMany({ where: { importJobId } });
       for (const batch of chunk(data, 20_000)) await tx.report20Row.createMany({ data: batch });
       await tx.member.updateMany({ where: { id: { in: [...matchedMemberIds] } }, data: { report20Matched: true } });
+      // Anything that used to be matched but isn't any more this run — now CHANGED, or missing
+      // from the file entirely — has its flag cleared so it doesn't keep reporting as matched
+      // against a file that no longer agrees with it.
+      const noLongerMatchedIds = [...new Set([...changedMemberIds, ...missingMemberIds])];
+      if (noLongerMatchedIds.length) {
+        await tx.member.updateMany({ where: { id: { in: noLongerMatchedIds } }, data: { report20Matched: false } });
+      }
       if (missingMemberIds.length) {
         await tx.member.updateMany({ where: { id: { in: missingMemberIds } }, data: { missingFromReport20At: new Date() } });
       }

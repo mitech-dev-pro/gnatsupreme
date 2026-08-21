@@ -1,5 +1,6 @@
 import { useState } from "react";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
 
 type ReportDef = {
   key: string;
@@ -7,6 +8,7 @@ type ReportDef = {
   filename: string;
   title: string;
   description: string;
+  roles?: string[];
 };
 
 const REPORTS: ReportDef[] = [
@@ -22,7 +24,8 @@ const REPORTS: ReportDef[] = [
     path: "/reports/reconciliation.csv",
     filename: "report-20-reconciliation.csv",
     title: "Report 20 Reconciliation",
-    description: "Member status against the most recent Report 20 match outcome.",
+    description: "Every row from the most recent Report 20 file — including rows that never became members (unmatched, duplicate, invalid) — not just current members' match status.",
+    roles: ["SUPER_ADMIN", "NATIONAL_ADMIN"],
   },
   {
     key: "transfers",
@@ -48,6 +51,8 @@ const REPORTS: ReportDef[] = [
 ];
 
 export default function Reports() {
+  const { user } = useAuth();
+  const visibleReports = REPORTS.filter((report) => !report.roles || (user && report.roles.includes(user.role)));
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -86,7 +91,7 @@ export default function Reports() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {REPORTS.map((report) => (
+        {visibleReports.map((report) => (
           <div
             key={report.key}
             className="flex flex-col justify-between rounded-[12px] border border-[#e5e9f0] bg-white p-5"

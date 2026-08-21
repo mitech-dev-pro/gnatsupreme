@@ -33,13 +33,50 @@ type MemberProfile = {
 
 type BenefitLine = {
   type: string;
-  amount: string;
+  enabled: boolean;
+  memberAmount: string;
+  spouseAmount: string | null;
 };
 
 type BenefitPlan = {
   effectiveFrom: string;
+  monthlyPremium: string;
+  collectionMethod: string;
   benefits: BenefitLine[];
 } | null;
+
+// Benefit labels and explanatory notes are fixed policy language, not data the plan-version form
+// (Setup page) edits — only the amounts vary per plan version, so these stay as static copy here.
+const BENEFIT_INFO: Record<string, { label: string; subLabel?: string; note: string }> = {
+  DEATH: {
+    label: "Death / Funeral Benefit",
+    subLabel: "accidental or natural",
+    note: "Payable on death of a Member or one (1) named Spouse.",
+  },
+  TOTAL_PERMANENT_DISABILITY: {
+    label: "Total Permanent Disability (TPD)",
+    note: "Arising from accident or illness; covers Member and Spouse.",
+  },
+  CRITICAL_ILLNESS: {
+    label: "Named Critical Illnesses",
+    note: "See the list of covered conditions at clause 2.2, and the definitions in Schedule 5, of these Terms and Conditions.",
+  },
+  HOSPITALIZATION: {
+    label: "Hospitalisation",
+    subLabel: "one episode per year",
+    note: "Payable after ten (10) or more consecutive nights of hospitalisation; Member only.",
+  },
+};
+
+function formatGHSWhole(value: string) {
+  const amount = Number(value);
+  return `GH¢${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function formatGHS(value: string) {
+  const amount = Number(value);
+  return `GH¢${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 type MemberNotification = {
   id: number;
@@ -79,6 +116,15 @@ const REQUEST_STATUS_STYLES: Record<string, string> = {
 const inputClasses =
   "w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] transition focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none";
 const labelClasses = "mb-1 block text-[11px] font-bold text-[#1e2761]";
+
+// Bigger hit area + a visible hover/focus state than a bare text link — meant for the small
+// per-card actions (Add spouse, Edit, Remove…) so they're comfortable to tap on a touchscreen and
+// clearly reachable by keyboard, not just mouse-hover.
+const chipButtonBase =
+  "inline-flex min-h-[30px] items-center gap-1 rounded-[7px] px-2.5 py-1.5 text-[11.5px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const chipButtonGreen = `${chipButtonBase} text-[#1f9c7c] hover:bg-[#dff7ee] focus-visible:outline-[#1f9c7c]`;
+const chipButtonNavy = `${chipButtonBase} text-[#1e2761] hover:bg-[#eef0fa] focus-visible:outline-[#1e2761]`;
+const chipButtonRed = `${chipButtonBase} text-[#c23b3b] hover:bg-[#fbe9e9] focus-visible:outline-[#c23b3b]`;
 
 function timeAgo(iso: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -167,11 +213,15 @@ function SpouseForm({
         <button
           type="submit"
           disabled={busy || fullName.trim().length < 2}
-          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#17805f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Submitting…" : "Submit for review"}
         </button>
-        <button type="button" onClick={onClose} className="rounded-[9px] border border-[#e5e9f0] px-4 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-[9px] border border-[#e5e9f0] px-4 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:bg-[#f4f6fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e2761]"
+        >
           Cancel
         </button>
       </div>
@@ -269,11 +319,15 @@ function BeneficiaryForm({
         <button
           type="submit"
           disabled={busy || fullName.trim().length < 2}
-          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#17805f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Submitting…" : "Submit for review"}
         </button>
-        <button type="button" onClick={onClose} className="rounded-[9px] border border-[#e5e9f0] px-4 py-2 text-[12.5px] font-semibold text-[#1e2761]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-[9px] border border-[#e5e9f0] px-4 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:bg-[#f4f6fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1e2761]"
+        >
           Cancel
         </button>
       </div>
@@ -290,6 +344,7 @@ export default function MemberHome() {
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
+  const [orgContact, setOrgContact] = useState<{ organizationEmail: string | null; organizationPhone: string | null } | null>(null);
 
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [addingBeneficiary, setAddingBeneficiary] = useState(false);
@@ -333,6 +388,14 @@ export default function MemberHome() {
       }
     })();
     void loadRequests();
+    (async () => {
+      try {
+        const res = await api.get("/member-portal/settings");
+        if (!cancelled) setOrgContact({ organizationEmail: res.data.data.organizationEmail, organizationPhone: res.data.data.organizationPhone });
+      } catch {
+        // contact details are supplementary — a failed fetch shouldn't block the page
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -379,7 +442,7 @@ export default function MemberHome() {
 
   return (
     <div className="h-screen overflow-y-auto bg-[#f4f6fa] px-5 py-8 sm:px-10">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl lg:max-w-5xl xl:max-w-6xl">
         <div className="mb-7 flex flex-col gap-5 rounded-[14px] border border-[#e5e9f0] bg-white px-5 py-4 shadow-[0_5px_18px_rgba(30,39,97,0.06)] sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <img
@@ -389,9 +452,24 @@ export default function MemberHome() {
             />
             <div className="h-10 w-px bg-[#e5e9f0]" />
             <div>
-              <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-                Welcome, {member?.fullName}
-              </h1>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-[22px] font-extrabold text-[#1e2761]">
+                  Welcome, {member?.fullName}
+                </h1>
+                {profile && (
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold tracking-[0.04em] ${
+                      profile.status === "ACTIVE"
+                        ? "bg-[#dff7ee] text-[#17805f]"
+                        : profile.status === "FLAGGED"
+                          ? "bg-[#fbf0dd] text-[#b9791a]"
+                          : "bg-[#eef0fa] text-[#1e2761]"
+                    }`}
+                  >
+                    {profile.status}
+                  </span>
+                )}
+              </div>
               <div className="text-[12.5px] text-[#5b6472]">
                 Controller ID {member?.controllerId}
               </div>
@@ -411,7 +489,7 @@ export default function MemberHome() {
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9]"
+              className="rounded-[9px] border border-[#e5e9f0] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#c23b3b] transition hover:bg-[#fbe9e9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c23b3b]"
             >
               Sign out
             </button>
@@ -423,10 +501,11 @@ export default function MemberHome() {
             Loading your profile…
           </div>
         ) : profile ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="lg:flex lg:items-start lg:gap-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:min-w-0 lg:flex-1">
             <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
               <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
-                Coverage
+                Information
               </h2>
               <dl className="space-y-2 text-[13px]">
                 <div className="flex justify-between">
@@ -465,12 +544,8 @@ export default function MemberHome() {
                       Review pending
                     </span>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setEditingSpouse(true)}
-                      className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
-                    >
-                      {profile.spouse ? "Request update" : "Add spouse"}
+                    <button type="button" onClick={() => setEditingSpouse(true)} className={chipButtonGreen}>
+                      {profile.spouse ? "Request update" : "+ Add spouse"}
                     </button>
                   ))}
               </div>
@@ -490,7 +565,11 @@ export default function MemberHome() {
                   </div>
                 </dl>
               ) : (
-                <div className="text-[13px] text-[#5b6472]">No spouse on record.</div>
+                !editingSpouse && (
+                  <div className="rounded-[9px] border border-dashed border-[#dde3ee] bg-[#fafbfd] px-3 py-3 text-[12.5px] text-[#5b6472]">
+                    No spouse on record. One (1) named spouse can be added to your cover.
+                  </div>
+                )
               )}
               {editingSpouse && (
                 <SpouseForm
@@ -502,19 +581,21 @@ export default function MemberHome() {
             </div>
 
             <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-1.5 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Beneficiaries ({profile.beneficiaries.length}/10)
                 </h2>
                 {!addingBeneficiary && profile.beneficiaries.length < 10 && (
-                  <button
-                    type="button"
-                    onClick={() => setAddingBeneficiary(true)}
-                    className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
-                  >
-                    Add beneficiary
+                  <button type="button" onClick={() => setAddingBeneficiary(true)} className={chipButtonGreen}>
+                    + Add beneficiary
                   </button>
                 )}
+              </div>
+              <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-[#eef0fa]">
+                <div
+                  className="h-full rounded-full bg-[#c99a2e] transition-[width] duration-300"
+                  style={{ width: `${(profile.beneficiaries.length / 10) * 100}%` }}
+                />
               </div>
 
               {removeError && (
@@ -522,20 +603,24 @@ export default function MemberHome() {
               )}
 
               {profile.beneficiaries.length === 0 ? (
-                <div className="text-[13px] text-[#5b6472]">No beneficiaries on record.</div>
+                !addingBeneficiary && (
+                  <div className="rounded-[9px] border border-dashed border-[#dde3ee] bg-[#fafbfd] px-3 py-3 text-[12.5px] text-[#5b6472]">
+                    No beneficiaries on record. Add at least one so your Death Benefit can be paid without delay.
+                  </div>
+                )
               ) : (
                 <ul className="divide-y divide-[#e5e9f0]">
                   {profile.beneficiaries.map((b) => {
                     const updatePending = pendingFor("BENEFICIARY_UPDATE", b.id);
                     const removePending = pendingFor("BENEFICIARY_REMOVE", b.id);
                     return (
-                      <li key={b.id} className="py-2.5">
+                      <li key={b.id} className="rounded-[8px] px-1.5 py-1 transition hover:bg-[#fafbfd]">
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <span className="text-[13px] font-semibold text-[#171b26]">{b.fullName}</span>
                             <span className="ml-2 text-[12px] text-[#5b6472]">{b.relationship.charAt(0) + b.relationship.slice(1).toLowerCase()}</span>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2.5">
+                          <div className="flex shrink-0 items-center gap-1">
                             {updatePending || removePending ? (
                               <span className="rounded-full bg-[#fbf0dd] px-2.5 py-0.5 text-[11px] font-semibold text-[#b9791a]">
                                 Review pending
@@ -545,7 +630,7 @@ export default function MemberHome() {
                                 <button
                                   type="button"
                                   onClick={() => setEditingBeneficiaryId(editingBeneficiaryId === b.id ? null : b.id)}
-                                  className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
+                                  className={chipButtonNavy}
                                 >
                                   Edit
                                 </button>
@@ -553,7 +638,7 @@ export default function MemberHome() {
                                   type="button"
                                   onClick={() => void removeBeneficiary(b)}
                                   disabled={removingId === b.id}
-                                  className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline disabled:opacity-60"
+                                  className={chipButtonRed}
                                 >
                                   Remove
                                 </button>
@@ -585,28 +670,76 @@ export default function MemberHome() {
 
             {benefitPlan && (
               <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
-                <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
-                  Benefit Plan
+                <h2 className="mb-1 text-[15px] font-bold text-[#1e2761]">
+                  Coverage
                 </h2>
-                <ul className="grid grid-cols-1 gap-2 text-[13px] sm:grid-cols-2">
-                  {benefitPlan.benefits.map((b) => (
-                    <li key={b.type} className="flex justify-between">
-                      <span className="text-[#5b6472]">{b.type}</span>
-                      <span className="font-semibold text-[#171b26]">
-                        {b.amount}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="mb-4 text-[12px] text-[#5b6472]">
+                  Your policy benefits, effective {formatDate(benefitPlan.effectiveFrom)}.
+                </p>
+                <div className="-mx-5 overflow-x-auto px-5">
+                  <table className="w-full min-w-[560px] border-collapse text-left text-[12.5px]">
+                    <thead>
+                      <tr className="border-b border-[#e5e9f0] text-[10.5px] font-semibold uppercase tracking-wide text-[#5b6472]">
+                        <th className="py-2 pr-3">Benefit</th>
+                        <th className="py-2 pr-3 whitespace-nowrap">Member</th>
+                        <th className="py-2 pr-3 whitespace-nowrap">Spouse (one)</th>
+                        <th className="py-2">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {benefitPlan.benefits
+                        .filter((b) => b.enabled)
+                        .map((b) => (
+                          <tr key={b.type} className="border-b border-[#e5e9f0] align-top transition last:border-0 hover:bg-[#fafbfd]">
+                            <td className="py-2.5 pr-3 font-semibold text-[#171b26]">
+                              {BENEFIT_INFO[b.type]?.label ?? b.type}
+                              {BENEFIT_INFO[b.type]?.subLabel && (
+                                <div className="mt-0.5 text-[11px] font-normal text-[#5b6472]">
+                                  {BENEFIT_INFO[b.type]?.subLabel}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 pr-3 whitespace-nowrap text-[#171b26]">{formatGHSWhole(b.memberAmount)}</td>
+                            <td className="py-2.5 pr-3 whitespace-nowrap text-[#171b26]">
+                              {b.spouseAmount ? formatGHSWhole(b.spouseAmount) : <span className="text-[#5b6472]">Not covered</span>}
+                            </td>
+                            <td className="py-2.5 text-[#5b6472]">{BENEFIT_INFO[b.type]?.note ?? ""}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <div className="min-w-[170px] flex-1 rounded-[10px] border border-[#e5e9f0] bg-[#f4f6fa] px-4 py-3">
+                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#5b6472]">
+                      Monthly premium
+                    </div>
+                    <div className="mt-1 text-[19px] font-extrabold text-[#1e2761]">
+                      {formatGHS(benefitPlan.monthlyPremium)}
+                    </div>
+                  </div>
+                  <div className="min-w-[170px] flex-1 rounded-[10px] border border-[#e5e9f0] bg-[#f4f6fa] px-4 py-3">
+                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#5b6472]">
+                      Collection method
+                    </div>
+                    <div className="mt-1 text-[15px] font-bold text-[#1e2761]">
+                      {benefitPlan.collectionMethod}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
+          </div>
+
+          <div className="mt-4 space-y-4 lg:mt-0 lg:w-80 lg:shrink-0">
             {requests.length > 0 && (
-              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
                 <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">My Requests</h2>
                 <ul className="divide-y divide-[#e5e9f0]">
                   {requests.slice(0, 10).map((r) => (
-                    <li key={r.id} className="py-2.5 text-[13px]">
+                    <li key={r.id} className="rounded-[8px] px-1.5 py-2.5 text-[13px] transition hover:bg-[#fafbfd]">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-[#171b26]">{REQUEST_TYPE_LABELS[r.type]}</span>
                         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${REQUEST_STATUS_STYLES[r.status]}`}>
@@ -623,29 +756,25 @@ export default function MemberHome() {
               </div>
             )}
 
-            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 sm:col-span-2">
+            <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-[#1e2761]">
                   Notifications
                 </h2>
                 {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={markAllNotificationsRead}
-                    className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
-                  >
+                  <button type="button" onClick={markAllNotificationsRead} className={chipButtonGreen}>
                     Mark all read
                   </button>
                 )}
               </div>
               {notifications.length === 0 ? (
-                <div className="text-[13px] text-[#5b6472]">
-                  No notifications yet.
+                <div className="rounded-[9px] border border-dashed border-[#dde3ee] bg-[#fafbfd] px-3 py-3 text-[12.5px] text-[#5b6472]">
+                  You're all caught up — no notifications yet.
                 </div>
               ) : (
                 <ul className="divide-y divide-[#e5e9f0]">
                   {notifications.slice(0, 8).map((item) => (
-                    <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
+                    <li key={item.id} className="flex items-start justify-between gap-3 rounded-[8px] px-1.5 py-2.5 transition hover:bg-[#fafbfd]">
                       <div>
                         <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#171b26]">
                           {!item.readAt && (
@@ -665,6 +794,30 @@ export default function MemberHome() {
                 </ul>
               )}
             </div>
+
+            {orgContact && (orgContact.organizationPhone || orgContact.organizationEmail) && (
+              <div className="rounded-[14px] bg-[#1e2761] p-5 text-white">
+                <h2 className="mb-1.5 text-[15px] font-bold">Need help?</h2>
+                <p className="mb-3 text-[12px] leading-relaxed text-[#c9cee6]">
+                  Reach the GNAT / miLife help desk for claims, beneficiary changes, or remittance queries.
+                </p>
+                <dl className="space-y-2 text-[12.5px]">
+                  {orgContact.organizationPhone && (
+                    <div className="flex justify-between border-t border-white/15 pt-2">
+                      <dt className="text-[#9aa2c4]">Phone</dt>
+                      <dd className="font-semibold">{orgContact.organizationPhone}</dd>
+                    </div>
+                  )}
+                  {orgContact.organizationEmail && (
+                    <div className="flex justify-between border-t border-white/15 pt-2">
+                      <dt className="text-[#9aa2c4]">Email</dt>
+                      <dd className="font-semibold">{orgContact.organizationEmail}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+          </div>
           </div>
         ) : (
           <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-6 text-[13px] text-[#5b6472]">

@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from "express";
 
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
+import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { memberScope } from "../members/member.access.js";
 
@@ -119,25 +120,45 @@ reportRouter.get("/membership.csv", async (request, response) => {
   );
 });
 
-reportRouter.get("/reconciliation.csv", async (request, response) => {
-  const user = currentUser(response);
+// Report 20's own POV: every row from the most recent (or a specified) reconciliation run,
+// including the ones that never became members — a member-table query can't produce this, since
+// UNMATCHED/DUPLICATE/INVALID rows that couldn't be auto-enrolled have no member to join to.
+// Restricted to SUPER_ADMIN/NATIONAL_ADMIN: Report 20 rows aren't reliably scopable by district —
+// only rows that resolved to a member have district context, and that's exactly the subset this
+// report exists to show beyond. This matches who can manage Report 20 imports in the first place.
+reportRouter.get("/reconciliation.csv", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN"), async (request, response) => {
+  const jobIdParam = Number(request.query.importJobId);
+  const job = await prisma.importJob.findFirst({
+    where: {
+      type: "REPORT_20",
+      ...(Number.isInteger(jobIdParam) && jobIdParam > 0 ? { id: jobIdParam } : { status: "COMPLETED" }),
+    },
+    select: { id: true, file: { select: { originalName: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!job) {
+    response.status(404).json({ success: false, message: "No Report 20 import was found" });
+    return;
+  }
   await sendReport(
     request,
     response,
     "report-20-reconciliation.csv",
-    ["Controller ID", "Full Name", "School", "District", "Region", "Member Status", "Report 20 Status"],
+    ["Row", "Controller ID", "Full Name", "School", "District (file)", "Status", "Issues", "Linked Member ID"],
     async (emit) => {
       let cursor: number | undefined;
       let total = 0;
       do {
-        const rows = await prisma.member.findMany({
-          where: memberScope(user),
-          select: { id: true, controllerId: true, fullName: true, school: true, status: true, report20Matched: true, district: { select: { name: true, region: { select: { name: true } } } } },
+        const rows = await prisma.report20Row.findMany({
+          where: { importJobId: job.id },
+          select: { id: true, rowNumber: true, controllerId: true, fullName: true, school: true, districtName: true, status: true, issues: true, memberId: true },
           orderBy: { id: "asc" },
           take: BATCH_SIZE,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         });
-        for (const row of rows) await emit([row.controllerId, row.fullName, row.school, row.district.name, row.district.region.name, row.status, row.report20Matched ? "MATCHED" : "UNMATCHED"]);
+        for (const row of rows) {
+          await emit([row.rowNumber, row.controllerId, row.fullName, row.school, row.districtName, row.status, (row.issues as string[] | null)?.join("; ") ?? "", row.memberId]);
+        }
         total += rows.length;
         cursor = rows.at(-1)?.id;
         if (rows.length < BATCH_SIZE) break;

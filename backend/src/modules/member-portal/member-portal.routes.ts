@@ -1,4 +1,5 @@
 import { Router, type Response } from "express";
+import { z } from "zod";
 
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
@@ -101,4 +102,46 @@ memberPortalRouter.post("/change-requests", async (request, response) => {
   await recordAudit({ request, action: "MEMBER_SELF_SERVICE_CHANGE_REQUESTED", entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `Member ${currentMember.controllerId} requested a ${item.type} change`, afterData: { memberId: currentMember.id, type: item.type } });
   await notifyStaffForMember({ memberId: currentMember.id, type: "MEMBER_CHANGE_REQUESTED", title: "Member change request", message: `${currentMember.fullName} submitted a ${item.type.toLowerCase().replaceAll("_", " ")} request for review.`, idempotencyKey: `change-request:${item.id}` });
   response.status(201).json({ success: true, data: item });
+});
+
+memberPortalRouter.patch("/change-requests/:id/cancel", async (request, response) => {
+  const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid change request ID" });
+    return;
+  }
+
+  const currentMember = member(response);
+  const item = await prisma.memberChangeRequest.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id },
+    select: { id: true, type: true, status: true },
+  });
+  if (!item) {
+    response.status(404).json({ success: false, message: "Change request not found" });
+    return;
+  }
+  if (item.status !== "PENDING") {
+    response.status(409).json({ success: false, message: "Only pending requests can be cancelled" });
+    return;
+  }
+
+  const updated = await prisma.memberChangeRequest.updateMany({
+    where: { id: item.id, memberId: currentMember.id, status: "PENDING" },
+    data: { status: "CANCELLED", reviewedAt: new Date() },
+  });
+  if (updated.count === 0) {
+    response.status(409).json({ success: false, message: "This request is no longer pending" });
+    return;
+  }
+
+  await recordAudit({
+    request,
+    action: "MEMBER_SELF_SERVICE_CHANGE_CANCELLED",
+    entityType: "MEMBER_CHANGE_REQUEST",
+    entityId: item.id,
+    description: `Member ${currentMember.controllerId} cancelled a ${item.type} change request`,
+    beforeData: item,
+    afterData: { ...item, status: "CANCELLED" },
+  });
+  response.json({ success: true, data: { id: item.id, status: "CANCELLED" } });
 });

@@ -8,7 +8,7 @@ import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 type Region = { id: number; name: string; _count: { districts: number } };
 type District = { id: number; name: string; region: { id: number; name: string }; _count: { members: number } };
 
-type Benefit = { type: string; enabled: boolean; memberAmount: string; spouseAmount: string | null; note: string | null };
+type Benefit = { type: string; enabled: boolean; memberAmount: string; spouseAmount: string | null; note: string | null; namedConditions: string[] };
 type BenefitPlan = {
   id: number;
   effectiveFrom: string;
@@ -35,7 +35,7 @@ const BENEFIT_KEY_TO_TYPE: Record<(typeof BENEFIT_KEYS)[number], string> = {
   hospitalization: "HOSPITALIZATION",
 };
 const MEMBER_ONLY_BENEFITS = new Set(["criticalIllness", "hospitalization"]);
-const EMPTY_BENEFITS = () => Object.fromEntries(BENEFIT_KEYS.map((key) => [key, { enabled: true, memberAmount: "", spouseAmount: "", note: "" }])) as Record<string, { enabled: boolean; memberAmount: string; spouseAmount: string; note: string }>;
+const EMPTY_BENEFITS = () => Object.fromEntries(BENEFIT_KEYS.map((key) => [key, { enabled: true, memberAmount: "", spouseAmount: "", note: "", namedConditions: "" }])) as Record<string, { enabled: boolean; memberAmount: string; spouseAmount: string; note: string; namedConditions: string }>;
 
 const inputClasses =
   "w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] transition focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none";
@@ -484,6 +484,7 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [effectiveFrom, setEffectiveFrom] = useState("");
@@ -517,17 +518,36 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
     setBenefits((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
   };
 
-  const openPlanForm = () => {
-    const source = nextPlan ?? current;
+  const populatePlanForm = (source: BenefitPlan | null) => {
     setMonthlyPremium(source?.monthlyPremium ?? "");
     setCollectionMethod(source?.collectionMethod ?? "");
     setBenefits(Object.fromEntries(BENEFIT_KEYS.map((key) => {
       const benefit = source?.benefits.find((item) => item.type === BENEFIT_KEY_TO_TYPE[key]);
-      return [key, { enabled: benefit?.enabled ?? true, memberAmount: benefit?.memberAmount ?? "", spouseAmount: MEMBER_ONLY_BENEFITS.has(key) ? "" : benefit?.spouseAmount ?? "", note: benefit?.note ?? "" }];
+      return [key, { enabled: benefit?.enabled ?? true, memberAmount: benefit?.memberAmount ?? "", spouseAmount: MEMBER_ONLY_BENEFITS.has(key) ? "" : benefit?.spouseAmount ?? "", note: benefit?.note ?? "", namedConditions: benefit?.namedConditions?.join("\n") ?? "" }];
     })) as ReturnType<typeof EMPTY_BENEFITS>);
+  };
+
+  const openPlanForm = () => {
+    const source = nextPlan ?? current;
+    populatePlanForm(source);
     const sourceYear = source ? new Date(source.effectiveFrom).getUTCFullYear() : null;
     setEffectiveFrom(sourceYear ? `${sourceYear + 1}-01-01` : new Date().toISOString().slice(0, 10));
+    setEditingPlanId(null);
     setShowForm(true);
+  };
+
+  const openEditCurrentForm = () => {
+    if (!current) return;
+    populatePlanForm(current);
+    setEffectiveFrom(current.effectiveFrom.slice(0, 10));
+    setEditingPlanId(current.id);
+    setShowForm(true);
+  };
+
+  const closePlanForm = () => {
+    setShowForm(false);
+    setEditingPlanId(null);
+    setError("");
   };
 
   const submit = async (event: FormEvent) => {
@@ -535,25 +555,28 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
     setBusy(true);
     setError("");
     try {
-      await api.post("/benefits", {
+      const payload = {
         effectiveFrom,
         monthlyPremium,
         collectionMethod,
         benefits: Object.fromEntries(
           BENEFIT_KEYS.map((key) => [
             key,
-            { enabled: benefits[key].enabled, memberAmount: benefits[key].memberAmount, spouseAmount: MEMBER_ONLY_BENEFITS.has(key) ? null : benefits[key].spouseAmount || null, note: benefits[key].note.trim() || null },
+            { enabled: benefits[key].enabled, memberAmount: benefits[key].memberAmount, spouseAmount: MEMBER_ONLY_BENEFITS.has(key) ? null : benefits[key].spouseAmount || null, note: benefits[key].note.trim() || null, namedConditions: key === "criticalIllness" ? benefits[key].namedConditions.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean) : [] },
           ]),
         ),
-      });
+      };
+      if (editingPlanId) await api.patch(`/benefits/${editingPlanId}`, payload);
+      else await api.post("/benefits", payload);
       setShowForm(false);
+      setEditingPlanId(null);
       setEffectiveFrom("");
       setMonthlyPremium("");
       setCollectionMethod("");
       setBenefits(EMPTY_BENEFITS());
       await load();
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Unable to publish this benefit plan.");
+      setError(err?.response?.data?.message || `Unable to ${editingPlanId ? "update" : "publish"} this benefit plan.`);
     } finally {
       setBusy(false);
     }
@@ -575,15 +598,10 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
               </div>
             )}
           </div>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => showForm ? setShowForm(false) : openPlanForm()}
-              className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white"
-            >
-              {showForm ? "Close" : "Publish New Plan"}
-            </button>
-          )}
+          {canEdit && <div className="flex flex-wrap gap-2">
+            {current && <button type="button" onClick={openEditCurrentForm} className="rounded-[9px] border border-[#cbd0d6] bg-[#fbfcfe] px-4 py-2 text-[12.5px] font-bold text-[#1e2761] hover:bg-[#f4f6fa] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]">Edit Current Plan</button>}
+            <button type="button" onClick={showForm && editingPlanId === null ? closePlanForm : openPlanForm} className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white hover:bg-[#17805f] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]">{showForm && editingPlanId === null ? "Close" : "Publish New Plan"}</button>
+          </div>}
         </div>
 
         {!current && <div className="text-[12.5px] text-[#5b6472]">No benefit plan has been published yet.</div>}
@@ -618,7 +636,10 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
 
       {showForm && canEdit && (
         <form onSubmit={submit} className="rounded-[12px] border border-[#e5e9f0] bg-white p-5">
-          <h2 className="mb-4 text-[14.5px] font-bold text-[#1e2761]">Publish a new benefit plan version</h2>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div><h2 className="text-[14.5px] font-bold text-[#1e2761]">{editingPlanId ? "Edit current benefit plan" : "Publish a new benefit plan version"}</h2>{editingPlanId && <p className="mt-1 max-w-[70ch] text-[11.5px] leading-relaxed text-[#5b6472]">Saving updates the effective plan immediately. The previous values and your changes will be recorded in the audit log.</p>}</div>
+            {editingPlanId && <button type="button" onClick={closePlanForm} className="rounded-[8px] border border-[#e5e9f0] px-3 py-1.5 text-[11.5px] font-bold text-[#5b6472] hover:bg-[#f4f6fa]">Close</button>}
+          </div>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className={labelClasses}>Effective From</label>
@@ -683,6 +704,22 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
                         maxLength={500}
                         className={inputClasses}
                       />
+                      {key === "criticalIllness" && (
+                        <div className="mt-2">
+                          <label htmlFor="critical-illness-list" className="mb-1 block text-[11px] font-bold text-[#1e2761]">Named critical illnesses</label>
+                          <textarea
+                            id="critical-illness-list"
+                            value={benefits[key].namedConditions}
+                            onChange={(event) => setBenefits((previous) => ({ ...previous, [key]: { ...previous[key], namedConditions: event.target.value } }))}
+                            placeholder={"One illness per line\nCancer\nStroke"}
+                            rows={4}
+                            disabled={!benefits[key].enabled}
+                            aria-describedby="critical-illness-list-help"
+                            className={inputClasses}
+                          />
+                          <p id="critical-illness-list-help" className="mt-1 text-[10.5px] leading-relaxed text-[#5b6472]">Enter one covered condition per line. This list appears beside Critical Illness in the member portal.</p>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -695,7 +732,7 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
             disabled={busy || !effectiveFrom || !monthlyPremium || !collectionMethod}
             className="rounded-[9px] bg-[#1f9c7c] px-5 py-2.5 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {busy ? "Publishing…" : "Publish Plan"}
+            {busy ? (editingPlanId ? "Saving…" : "Publishing…") : (editingPlanId ? "Save Plan Changes" : "Publish Plan")}
           </button>
         </form>
       )}

@@ -43,6 +43,7 @@ type BenefitLine = {
   memberAmount: string;
   spouseAmount: string | null;
   note: string | null;
+  namedConditions: string[];
 };
 
 type BenefitPlan = {
@@ -73,6 +74,7 @@ type ChangeRequest = {
   type: "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | "BENEFICIARY_UPDATE" | "BENEFICIARY_REMOVE";
   status: "PENDING" | "APPROVED" | "RETURNED" | "REJECTED" | "CANCELLED";
   targetBeneficiaryId: number | null;
+  proposedData: Record<string, unknown> | null;
   requestNote: string | null;
   reviewNote: string | null;
   requestedAt: string;
@@ -94,6 +96,23 @@ const REQUEST_STATUS_STYLES: Record<string, string> = {
   REJECTED: "bg-[#fbe9e9] text-[#c23b3b]",
   CANCELLED: "bg-[#eef0fa] text-[#5b6472]",
 };
+
+const REQUEST_FIELD_LABELS: Record<string, string> = {
+  fullName: "Full name",
+  dateOfBirth: "Date of birth",
+  ghanaCardId: "Ghana Card ID",
+  phone: "Phone number",
+  school: "School",
+  relationship: "Relationship",
+  trusteeName: "Trustee name",
+  trusteeGhanaCardId: "Trustee Ghana Card ID",
+};
+
+function requestValue(value: unknown) {
+  if (value === null || value === "") return "Not provided";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value).replaceAll("_", " ");
+}
 
 const inputClasses =
   "w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px] transition focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none";
@@ -362,6 +381,11 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
   const [removeError, setRemoveError] = useState("");
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [beneficiaryToRemove, setBeneficiaryToRemove] = useState<Beneficiary | null>(null);
+  const [requestFilter, setRequestFilter] = useState<"ALL" | "PENDING" | "COMPLETED">("ALL");
+  const [requestToCancel, setRequestToCancel] = useState<ChangeRequest | null>(null);
+  const [cancellingRequest, setCancellingRequest] = useState(false);
+  const [cancelRequestError, setCancelRequestError] = useState("");
+  const [requestComposer, setRequestComposer] = useState<"MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | null>(null);
 
   const loadProfile = async () => {
     const res = await api.get("/member-portal/profile");
@@ -416,6 +440,26 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
     await loadRequests();
   };
 
+  const finishComposedRequest = async () => {
+    await loadRequests();
+    setRequestComposer(null);
+  };
+
+  const cancelChangeRequest = async () => {
+    if (!requestToCancel) return;
+    setCancellingRequest(true);
+    setCancelRequestError("");
+    try {
+      await api.patch(`/member-portal/change-requests/${requestToCancel.id}/cancel`);
+      await loadRequests();
+      setRequestToCancel(null);
+    } catch (error: any) {
+      setCancelRequestError(error?.response?.data?.message || "Unable to cancel this request.");
+    } finally {
+      setCancellingRequest(false);
+    }
+  };
+
   const removeBeneficiary = async (beneficiary: Beneficiary) => {
     setRemovingId(beneficiary.id);
     setRemoveError("");
@@ -438,6 +482,11 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
 
   const spousePending = pendingFor("SPOUSE");
   const profilePending = pendingFor("MEMBER_DETAILS");
+  const visibleRequests = requests.filter((request) => {
+    if (requestFilter === "PENDING") return request.status === "PENDING";
+    if (requestFilter === "COMPLETED") return request.status !== "PENDING";
+    return true;
+  });
 
   return (
     <div>
@@ -463,12 +512,12 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
               <section className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5" aria-labelledby="member-actions-title">
                 <h2 id="member-actions-title" className="text-[14px] font-bold text-(--text-strong)">What would you like to do?</h2>
                 <nav className="mt-3 divide-y divide-(--border-default)" aria-label="Member actions">
-                  {[["Review my details", "/member/profile", "Check your personal and employment information"], ["Manage my household", "/member/household", "Review spouse and beneficiary records"], ["Track my requests", "/member/requests", "Follow changes submitted for review"], ["Check my claims", "/member/claims", "View claim submission status"]].map(([label, to, description]) => <Link key={to} to={to} className="group flex min-h-13 items-center gap-3 py-2.5 text-left no-underline"><span className="min-w-0 flex-1"><strong className="block text-[12.5px] text-(--text-strong)">{label}</strong><small className="block truncate text-[10.5px] text-(--text-muted)">{description}</small></span><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4 shrink-0 text-(--text-muted) transition-transform group-hover:translate-x-0.5"><path d="m7.5 5 5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></Link>)}
+                  {[["Review my details", "/member/profile", "Check your personal and employment information"], ["Manage covered lives", "/member/household", "Review spouse and beneficiary records"], ["Track my requests", "/member/requests", "Follow changes submitted for review"], ["Check my claims", "/member/claims", "View claim submission status"]].map(([label, to, description]) => <Link key={to} to={to} className="group flex min-h-13 items-center gap-3 py-2.5 text-left no-underline"><span className="min-w-0 flex-1"><strong className="block text-[12.5px] text-(--text-strong)">{label}</strong><small className="block truncate text-[10.5px] text-(--text-muted)">{description}</small></span><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4 shrink-0 text-(--text-muted) transition-transform group-hover:translate-x-0.5"><path d="m7.5 5 5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></Link>)}
                 </nav>
               </section>
 
               <section className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5" aria-labelledby="household-summary-title">
-                <div className="flex items-center justify-between gap-3"><h2 id="household-summary-title" className="text-[14px] font-bold text-(--text-strong)">Household</h2><Link to="/member/household" className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline">Manage</Link></div>
+                <div className="flex items-center justify-between gap-3"><h2 id="household-summary-title" className="text-[14px] font-bold text-(--text-strong)">Covered lives</h2><Link to="/member/household" className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline">Manage</Link></div>
                 <dl className="mt-4 space-y-3 text-[12px]"><div className="flex items-center justify-between"><dt className="text-(--text-muted)">Spouse</dt><dd className="font-semibold text-(--text-strong)">{profile.spouse?.fullName ?? "Not recorded"}</dd></div><div className="flex items-center justify-between"><dt className="text-(--text-muted)">Beneficiaries</dt><dd className="font-semibold text-(--text-strong)">{profile.beneficiaries.length} of 10 recorded</dd></div><div className="flex items-center justify-between"><dt className="text-(--text-muted)">Changes awaiting review</dt><dd className="font-semibold text-(--text-strong)">{requests.filter((request) => request.status === "PENDING").length}</dd></div></dl>
               </section>
 
@@ -496,7 +545,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
               {editingProfile && <MemberDetailsForm profile={profile} onClose={() => setEditingProfile(false)} onSubmitted={afterRequestSubmitted} />}
             </section>}
 
-            {section === "household" && <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="household-title"><div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><h2 id="household-title" className="text-[18px] font-extrabold text-(--text-strong)">Your household</h2><p className="mt-1 text-[11.5px] text-(--text-muted)">Review the spouse and beneficiaries connected to your membership.</p></div><div className="flex gap-5 text-[11px] text-(--text-muted)"><span><strong className="block text-[17px] text-(--text-strong)">{profile.spouse ? 1 : 0}</strong> spouse</span><span><strong className="block text-[17px] text-(--text-strong)">{profile.beneficiaries.length}</strong> beneficiaries</span><span><strong className="block text-[17px] text-(--text-strong)">{requests.filter((request) => request.status === "PENDING" && request.type !== "MEMBER_DETAILS").length}</strong> pending</span></div></div></section>}
+            {section === "household" && <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="household-title"><div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div><h2 id="household-title" className="text-[18px] font-extrabold text-(--text-strong)">Your covered lives</h2><p className="mt-1 text-[11.5px] text-(--text-muted)">Review the spouse and beneficiaries connected to your membership.</p></div><div className="flex gap-5 text-[11px] text-(--text-muted)"><span><strong className="block text-[17px] text-(--text-strong)">{profile.spouse ? 1 : 0}</strong> spouse</span><span><strong className="block text-[17px] text-(--text-strong)">{profile.beneficiaries.length}</strong> beneficiaries</span><span><strong className="block text-[17px] text-(--text-strong)">{requests.filter((request) => request.status === "PENDING" && request.type !== "MEMBER_DETAILS").length}</strong> pending</span></div></div></section>}
 
             {section === "household" && <section className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5" aria-labelledby="spouse-title">
               <div className="mb-3 flex items-center justify-between">
@@ -629,53 +678,137 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
             </section>}
 
             {section === "coverage" && benefitPlan && (
-              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
-                <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">
-                  Benefit Plan
-                </h2>
-                <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-[#5b6472]">
-                  <span>Effective {new Date(benefitPlan.effectiveFrom).toLocaleDateString()}</span>
-                  <span>{formatCurrency(benefitPlan.monthlyPremium, settings.currency)} monthly premium</span>
-                  <span>{benefitPlan.collectionMethod}</span>
+              <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="coverage-heading">
+                <header className="border-b border-(--border-default) px-4 py-4 sm:px-5">
+                  <h2 id="coverage-heading" className="text-[15px] font-bold text-(--brand-primary)">Your benefit plan</h2>
+                  <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-3">
+                    <div><dt className="text-(--text-muted)">Effective from</dt><dd className="font-semibold text-(--ink)">{new Date(benefitPlan.effectiveFrom).toLocaleDateString()}</dd></div>
+                    <div><dt className="text-(--text-muted)">Monthly premium</dt><dd className="font-semibold text-(--ink)">{formatCurrency(benefitPlan.monthlyPremium, settings.currency)}</dd></div>
+                    <div><dt className="text-(--text-muted)">Collection method</dt><dd className="font-semibold text-(--ink)">{benefitPlan.collectionMethod}</dd></div>
+                  </dl>
+                  {benefitPlan.note && <p className="mt-3 max-w-[70ch] text-[12px] leading-relaxed text-(--text-muted)">{benefitPlan.note}</p>}
+                </header>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] table-fixed text-left text-[12.5px]">
+                    <caption className="sr-only">Member and spouse benefit amounts with coverage notes</caption>
+                    <thead className="bg-(--surface-subtle) text-[10.5px] font-bold uppercase tracking-[0.05em] text-(--text-muted)">
+                      <tr><th scope="col" className="w-[23%] px-4 py-2.5 sm:px-5">Benefit</th><th scope="col" className="w-[15%] px-3 py-2.5">Member</th><th scope="col" className="w-[15%] px-3 py-2.5">Spouse</th><th scope="col" className="px-3 py-2.5 sm:pr-5">Notes</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-(--border-default)">
+                      {benefitPlan.benefits.filter((benefit) => benefit.enabled).map((benefit) => (
+                        <tr key={benefit.type} className="align-top">
+                          <th scope="row" className="px-4 py-3.5 font-semibold leading-snug text-(--brand-primary) sm:px-5">{BENEFIT_LABELS[benefit.type] ?? benefit.type}</th>
+                          <td className="px-3 py-3.5 font-semibold tabular-nums text-(--ink)">{formatCurrency(benefit.memberAmount, settings.currency)}</td>
+                          <td className="px-3 py-3.5 text-(--ink)">{benefit.spouseAmount !== null ? <span className="font-semibold tabular-nums">{formatCurrency(benefit.spouseAmount, settings.currency)}</span> : <span className="text-(--text-muted)">Not covered</span>}</td>
+                          <td className="px-3 py-3.5 leading-relaxed text-(--text-muted) sm:pr-5">
+                            {benefit.note || "No additional conditions noted."}
+                            {benefit.type === "CRITICAL_ILLNESS" && benefit.namedConditions?.length > 0 && (
+                              <details className="mt-2">
+                                <summary className="inline-flex cursor-pointer list-none items-center rounded-[7px] border border-(--border-default) bg-(--surface-raised) px-2.5 py-1.5 text-[11px] font-bold text-(--brand-primary) hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)]">View {benefit.namedConditions.length} named {benefit.namedConditions.length === 1 ? "illness" : "illnesses"}</summary>
+                                <ul className="mt-2 grid list-disc grid-cols-1 gap-x-6 gap-y-1 pl-5 text-(--ink) sm:grid-cols-2">
+                                  {benefit.namedConditions.map((condition) => <li key={condition}>{condition}</li>)}
+                                </ul>
+                              </details>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                {benefitPlan.note && <p className="mb-4 max-w-[70ch] text-[12.5px] text-[#5b6472]">{benefitPlan.note}</p>}
-                <ul className="divide-y divide-[#e5e9f0] text-[13px]">
-                  {benefitPlan.benefits.filter((benefit) => benefit.enabled).map((b) => (
-                    <li key={b.type} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <span className="font-semibold text-[#1e2761]">{BENEFIT_LABELS[b.type] ?? b.type}</span>
-                        <span className="font-semibold text-[#171b26]">Member {formatCurrency(b.memberAmount, settings.currency)}{b.spouseAmount !== null ? ` · Spouse ${formatCurrency(b.spouseAmount, settings.currency)}` : ""}</span>
-                      </div>
-                      {b.note && <p className="mt-1 max-w-[70ch] text-[12px] leading-relaxed text-[#5b6472]">{b.note}</p>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                <p className="border-t border-(--border-default) px-4 py-3 text-[11px] text-(--text-muted) sm:px-5">On smaller screens, swipe across the table to view all coverage details.</p>
+              </section>
+            )}
+
+            {section === "requests" && (
+              <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="new-request-heading">
+                <header className="border-b border-(--border-default) px-4 py-4 sm:px-5">
+                  <h2 id="new-request-heading" className="text-[15px] font-bold text-(--brand-primary)">Submit a change request</h2>
+                  <p className="mt-1 max-w-[70ch] text-[11.5px] leading-relaxed text-(--text-muted)">Choose what you want to update. Your current record stays unchanged until your district administrator reviews and approves the request.</p>
+                </header>
+                {!requestComposer && <div className="grid grid-cols-1 divide-y divide-(--border-default) sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                  <button type="button" disabled={Boolean(profilePending)} onClick={() => setRequestComposer("MEMBER_DETAILS")} className="group min-h-28 px-4 py-4 text-left hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-55 sm:px-5">
+                    <span className="block text-[13px] font-bold text-(--ink)">Personal details</span><span className="mt-1 block text-[11.5px] leading-relaxed text-(--text-muted)">Name, date of birth, Ghana Card, phone number, or school.</span>{profilePending && <span className="mt-2 inline-block rounded-full bg-(--warning-soft) px-2 py-0.5 text-[10px] font-bold text-(--warning)">Request pending</span>}
+                  </button>
+                  <button type="button" disabled={Boolean(spousePending)} onClick={() => setRequestComposer("SPOUSE")} className="group min-h-28 px-4 py-4 text-left hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-55 sm:px-5">
+                    <span className="block text-[13px] font-bold text-(--ink)">{profile.spouse ? "Spouse details" : "Add spouse"}</span><span className="mt-1 block text-[11.5px] leading-relaxed text-(--text-muted)">Add or update the spouse covered under your membership.</span>{spousePending && <span className="mt-2 inline-block rounded-full bg-(--warning-soft) px-2 py-0.5 text-[10px] font-bold text-(--warning)">Request pending</span>}
+                  </button>
+                  <button type="button" disabled={Boolean(pendingFor("BENEFICIARY_ADD"))} onClick={() => setRequestComposer("BENEFICIARY_ADD")} className="group min-h-28 px-4 py-4 text-left hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-55 sm:px-5">
+                    <span className="block text-[13px] font-bold text-(--ink)">Add beneficiary</span><span className="mt-1 block text-[11.5px] leading-relaxed text-(--text-muted)">Nominate another person to receive eligible benefits.</span>{pendingFor("BENEFICIARY_ADD") && <span className="mt-2 inline-block rounded-full bg-(--warning-soft) px-2 py-0.5 text-[10px] font-bold text-(--warning)">Request pending</span>}
+                  </button>
+                </div>}
+                {requestComposer === "MEMBER_DETAILS" && <MemberDetailsForm profile={profile} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} />}
+                {requestComposer === "SPOUSE" && <div className="p-4 sm:p-5"><SpouseForm spouse={profile.spouse} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} /></div>}
+                {requestComposer === "BENEFICIARY_ADD" && <div className="p-4 sm:p-5"><BeneficiaryForm beneficiary={null} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} /></div>}
+                <footer className="border-t border-(--border-default) px-4 py-3 text-[11px] text-(--text-muted) sm:px-5">To update or remove an existing beneficiary, use <Link to="/member/household" className="font-bold text-(--brand-primary)">Covered lives</Link> and select that person.</footer>
+              </section>
             )}
 
             {section === "requests" && requests.length > 0 && (
-              <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
-                <h2 className="mb-3 text-[15px] font-bold text-[#1e2761]">My Requests</h2>
-                <ul className="divide-y divide-[#e5e9f0]">
-                  {requests.slice(0, 10).map((r) => (
-                    <li key={r.id} className="py-2.5 text-[13px]">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-[#171b26]">{REQUEST_TYPE_LABELS[r.type]}</span>
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${REQUEST_STATUS_STYLES[r.status]}`}>
-                          {r.status}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-[11.5px] text-[#5b6472]">
-                        Requested {timeAgo(r.requestedAt)}
-                        {r.reviewNote ? ` · ${r.reviewNote}` : ""}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="requests-heading">
+                <header className="flex flex-col gap-3 border-b border-(--border-default) px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+                  <div>
+                    <h2 id="requests-heading" className="text-[15px] font-bold text-(--brand-primary)">My requests</h2>
+                    <p className="mt-1 text-[11.5px] text-(--text-muted)">{requests.filter((request) => request.status === "PENDING").length} awaiting review, {requests.filter((request) => request.status !== "PENDING").length} completed</p>
+                  </div>
+                  <div className="flex gap-1 rounded-[9px] bg-(--surface-subtle) p-1" role="group" aria-label="Filter requests">
+                    {(["ALL", "PENDING", "COMPLETED"] as const).map((filter) => (
+                      <button key={filter} type="button" aria-pressed={requestFilter === filter} onClick={() => setRequestFilter(filter)} className={`min-h-8 rounded-[7px] px-3 text-[10.5px] font-bold transition focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)] ${requestFilter === filter ? "bg-(--surface-raised) text-(--brand-primary) shadow-[0_1px_2px_rgba(30,39,97,0.08)]" : "text-(--text-muted) hover:text-(--ink)"}`}>{filter === "ALL" ? "All" : filter === "PENDING" ? "Pending" : "Completed"}</button>
+                    ))}
+                  </div>
+                </header>
+
+                {requestToCancel && (
+                  <div className="border-b border-(--border-default) p-4 sm:p-5">
+                    <ConfirmationPanel
+                      title={`Cancel ${REQUEST_TYPE_LABELS[requestToCancel.type].toLowerCase()} request?`}
+                      description="This removes the request from the review queue. Your current member record will not be changed."
+                      confirmLabel="Cancel request"
+                      busyLabel="Cancelling…"
+                      tone="warning"
+                      busy={cancellingRequest}
+                      onConfirm={cancelChangeRequest}
+                      onCancel={() => { setRequestToCancel(null); setCancelRequestError(""); }}
+                    >
+                      {cancelRequestError && <p role="alert" className="mt-2 text-[12px] font-semibold text-(--danger)">{cancelRequestError}</p>}
+                    </ConfirmationPanel>
+                  </div>
+                )}
+
+                {visibleRequests.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-[12.5px] text-(--text-muted) sm:px-5">No requests match this filter.</p>
+                ) : (
+                  <ol className="divide-y divide-(--border-default)">
+                    {visibleRequests.map((request) => (
+                      <li key={request.id}>
+                        <details className="group">
+                          <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-4 hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] sm:px-5">
+                            <span aria-hidden="true" className={`mt-1 size-2 shrink-0 rounded-full ${request.status === "PENDING" ? "bg-(--warning)" : request.status === "APPROVED" ? "bg-(--success)" : "bg-(--text-muted)"}`} />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2"><strong className="text-[13px] text-(--ink)">{REQUEST_TYPE_LABELS[request.type]}</strong><span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${REQUEST_STATUS_STYLES[request.status]}`}>{request.status.charAt(0) + request.status.slice(1).toLowerCase()}</span></span>
+                              <span className="mt-1 block text-[11.5px] text-(--text-muted)">Submitted {new Date(request.requestedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })} ({timeAgo(request.requestedAt)})</span>
+                            </span>
+                            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="mt-1 size-4 shrink-0 text-(--text-muted) transition-transform duration-200 group-open:rotate-180"><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </summary>
+                          <div className="px-4 pb-5 pl-9 sm:px-5 sm:pl-10">
+                            {request.proposedData && Object.keys(request.proposedData).length > 0 ? (
+                              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-(--border-default) pt-4 sm:grid-cols-2">
+                                {Object.entries(request.proposedData).map(([field, value]) => <div key={field}><dt className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">{REQUEST_FIELD_LABELS[field] ?? field.replaceAll(/([A-Z])/g, " $1")}</dt><dd className="mt-0.5 break-words text-[12.5px] font-semibold text-(--ink)">{requestValue(value)}</dd></div>)}
+                              </dl>
+                            ) : <p className="border-t border-(--border-default) pt-4 text-[12px] text-(--text-muted)">This request does not include replacement field values.</p>}
+                            {request.requestNote && <div className="mt-4"><h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">Your note</h3><p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">{request.requestNote}</p></div>}
+                            {request.reviewNote && <div className="mt-4 rounded-[9px] bg-(--surface-subtle) p-3"><h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">Review note</h3><p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">{request.reviewNote}</p></div>}
+                            {request.status === "PENDING" && <button type="button" onClick={() => { setRequestToCancel(request); setCancelRequestError(""); }} className="mt-4 min-h-9 rounded-[9px] border border-(--danger-border) px-3 text-[11.5px] font-bold text-(--danger) hover:bg-(--danger-soft) focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)]">Cancel request</button>}
+                          </div>
+                        </details>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
             )}
             {section === "coverage" && !benefitPlan && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 text-[12.5px] text-(--text-muted) md:col-span-2">No active benefit plan is available yet.</div>}
-            {section === "requests" && requests.length === 0 && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 text-[12.5px] text-(--text-muted) md:col-span-2">You have not submitted any change requests yet.</div>}
+            {section === "requests" && requests.length === 0 && <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) px-5 py-6 text-center md:col-span-2"><h2 className="text-[14px] font-bold text-(--brand-primary)">No request history yet</h2><p className="mt-1 text-[12px] text-(--text-muted)">Choose an option above to submit your first change request.</p></div>}
 
             {section === "notifications" && <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
               <div className="mb-3 flex items-center justify-between">

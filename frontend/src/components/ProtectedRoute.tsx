@@ -11,7 +11,7 @@ export default function ProtectedRoute() {
   if (!user) {
     return (
       <Navigate
-        to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+        to={`/login?mode=staff&redirect=${encodeURIComponent(location.pathname)}`}
         replace
       />
     );

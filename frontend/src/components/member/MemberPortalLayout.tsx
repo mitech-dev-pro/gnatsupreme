@@ -10,7 +10,7 @@ const icon = (path: ReactNode) => <svg aria-hidden="true" viewBox="0 0 24 24" fi
 const NAV_ITEMS: NavItem[] = [
   { label: "Overview", to: "/member", end: true, icon: icon(<><path d="M4 11.5 12 5l8 6.5V20H4Z"/><path d="M9 20v-5h6v5"/></>) },
   { label: "My profile", to: "/member/profile", icon: icon(<><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-4 3.1-7 7-7s7 3 7 7"/></>) },
-  { label: "Household", to: "/member/household", icon: icon(<><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.5M16 14c2.8 0 5 2.2 5 5"/></>) },
+  { label: "Covered lives", to: "/member/household", icon: icon(<><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.5M16 14c2.8 0 5 2.2 5 5"/></>) },
   { label: "Coverage", to: "/member/coverage", icon: icon(<><path d="M12 3 5 6v5c0 4.7 2.8 8.2 7 10 4.2-1.8 7-5.3 7-10V6Z"/><path d="m9 12 2 2 4-4"/></>) },
   { label: "Requests", to: "/member/requests", icon: icon(<><path d="M7 3h10v4H7zM5 5H4v16h16V5h-1"/><path d="M8 12h8M8 16h5"/></>) },
   { label: "Claims", to: "/member/claims", icon: icon(<><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></>) },
@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const PAGE_TITLES: Record<string, string> = {
-  "/member": "Overview", "/member/profile": "My profile", "/member/household": "Household",
+  "/member": "Overview", "/member/profile": "My profile", "/member/household": "Covered lives",
   "/member/coverage": "Coverage", "/member/requests": "My requests", "/member/claims": "Claims",
   "/member/notifications": "Notifications", "/member/help": "Help and support",
 };

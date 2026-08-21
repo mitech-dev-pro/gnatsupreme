@@ -39,6 +39,11 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     if (refreshStarted.current) return;
     refreshStarted.current = true;
 
+    if (window.location.pathname !== "/login" && !window.location.pathname.startsWith("/member")) {
+      setIsLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         const res = await api.post("/member-auth/refresh");

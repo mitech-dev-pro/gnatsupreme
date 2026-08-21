@@ -132,6 +132,7 @@ benefitRouter.post(
             memberAmount: benefit.memberAmount,
             spouseAmount: benefit.spouseAmount,
             note: benefit.note,
+            namedConditions: benefit.namedConditions,
           })),
         },
       },
@@ -147,5 +148,73 @@ benefitRouter.post(
       afterData: plan,
     });
     response.status(201).json({ success: true, data: plan });
+  },
+);
+
+benefitRouter.patch(
+  "/:id",
+  authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN"),
+  async (request, response) => {
+    const params = benefitPlanIdSchema.safeParse(request.params);
+    const parsed = createBenefitPlanSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      response.status(400).json({
+        success: false,
+        message: "Invalid request",
+        errors: parsed.success ? undefined : parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+      });
+      return;
+    }
+
+    const before = await prisma.benefitPlanVersion.findUnique({ where: { id: params.data.id }, include: planInclude });
+    if (!before) {
+      response.status(404).json({ success: false, message: "Benefit plan not found" });
+      return;
+    }
+    const dateCollision = await prisma.benefitPlanVersion.findFirst({
+      where: { effectiveFrom: parsed.data.effectiveFrom, id: { not: before.id } },
+      select: { id: true },
+    });
+    if (dateCollision) {
+      response.status(409).json({ success: false, message: "Another benefit plan already uses this effective date", existingPlanId: dateCollision.id });
+      return;
+    }
+
+    const plan = await prisma.$transaction(async (transaction) => {
+      await transaction.benefitAmount.deleteMany({ where: { planVersionId: before.id } });
+      return transaction.benefitPlanVersion.update({
+        where: { id: before.id },
+        data: {
+          effectiveFrom: parsed.data.effectiveFrom,
+          monthlyPremium: parsed.data.monthlyPremium,
+          collectionMethod: parsed.data.collectionMethod,
+          note: parsed.data.note,
+          benefits: {
+            create: Object.entries(parsed.data.benefits).map(([key, benefit]) => ({
+              type: benefitTypes[key as keyof typeof benefitTypes],
+              enabled: benefit.enabled,
+              memberAmount: benefit.memberAmount,
+              spouseAmount: benefit.spouseAmount,
+              note: benefit.note,
+              namedConditions: benefit.namedConditions,
+            })),
+          },
+        },
+        include: planInclude,
+      });
+    });
+
+    const actor = currentUser(response);
+    await recordAudit({
+      request,
+      actor,
+      action: "BENEFIT_PLAN_UPDATED",
+      entityType: "BENEFIT_PLAN_VERSION",
+      entityId: plan.id,
+      description: `Updated benefit plan effective ${plan.effectiveFrom.toISOString().slice(0, 10)}`,
+      beforeData: before,
+      afterData: plan,
+    });
+    response.json({ success: true, data: plan });
   },
 );

@@ -337,7 +337,7 @@ changeRequestRouter.post("/members/:id", async (request, response) => {
   response.status(201).json({ success: true, data: item });
 });
 
-changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
+changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"), async (request, response) => {
   const params = changeRequestIdSchema.safeParse(request.params);
   const body = reviewChangeRequestSchema.safeParse(request.body);
   if (!params.success || !body.success) {

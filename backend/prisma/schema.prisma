@@ -628,6 +628,7 @@ model BenefitAmount {
   memberAmount  Decimal            @map("member_amount") @db.Decimal(14, 2)
   spouseAmount  Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
   note          String?
+  namedConditions String[]         @default([]) @map("named_conditions")
 
   @@unique([planVersionId, type])
   @@index([type])

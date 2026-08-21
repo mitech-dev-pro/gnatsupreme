@@ -60,6 +60,7 @@ const endpoints: Endpoint[] = [
   { method: "get", path: "/api/benefits/current", summary: "Current benefit plan", tag: "Benefits" },
   { method: "get", path: "/api/benefits/history", summary: "Benefit plan history", tag: "Benefits" },
   { method: "post", path: "/api/benefits", summary: "Publish benefit plan", tag: "Benefits" },
+  { method: "patch", path: "/api/benefits/{id}", summary: "Update benefit plan", tag: "Benefits" },
   { method: "get", path: "/api/settings/organization", summary: "Organization settings", tag: "Settings" },
   { method: "patch", path: "/api/settings/organization", summary: "Update organization settings", tag: "Settings" },
   { method: "get", path: "/api/settings/organization/history", summary: "Organization settings history", tag: "Settings" },
@@ -75,6 +76,7 @@ const endpoints: Endpoint[] = [
   { method: "get", path: "/api/member-portal/claims", summary: "Member claims", tag: "Member portal", security: "member" },
   { method: "get", path: "/api/member-portal/notifications", summary: "Member notifications", tag: "Member portal", security: "member" },
   { method: "post", path: "/api/member-portal/change-requests", summary: "Submit member change request", tag: "Member portal", security: "member" },
+  { method: "patch", path: "/api/member-portal/change-requests/{id}/cancel", summary: "Cancel a pending member change request", tag: "Member portal", security: "member" },
 ];
 
 function parameters(path: string) {

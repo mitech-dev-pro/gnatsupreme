@@ -32,8 +32,11 @@ export default function Login() {
   } = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const requestedMode = searchParams.get("mode") === "member" ? "member" : "staff";
+  const requestedRedirect = searchParams.get("redirect");
+  const safeStaffRedirect = requestedRedirect && !requestedRedirect.startsWith("/member") && requestedRedirect.startsWith("/") ? requestedRedirect : "/";
 
-  const [mode, setMode] = useState<"staff" | "member">("staff");
+  const [mode, setMode] = useState<"staff" | "member">(requestedMode);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,12 +72,12 @@ export default function Login() {
     );
   }
 
-  if (user) {
-    return <Navigate to={searchParams.get("redirect") || "/"} replace />;
+  if (user && requestedMode === "staff") {
+    return <Navigate to={safeStaffRedirect} replace />;
   }
 
-  if (member) {
-    return <Navigate to="/member" replace />;
+  if (member && requestedMode === "member") {
+    return <Navigate to={requestedRedirect?.startsWith("/member") ? requestedRedirect : "/member"} replace />;
   }
 
   const handleStaffSubmit = async (e: FormEvent) => {
@@ -89,7 +92,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      navigate(searchParams.get("redirect") || "/", { replace: true });
+      navigate(safeStaffRedirect, { replace: true });
     } catch (err: any) {
       setError(
         err?.response?.data?.message || "Unable to sign in. Please try again.",

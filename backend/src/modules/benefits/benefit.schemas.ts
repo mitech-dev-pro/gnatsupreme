@@ -14,6 +14,7 @@ const benefitSchema = z.object({
   memberAmount: moneySchema,
   spouseAmount: moneySchema.nullable(),
   note: z.string().trim().max(500).nullable().optional(),
+  namedConditions: z.array(z.string().trim().min(2).max(120)).max(30).default([]),
 });
 
 export const createBenefitPlanSchema = z.object({
@@ -41,6 +42,14 @@ export const createBenefitPlanSchema = z.object({
   for (const key of ["criticalIllness", "hospitalization"] as const) {
     if (value.benefits[key].spouseAmount !== null) {
       context.addIssue({ code: "custom", path: ["benefits", key, "spouseAmount"], message: "Spouse cover is not available for this benefit" });
+    }
+  }
+  if (value.benefits.criticalIllness.enabled && value.benefits.criticalIllness.namedConditions.length === 0) {
+    context.addIssue({ code: "custom", path: ["benefits", "criticalIllness", "namedConditions"], message: "Add at least one named critical illness" });
+  }
+  for (const key of ["death", "totalPermanentDisability", "hospitalization"] as const) {
+    if (value.benefits[key].namedConditions.length > 0) {
+      context.addIssue({ code: "custom", path: ["benefits", key, "namedConditions"], message: "Named conditions are only available for Critical Illness" });
     }
   }
 });

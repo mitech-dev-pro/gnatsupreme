@@ -11,7 +11,7 @@ export default function MemberProtectedRoute() {
   if (!member) {
     return (
       <Navigate
-        to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+        to={`/login?mode=member&redirect=${encodeURIComponent(location.pathname)}`}
         replace
       />
     );

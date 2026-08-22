@@ -7,6 +7,13 @@ import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 
 type Region = { id: number; name: string; _count: { districts: number } };
 type District = { id: number; name: string; region: { id: number; name: string }; _count: { members: number } };
+type DistrictAlias = {
+  id: number;
+  alias: string;
+  district: { id: number; name: string; region: { id: number; name: string } };
+  createdBy: { id: number; fullName: string } | null;
+  createdAt: string;
+};
 
 type Benefit = { type: string; enabled: boolean; memberAmount: string; spouseAmount: string | null; note: string | null; namedConditions: string[] };
 type BenefitPlan = {
@@ -137,6 +144,16 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
   const [districtSearch, setDistrictSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ type: "region"; item: Region } | { type: "district"; item: District } | null>(null);
 
+  const [aliases, setAliases] = useState<DistrictAlias[]>([]);
+  const [aliasesLoading, setAliasesLoading] = useState(true);
+  const [aliasError, setAliasError] = useState("");
+  const [showAliasForm, setShowAliasForm] = useState(false);
+  const [aliasText, setAliasText] = useState("");
+  const [aliasDistrictId, setAliasDistrictId] = useState("");
+  const [aliasFormError, setAliasFormError] = useState("");
+  const [aliasFormBusy, setAliasFormBusy] = useState(false);
+  const [aliasDeleteTarget, setAliasDeleteTarget] = useState<DistrictAlias | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -151,9 +168,55 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
     }
   }, []);
 
+  const loadAliases = useCallback(async () => {
+    setAliasesLoading(true);
+    setAliasError("");
+    try {
+      const res = await api.get("/districts/aliases");
+      setAliases(res.data.data);
+    } catch {
+      setAliasError("District aliases could not be loaded.");
+    } finally {
+      setAliasesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAliases();
+  }, [load, loadAliases]);
+
+  const submitAlias = async (event: FormEvent) => {
+    event.preventDefault();
+    if (aliasText.trim().length < 2 || !aliasDistrictId) return;
+    setAliasFormBusy(true);
+    setAliasFormError("");
+    try {
+      await api.post("/districts/aliases", { alias: aliasText.trim(), districtId: Number(aliasDistrictId) });
+      setAliasText("");
+      setAliasDistrictId("");
+      setShowAliasForm(false);
+      await loadAliases();
+    } catch (err: any) {
+      setAliasFormError(err?.response?.data?.message || "Unable to save this alias.");
+    } finally {
+      setAliasFormBusy(false);
+    }
+  };
+
+  const removeAlias = async (alias: DistrictAlias) => {
+    setAliasFormBusy(true);
+    setAliasError("");
+    try {
+      await api.delete(`/districts/aliases/${alias.id}`);
+      setAliasDeleteTarget(null);
+      await loadAliases();
+    } catch (err: any) {
+      setAliasError(err?.response?.data?.message || "Unable to remove this alias.");
+    } finally {
+      setAliasFormBusy(false);
+    }
+  };
 
   const createRegion = async (event: FormEvent) => {
     event.preventDefault();
@@ -306,7 +369,7 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
               </form>
             )}
 
-            <ul className="divide-y divide-[#edf0f5]">
+            <ul className="max-h-[520px] divide-y divide-[#edf0f5] overflow-y-auto">
               {regions.map((region) => {
                 const isSelected = districtRegionFilter === String(region.id);
                 return (
@@ -380,9 +443,9 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
             </button>
           </form>
         )}
-        <div className="overflow-x-auto">
+        <div className="max-h-[520px] overflow-y-auto overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-[12.5px]">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-white">
               <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
                 <th className="py-2">Name</th>
                 <th className="py-2">Region</th>
@@ -471,6 +534,122 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
           </table>
         </div>
           </section>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#e5e9f0] px-5 py-4">
+          <div>
+            <h2 className="text-[14.5px] font-bold text-[#1e2761]">District spelling aliases</h2>
+            <p className="mt-0.5 max-w-160 text-[11.5px] leading-relaxed text-[#5b6472]">
+              Maps a district spelling seen in an uploaded file (Report 20, bulk import) to the correct district, so
+              future uploads using that spelling match automatically instead of landing in Unmatched.
+            </p>
+          </div>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAliasForm((v) => !v);
+                setAliasText("");
+                setAliasDistrictId("");
+                setAliasFormError("");
+              }}
+              className="shrink-0 rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {showAliasForm ? "Close" : "Add Alias"}
+            </button>
+          )}
+        </div>
+
+        <div className="p-4">
+          {aliasError && <div className="mb-3"><Alert tone="error">{aliasError}</Alert></div>}
+
+          {aliasDeleteTarget && (
+            <div className="mb-3">
+              <ConfirmationPanel
+                title={`Remove the mapping for "${aliasDeleteTarget.alias}"?`}
+                description={`Future uploads spelled "${aliasDeleteTarget.alias}" will go back to landing in Unmatched instead of resolving to ${aliasDeleteTarget.district.name}.`}
+                confirmLabel="Remove mapping"
+                busyLabel="Removing…"
+                busy={aliasFormBusy}
+                onConfirm={() => void removeAlias(aliasDeleteTarget)}
+                onCancel={() => setAliasDeleteTarget(null)}
+              />
+            </div>
+          )}
+
+          {showAliasForm && canEdit && (
+            <form onSubmit={submitAlias} className="mb-4 grid gap-2 rounded-[9px] bg-[#f4f6fa] p-3 sm:grid-cols-[minmax(160px,1fr)_minmax(200px,0.9fr)_auto] sm:items-end">
+              <div>
+                <label className={labelClasses}>Spelling seen in the file</label>
+                <input value={aliasText} onChange={(e) => setAliasText(e.target.value)} placeholder="e.g. Akwapim North" className={inputClasses} />
+              </div>
+              <div>
+                <label className={labelClasses}>Correct district</label>
+                <select value={aliasDistrictId} onChange={(e) => setAliasDistrictId(e.target.value)} className={inputClasses}>
+                  <option value="">Select district</option>
+                  {districts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.region.name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={aliasFormBusy || aliasText.trim().length < 2 || !aliasDistrictId}
+                className="rounded-[9px] bg-[#1f9c7c] px-4 py-2 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Save alias
+              </button>
+              {aliasFormError && <div className="sm:col-span-3 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12.5px] font-semibold text-[#c23b3b]">{aliasFormError}</div>}
+            </form>
+          )}
+
+          {aliasesLoading ? (
+            <TableSkeleton columns={4} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
+                    <th className="py-2">Spelling</th>
+                    <th className="py-2">Maps to</th>
+                    <th className="py-2">Added by</th>
+                    {canEdit && <th className="py-2">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {aliases.map((row) => (
+                    <tr key={row.id} className="border-b border-[#e5e9f0] last:border-0">
+                      <td className="py-2 font-semibold text-[#171b26]">{row.alias}</td>
+                      <td className="py-2 text-[#5b6472]">{row.district.name} ({row.district.region.name})</td>
+                      <td className="py-2 text-[#5b6472]">{row.createdBy?.fullName ?? "System seed"}</td>
+                      {canEdit && (
+                        <td className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => setAliasDeleteTarget(row)}
+                            className="font-semibold text-[#c23b3b]"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {aliases.length === 0 && (
+                    <tr>
+                      <td colSpan={canEdit ? 4 : 3} className="py-8 text-center text-[12px] text-[#5b6472]">
+                        No district aliases yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

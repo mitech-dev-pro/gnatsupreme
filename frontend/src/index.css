@@ -39,9 +39,14 @@ body {
   color: var(--ink);
 }
 
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
+/* Layered (not global) so Tailwind utility classes like focus:outline-none / focus-visible:outline-none
+   can still override this default — un-layered CSS always beats layered Tailwind utilities regardless
+   of specificity, which was clobbering pages (e.g. Login) that define their own deliberate focus style. */
+@layer base {
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }
 
 button:not(:disabled),

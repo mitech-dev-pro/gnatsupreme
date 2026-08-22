@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
+import api from "@/lib/api";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -28,13 +29,20 @@ export default function Login() {
     member,
     isLoading: memberLoading,
     requestOtp,
+    registerPhone,
     verifyOtp,
   } = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const requestedMode = searchParams.get("mode") === "member" ? "member" : "staff";
+  const requestedMode =
+    searchParams.get("mode") === "member" ? "member" : "staff";
   const requestedRedirect = searchParams.get("redirect");
-  const safeStaffRedirect = requestedRedirect && !requestedRedirect.startsWith("/member") && requestedRedirect.startsWith("/") ? requestedRedirect : "/";
+  const safeStaffRedirect =
+    requestedRedirect &&
+    !requestedRedirect.startsWith("/member") &&
+    requestedRedirect.startsWith("/")
+      ? requestedRedirect
+      : "/";
 
   const [mode, setMode] = useState<"staff" | "member">(requestedMode);
 
@@ -44,7 +52,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [memberStep, setMemberStep] = useState<"id" | "otp">("id");
+  const [memberStep, setMemberStep] = useState<"id" | "register" | "otp">("id");
   const [controllerId, setControllerId] = useState("");
   const [otp, setOtp] = useState("");
   const [challengeToken, setChallengeToken] = useState("");
@@ -55,9 +63,20 @@ export default function Login() {
   const [resendMessage, setResendMessage] = useState("");
   const otpFormRef = useRef<HTMLFormElement>(null);
 
+  const [regFullName, setRegFullName] = useState("");
+  const [regDistrictId, setRegDistrictId] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [districts, setDistricts] = useState<
+    { id: number; name: string; region: { name: string } }[]
+  >([]);
+  const [districtsLoading, setDistrictsLoading] = useState(false);
+
   useEffect(() => {
     if (resendSeconds <= 0) return;
-    const timer = window.setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    const timer = window.setInterval(
+      () => setResendSeconds((seconds) => Math.max(0, seconds - 1)),
+      1000,
+    );
     return () => window.clearInterval(timer);
   }, [resendSeconds]);
 
@@ -74,6 +93,17 @@ export default function Login() {
     if (otp.length === 6 && memberStep === "otp" && !memberSubmitting) otpFormRef.current?.requestSubmit();
   }, [otp, memberStep, memberSubmitting]);
 
+  useEffect(() => {
+    if (memberStep !== "register" || districts.length > 0 || districtsLoading)
+      return;
+    setDistrictsLoading(true);
+    api
+      .get("/member-auth/districts")
+      .then((res) => setDistricts(res.data.data))
+      .catch(() => setDistricts([]))
+      .finally(() => setDistrictsLoading(false));
+  }, [memberStep, districts.length, districtsLoading]);
+
   if (isLoading || memberLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)]">
@@ -87,7 +117,16 @@ export default function Login() {
   }
 
   if (member && requestedMode === "member") {
-    return <Navigate to={requestedRedirect?.startsWith("/member") ? requestedRedirect : "/member"} replace />;
+    return (
+      <Navigate
+        to={
+          requestedRedirect?.startsWith("/member")
+            ? requestedRedirect
+            : "/member"
+        }
+        replace
+      />
+    );
   }
 
   const handleStaffSubmit = async (e: FormEvent) => {
@@ -117,7 +156,9 @@ export default function Login() {
     setMemberError("");
 
     if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+      setMemberError(
+        `Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`,
+      );
       return;
     }
 
@@ -135,8 +176,53 @@ export default function Login() {
       if (err?.response?.status === 429 && Number.isFinite(retryAfter)) {
         setRequestRetrySeconds(Math.max(1, Math.ceil(retryAfter)));
       }
+      if (err?.response?.data?.code === "PHONE_NOT_ON_FILE") {
+        setMemberStep("register");
+        setMemberError("");
+        return;
+      }
       setMemberError(
         err?.response?.data?.message || "Unable to send a verification code.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleRegisterPhone = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!regFullName.trim()) {
+      setMemberError(
+        "Enter your full name as it appears on your membership record.",
+      );
+      return;
+    }
+    if (!regDistrictId) {
+      setMemberError("Select your district.");
+      return;
+    }
+    if (!/^0\d{9}$/.test(regPhone.trim())) {
+      setMemberError("Enter a valid 10-digit phone number starting with 0.");
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      const res = await registerPhone({
+        controllerId: controllerId.trim(),
+        fullName: regFullName.trim(),
+        districtId: Number(regDistrictId),
+        phone: regPhone.trim(),
+      });
+      setChallengeToken(res.challengeToken);
+      setMemberStep("otp");
+      setResendSeconds(60);
+      setResendMessage("");
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to register your phone number.",
       );
     } finally {
       setMemberSubmitting(false);
@@ -199,6 +285,9 @@ export default function Login() {
     setResendMessage("");
     setResendSeconds(0);
     setRequestRetrySeconds(0);
+    setRegFullName("");
+    setRegDistrictId("");
+    setRegPhone("");
   };
 
   return (
@@ -245,9 +334,9 @@ export default function Login() {
               {settings.portalName}
             </h1>
             <p className="relative z-10 text-[13px] leading-relaxed text-white/80">
-              Member Portal for {settings.schemeSponsor}'s health scheme, underwritten with {settings.underwriter}.
-              Sign in with your district, regional, or national
-              administrator account.
+              Member Portal for {settings.schemeSponsor}'s health scheme,
+              underwritten with {settings.underwriter}. Sign in with your
+              district, regional, or national administrator account.
             </p>
 
             {FEATURES.map((f) => (
@@ -273,7 +362,8 @@ export default function Login() {
           </div>
 
           <div className="relative z-10 mt-6 text-[10.5px] text-white/55">
-            Sign in with the staff account issued to you by {settings.portalName}.
+            Sign in with the staff account issued to you by{" "}
+            {settings.portalName}.
           </div>
         </div>
 
@@ -395,19 +485,42 @@ export default function Login() {
                     />
                     <button
                       type="button"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                       aria-pressed={showPassword}
                       onClick={() => setShowPassword((visible) => !visible)}
                       className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-[7px] text-[#5b6472] transition hover:bg-[#eef0fa] hover:text-[#1e2761] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]"
                     >
                       {showPassword ? (
-                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="size-4"
+                        >
                           <path d="m3 3 18 18" />
-                          <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c6 0 9.5 8 9.5 8a17 17 0 0 1-2.1 3.3M6.6 6.6C4 8.4 2.5 12 2.5 12S6 20 12 20c1.3 0 2.5-.4 3.6-1" strokeLinecap="round" strokeLinejoin="round" />
+                          <path
+                            d="M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c6 0 9.5 8 9.5 8a17 17 0 0 1-2.1 3.3M6.6 6.6C4 8.4 2.5 12 2.5 12S6 20 12 20c1.3 0 2.5-.4 3.6-1"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
                         </svg>
                       ) : (
-                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
-                          <path d="M2.5 12S6 4 12 4s9.5 8 9.5 8S18 20 12 20 2.5 12 2.5 12Z" strokeLinejoin="round" />
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="size-4"
+                        >
+                          <path
+                            d="M2.5 12S6 4 12 4s9.5 8 9.5 8S18 20 12 20 2.5 12 2.5 12Z"
+                            strokeLinejoin="round"
+                          />
                           <circle cx="12" cy="12" r="2.5" />
                         </svg>
                       )}
@@ -426,15 +539,26 @@ export default function Login() {
             </>
           ) : memberStep === "id" ? (
             <>
-              <div className="mb-5 flex items-center gap-2 text-[10.5px] font-bold" aria-label="Step 1 of 2, verify membership">
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">1</span><span className="text-[#1e2761]">Verify membership</span><span className="h-px flex-1 bg-[#dfe4ec]"/><span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">2</span><span className="text-[#7b8492]">Enter SMS code</span>
+              <div
+                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
+                aria-label="Step 1 of 2, verify membership"
+              >
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
+                  1
+                </span>
+                <span className="text-[#1e2761]">Verify membership</span>
+                <span className="h-px flex-1 bg-[#dfe4ec]" />
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">
+                  2
+                </span>
+                <span className="text-[#7b8492]">Enter SMS code</span>
               </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Member access
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your {settings.memberIdLabel} and we'll text a verification code to
-                your registered phone
+                Enter your {settings.memberIdLabel} and we'll text a
+                verification code to your registered phone
               </div>
 
               <form onSubmit={handleRequestOtp} noValidate>
@@ -460,17 +584,39 @@ export default function Login() {
                     <input
                       id="controller-id"
                       value={controllerId}
-                      onChange={(e) => { setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7)); setMemberError(""); }}
+                      onChange={(e) => {
+                        setControllerId(
+                          e.target.value.replace(/\D/g, "").slice(0, 7),
+                        );
+                        setMemberError("");
+                      }}
                       placeholder="e.g. 1188204"
                       inputMode="numeric"
                       autoComplete="username"
                       maxLength={7}
                       aria-invalid={Boolean(memberError)}
-                      aria-describedby={memberError ? "member-id-error" : "member-id-help"}
+                      aria-describedby={
+                        memberError ? "member-id-error" : "member-id-help"
+                      }
                       className={inputClasses}
                     />
                   </div>
-                  {memberError ? <p id="member-id-error" role="alert" className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]">{memberError}</p> : <p id="member-id-help" className="mt-1.5 text-[11px] text-[#5b6472]">Use the ID shown on your membership record or payslip.</p>}
+                  {memberError ? (
+                    <p
+                      id="member-id-error"
+                      role="alert"
+                      className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]"
+                    >
+                      {memberError}
+                    </p>
+                  ) : (
+                    <p
+                      id="member-id-help"
+                      className="mt-1.5 text-[11px] text-[#5b6472]"
+                    >
+                      Use the ID shown on your membership record or payslip.
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -491,15 +637,183 @@ export default function Login() {
                 )}
               </form>
               <div className="mt-5 border-t border-[#edf0f5] pt-4 text-[11px] leading-relaxed text-[#5b6472]">
-                We use the SMS code only to verify access to your membership record.
-                {(settings.organizationPhone || settings.organizationEmail) && <p className="mt-2">Need help? {settings.organizationPhone && <a className="font-semibold text-[#1e2761]" href={`tel:${settings.organizationPhone}`}>{settings.organizationPhone}</a>}{settings.organizationPhone && settings.organizationEmail ? " · " : ""}{settings.organizationEmail && <a className="font-semibold text-[#1e2761]" href={`mailto:${settings.organizationEmail}`}>{settings.organizationEmail}</a>}</p>}
-                {settings.privacyNotice && <details className="mt-2"><summary className="cursor-pointer font-semibold text-[#1e2761]">Privacy notice</summary><p className="mt-1 max-h-24 overflow-y-auto pr-2">{settings.privacyNotice}</p></details>}
+                We use the SMS code only to verify access to your membership
+                record.
+                {(settings.organizationPhone || settings.organizationEmail) && (
+                  <p className="mt-2">
+                    Need help?{" "}
+                    {settings.organizationPhone && (
+                      <a
+                        className="font-semibold text-[#1e2761]"
+                        href={`tel:${settings.organizationPhone}`}
+                      >
+                        {settings.organizationPhone}
+                      </a>
+                    )}
+                    {settings.organizationPhone && settings.organizationEmail
+                      ? " · "
+                      : ""}
+                    {settings.organizationEmail && (
+                      <a
+                        className="font-semibold text-[#1e2761]"
+                        href={`mailto:${settings.organizationEmail}`}
+                      >
+                        {settings.organizationEmail}
+                      </a>
+                    )}
+                  </p>
+                )}
+                {settings.privacyNotice && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer font-semibold text-[#1e2761]">
+                      Privacy notice
+                    </summary>
+                    <p className="mt-1 max-h-24 overflow-y-auto pr-2">
+                      {settings.privacyNotice}
+                    </p>
+                  </details>
+                )}
               </div>
+            </>
+          ) : memberStep === "register" ? (
+            <>
+              <div
+                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
+                aria-label="Step 1 of 2, register your phone number"
+              >
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
+                  1
+                </span>
+                <span className="text-[#1e2761]">Register your phone</span>
+                <span className="h-px flex-1 bg-[#dfe4ec]" />
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">
+                  2
+                </span>
+                <span className="text-[#7b8492]">Enter SMS code</span>
+              </div>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                No phone on file yet
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                We couldn't find a phone number for {settings.memberIdLabel}{" "}
+                {controllerId}. Confirm your details below to register one and
+                continue signing in.
+              </div>
+
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleRegisterPhone} noValidate>
+                <div className="mb-3.5">
+                  <label
+                    htmlFor="reg-full-name"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    Full name (as on your membership record)
+                  </label>
+                  <input
+                    id="reg-full-name"
+                    value={regFullName}
+                    onChange={(e) => {
+                      setRegFullName(e.target.value);
+                      setMemberError("");
+                    }}
+                    placeholder="e.g. Kwasi Tawia"
+                    autoComplete="name"
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                </div>
+
+                <div className="mb-3.5">
+                  <label
+                    htmlFor="reg-district"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    District
+                  </label>
+                  <select
+                    id="reg-district"
+                    value={regDistrictId}
+                    onChange={(e) => {
+                      setRegDistrictId(e.target.value);
+                      setMemberError("");
+                    }}
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  >
+                    <option value="">
+                      {districtsLoading
+                        ? "Loading districts…"
+                        : "Select your district"}
+                    </option>
+                    {districts.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} — {d.region.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3.5">
+                  <label
+                    htmlFor="reg-phone"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    Phone number
+                  </label>
+                  <input
+                    id="reg-phone"
+                    value={regPhone}
+                    onChange={(e) => {
+                      setRegPhone(
+                        e.target.value.replace(/\D/g, "").slice(0, 10),
+                      );
+                      setMemberError("");
+                    }}
+                    placeholder="e.g. 0241234567"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                  <p className="mt-1.5 text-[11px] text-[#5b6472]">
+                    We'll text a verification code to this number.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {memberSubmitting ? "Registering…" : "Register & Send Code"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberStep("id");
+                    setMemberError("");
+                  }}
+                  className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+                >
+                  Use a different {settings.memberIdLabel}
+                </button>
+              </form>
             </>
           ) : (
             <>
-              <div className="mb-5 flex items-center gap-2 text-[10.5px] font-bold" aria-label="Step 2 of 2, enter SMS code">
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#dff7ee] text-[#17805f]">✓</span><span className="text-[#5b6472]">Membership found</span><span className="h-px flex-1 bg-[#1f9c7c]"/><span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">2</span><span className="text-[#1e2761]">Enter SMS code</span>
+              <div
+                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
+                aria-label="Step 2 of 2, enter SMS code"
+              >
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#dff7ee] text-[#17805f]">
+                  ✓
+                </span>
+                <span className="text-[#5b6472]">Membership found</span>
+                <span className="h-px flex-1 bg-[#1f9c7c]" />
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
+                  2
+                </span>
+                <span className="text-[#1e2761]">Enter SMS code</span>
               </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Enter verification code
@@ -521,18 +835,38 @@ export default function Login() {
                     <input
                       id="member-otp"
                       value={otp}
-                      onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setMemberError(""); }}
+                      onChange={(e) => {
+                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+                        setMemberError("");
+                      }}
                       placeholder="000000"
                       maxLength={6}
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       enterKeyHint="done"
                       aria-invalid={Boolean(memberError)}
-                      aria-describedby={memberError ? "member-otp-error" : "member-otp-help"}
+                      aria-describedby={
+                        memberError ? "member-otp-error" : "member-otp-help"
+                      }
                       className={`${inputClasses} py-3 text-center font-mono text-[20px] font-bold tracking-[0.45em] text-[#1e2761]`}
                     />
                   </div>
-                  {memberError ? <p id="member-otp-error" role="alert" className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]">{memberError}</p> : <p id="member-otp-help" className="mt-1.5 text-[11px] text-[#5b6472]">Enter or paste the complete six-digit code.</p>}
+                  {memberError ? (
+                    <p
+                      id="member-otp-error"
+                      role="alert"
+                      className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]"
+                    >
+                      {memberError}
+                    </p>
+                  ) : (
+                    <p
+                      id="member-otp-help"
+                      className="mt-1.5 text-[11px] text-[#5b6472]"
+                    >
+                      Enter or paste the complete six-digit code.
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -543,10 +877,21 @@ export default function Login() {
                   {memberSubmitting ? "Verifying…" : "Verify & Sign In"}
                 </button>
 
-                <div className="mt-3 text-center text-[11.5px] text-[#5b6472]" aria-live="polite">
-                  {resendMessage || (resendSeconds > 0 ? `You can request another code in ${resendSeconds}s` : "Didn't receive the code?")}
+                <div
+                  className="mt-3 text-center text-[11.5px] text-[#5b6472]"
+                  aria-live="polite"
+                >
+                  {resendMessage ||
+                    (resendSeconds > 0
+                      ? `You can request another code in ${resendSeconds}s`
+                      : "Didn't receive the code?")}
                 </div>
-                <button type="button" onClick={() => void handleResendOtp()} disabled={memberSubmitting || resendSeconds > 0} className="mt-1.5 w-full text-center text-[11.5px] font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:text-[#9aa3b2]">
+                <button
+                  type="button"
+                  onClick={() => void handleResendOtp()}
+                  disabled={memberSubmitting || resendSeconds > 0}
+                  className="mt-1.5 w-full text-center text-[11.5px] font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:text-[#9aa3b2]"
+                >
                   Resend code
                 </button>
 
@@ -564,7 +909,12 @@ export default function Login() {
                   Use a different {settings.memberIdLabel}
                 </button>
               </form>
-              {(settings.organizationPhone || settings.organizationEmail) && <p className="mt-4 text-center text-[11px] text-[#5b6472]">Phone number outdated? Contact {settings.organizationPhone || settings.organizationEmail}.</p>}
+              {(settings.organizationPhone || settings.organizationEmail) && (
+                <p className="mt-4 text-center text-[11px] text-[#5b6472]">
+                  Phone number outdated? Contact{" "}
+                  {settings.organizationPhone || settings.organizationEmail}.
+                </p>
+              )}
             </>
           )}
         </div>

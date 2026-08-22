@@ -22,6 +22,12 @@ type MemberAuthContextType = {
   requestOtp: (
     controllerId: string,
   ) => Promise<{ challengeToken: string; message: string }>;
+  registerPhone: (input: {
+    controllerId: string;
+    fullName: string;
+    districtId: number;
+    phone: string;
+  }) => Promise<{ challengeToken: string; message: string }>;
   verifyOtp: (challengeToken: string, otp: string) => Promise<MemberUser>;
   logout: () => Promise<void>;
 };
@@ -63,6 +69,19 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     return res.data as { challengeToken: string; message: string };
   }, []);
 
+  const registerPhone = useCallback(
+    async (input: {
+      controllerId: string;
+      fullName: string;
+      districtId: number;
+      phone: string;
+    }) => {
+      const res = await api.post("/member-auth/register-phone", input);
+      return res.data as { challengeToken: string; message: string };
+    },
+    [],
+  );
+
   const verifyOtp = useCallback(async (challengeToken: string, otp: string) => {
     const res = await api.post("/member-auth/verify-otp", {
       challengeToken,
@@ -84,7 +103,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <MemberAuthContext.Provider
-      value={{ member, isLoading, requestOtp, verifyOtp, logout }}
+      value={{ member, isLoading, requestOtp, registerPhone, verifyOtp, logout }}
     >
       {children}
     </MemberAuthContext.Provider>

@@ -79,3 +79,10 @@ export const memberOtpVerifyRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: jsonRateLimitHandler("member-otp-verify"),
 });
+export const memberPhoneRegisterRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("member-phone-register"),
+});

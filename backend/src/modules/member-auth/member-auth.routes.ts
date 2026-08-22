@@ -6,6 +6,7 @@ import { authenticateMember } from "../../middleware/authenticate-member.js";
 import {
   memberOtpRequestRateLimiter,
   memberOtpVerifyRateLimiter,
+  memberPhoneRegisterRateLimiter,
   refreshRateLimiter,
 } from "../../middleware/rate-limit.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -13,7 +14,11 @@ import {
   processNotificationById,
   queueSmsNotification,
 } from "../notifications/notification.service.js";
-import { requestOtpSchema, verifyOtpSchema } from "./member-auth.schemas.js";
+import {
+  registerPhoneSchema,
+  requestOtpSchema,
+  verifyOtpSchema,
+} from "./member-auth.schemas.js";
 import {
   createChallengeToken,
   createMemberAccessToken,
@@ -21,6 +26,7 @@ import {
   createOtp,
   hashMemberRefreshToken,
   hashOtp,
+  memberNameMatches,
   memberSessionExpiresAt,
   otpMatches,
 } from "./member-auth.tokens.js";
@@ -62,6 +68,59 @@ function publicMember(member: {
   };
 }
 
+// Shared by /request-otp (existing phone on file) and /register-phone (member has just claimed a
+// phone number and needs the first OTP sent to it). Reuses a still-live unconsumed challenge within
+// the cooldown window instead of spamming a fresh SMS on every retry/resend click.
+async function issueOtpChallenge(request: Request, member: { id: number; phone: string }) {
+  let challengeToken = createChallengeToken();
+  const cooldown = new Date(Date.now() - 60_000);
+  const recent = await prisma.memberOtpChallenge.findFirst({
+    where: { memberId: member.id, createdAt: { gte: cooldown }, consumedAt: null },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recent) {
+    challengeToken = recent.publicToken;
+    return challengeToken;
+  }
+  const otp = createOtp();
+  const expiresAt = new Date(Date.now() + env.MEMBER_OTP_TTL_MINUTES * 60_000);
+  await prisma.$transaction([
+    prisma.memberOtpChallenge.updateMany({
+      where: { memberId: member.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    }),
+    prisma.memberOtpChallenge.create({
+      data: {
+        publicToken: challengeToken,
+        memberId: member.id,
+        otpHash: hashOtp(challengeToken, otp),
+        expiresAt,
+        ipAddress: request.ip?.slice(0, 64),
+      },
+    }),
+  ]);
+  const notification = await queueSmsNotification({
+    type: "MEMBER_OTP",
+    title: "Member verification code",
+    message: `\n\n\n\n Your GNAT Supreme Care verification code is ${otp}. It expires in ${env.MEMBER_OTP_TTL_MINUTES} minutes. Do not share this code. \n\n\n\n`,
+    destination: member.phone,
+    idempotencyKey: `member-otp:${challengeToken}`,
+    memberId: member.id,
+  });
+  await processNotificationById(notification.id);
+  return challengeToken;
+}
+
+// Public (unauthenticated) so the first-login phone-registration form on the login page can offer a
+// district dropdown instead of free-text entry. District names carry no sensitive information.
+memberAuthRouter.get("/districts", async (_request, response) => {
+  const districts = await prisma.district.findMany({
+    select: { id: true, name: true, region: { select: { name: true } } },
+    orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
+  });
+  response.json({ success: true, data: districts });
+});
+
 memberAuthRouter.post(
   "/request-otp",
   memberOtpRequestRateLimiter,
@@ -94,8 +153,9 @@ memberAuthRouter.post(
     if (member && !member.phone) {
       response.status(403).json({
         success: false,
+        code: "PHONE_NOT_ON_FILE",
         message:
-          "No phone number is on file for this membership. Please contact your local district office to update your records.",
+          "No phone number is on file for this membership. You can register one now to continue.",
       });
       return;
     }
@@ -104,47 +164,7 @@ memberAuthRouter.post(
     // sets phoneVerifiedAt (see /verify-otp), so this no longer gates on it being pre-verified —
     // otherwise no member could ever complete their first login.
     if (member?.phone) {
-      const cooldown = new Date(Date.now() - 60_000);
-      const recent = await prisma.memberOtpChallenge.findFirst({
-        where: {
-          memberId: member.id,
-          createdAt: { gte: cooldown },
-          consumedAt: null,
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      if (recent) {
-        challengeToken = recent.publicToken;
-      } else {
-        const otp = createOtp();
-        const expiresAt = new Date(
-          Date.now() + env.MEMBER_OTP_TTL_MINUTES * 60_000,
-        );
-        await prisma.$transaction([
-          prisma.memberOtpChallenge.updateMany({
-            where: { memberId: member.id, consumedAt: null },
-            data: { consumedAt: new Date() },
-          }),
-          prisma.memberOtpChallenge.create({
-            data: {
-              publicToken: challengeToken,
-              memberId: member.id,
-              otpHash: hashOtp(challengeToken, otp),
-              expiresAt,
-              ipAddress: request.ip?.slice(0, 64),
-            },
-          }),
-        ]);
-        const notification = await queueSmsNotification({
-          type: "MEMBER_OTP",
-          title: "Member verification code",
-          message: `\n\n\n\n Your GNAT Supreme Care verification code is ${otp}. It expires in ${env.MEMBER_OTP_TTL_MINUTES} minutes. Do not share this code. \n\n\n\n`,
-          destination: member.phone,
-          idempotencyKey: `member-otp:${challengeToken}`,
-          memberId: member.id,
-        });
-        await processNotificationById(notification.id);
-      }
+      challengeToken = await issueOtpChallenge(request, { id: member.id, phone: member.phone });
     }
     const remainingDelay = 300 - (Date.now() - startedAt);
     if (remainingDelay > 0)
@@ -154,6 +174,93 @@ memberAuthRouter.post(
       challengeToken,
       message:
         "If the membership is eligible and has a verified phone number, a verification code has been sent.",
+    });
+  },
+);
+
+memberAuthRouter.post(
+  "/register-phone",
+  memberPhoneRegisterRateLimiter,
+  async (request, response) => {
+    const parsed = registerPhoneSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response
+        .status(400)
+        .json({ success: false, message: "Enter valid details to continue" });
+      return;
+    }
+    const genericFailure = () =>
+      response.status(401).json({
+        success: false,
+        message:
+          "We couldn't verify those details. Please check your Controller ID, name and district, or contact your local district office for help.",
+      });
+
+    const member = await prisma.member.findFirst({
+      where: { controllerId: parsed.data.controllerId },
+      select: {
+        id: true,
+        controllerId: true,
+        fullName: true,
+        phone: true,
+        status: true,
+        districtId: true,
+      },
+    });
+    if (!member || !["ACTIVE", "FLAGGED"].includes(member.status)) {
+      genericFailure();
+      return;
+    }
+    if (member.phone) {
+      response.status(409).json({
+        success: false,
+        message:
+          "A phone number is already on file for this membership. Please contact your local district office if you can no longer access it.",
+      });
+      return;
+    }
+    if (
+      !memberNameMatches(member.fullName, parsed.data.fullName) ||
+      member.districtId !== parsed.data.districtId
+    ) {
+      genericFailure();
+      return;
+    }
+
+    try {
+      await prisma.member.update({
+        where: { id: member.id },
+        data: { phone: parsed.data.phone },
+      });
+    } catch (error) {
+      if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
+        response.status(409).json({
+          success: false,
+          message:
+            "This phone number is already registered to another membership. Please contact your local district office for help.",
+        });
+        return;
+      }
+      throw error;
+    }
+
+    await recordAudit({
+      request,
+      action: "MEMBER_PHONE_SELF_REGISTERED",
+      entityType: "MEMBER",
+      entityId: member.id,
+      description: `Member ${member.controllerId} self-registered a phone number at first login`,
+      districtId: member.districtId,
+    });
+
+    const challengeToken = await issueOtpChallenge(request, {
+      id: member.id,
+      phone: parsed.data.phone,
+    });
+    response.json({
+      success: true,
+      challengeToken,
+      message: "A verification code has been sent to the phone number you provided.",
     });
   },
 );

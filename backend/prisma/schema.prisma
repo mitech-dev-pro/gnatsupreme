@@ -259,7 +259,7 @@ model Member {
   fullName         String                    @map("full_name")
   dateOfBirth      DateTime?                 @map("date_of_birth") @db.Date
   ghanaCardId      String?                   @unique @map("ghana_card_id")
-  phone            String?
+  phone            String?                   @unique
   phoneVerifiedAt  DateTime?                 @map("phone_verified_at")
   school           String
   status           MemberStatus              @default(PENDING)

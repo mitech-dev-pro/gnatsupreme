@@ -61,3 +61,25 @@ export function memberSessionExpiresAt() {
   date.setUTCDate(date.getUTCDate() + env.MEMBER_SESSION_TTL_DAYS);
   return date;
 }
+
+// Report 20 imports carry titles ("Mr. ", "Miss ", "Mrs. ", "Ms. ", "Dr. ", "Rev. ") and inconsistent
+// double-spacing in fullName, so an exact-match identity check would fail for real members. Strips
+// both before comparing.
+export function normalizeMemberName(name: string) {
+  return name
+    .replace(/^(mr|mrs|miss|ms|dr|rev)\.?\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+// Report 20 names sometimes carry an extra/missing middle name or initial next to the record a
+// member types from memory, so an exact match is too strict. Equivalent to a two-way SQL
+// `... ILIKE '%' || :other || '%'` — either name containing the other (after stripping titles) counts
+// as a match, e.g. "George Asamoah" matches stored "Mr. George Asiedu Asamoah".
+export function memberNameMatches(storedName: string, enteredName: string) {
+  const stored = normalizeMemberName(storedName);
+  const entered = normalizeMemberName(enteredName);
+  if (!stored || !entered) return false;
+  return stored.includes(entered) || entered.includes(stored);
+}

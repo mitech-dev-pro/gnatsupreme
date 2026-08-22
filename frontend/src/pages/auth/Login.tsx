@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
+import api from "@/lib/api";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -28,6 +29,7 @@ export default function Login() {
     member,
     isLoading: memberLoading,
     requestOtp,
+    registerPhone,
     verifyOtp,
   } = useMemberAuth();
   const navigate = useNavigate();
@@ -44,7 +46,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [memberStep, setMemberStep] = useState<"id" | "otp">("id");
+  const [memberStep, setMemberStep] = useState<"id" | "register" | "otp">("id");
   const [controllerId, setControllerId] = useState("");
   const [otp, setOtp] = useState("");
   const [challengeToken, setChallengeToken] = useState("");
@@ -53,6 +55,14 @@ export default function Login() {
   const [resendSeconds, setResendSeconds] = useState(0);
   const [resendMessage, setResendMessage] = useState("");
   const otpFormRef = useRef<HTMLFormElement>(null);
+
+  const [regFullName, setRegFullName] = useState("");
+  const [regDistrictId, setRegDistrictId] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [districts, setDistricts] = useState<
+    { id: number; name: string; region: { name: string } }[]
+  >([]);
+  const [districtsLoading, setDistrictsLoading] = useState(false);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -63,6 +73,16 @@ export default function Login() {
   useEffect(() => {
     if (otp.length === 6 && memberStep === "otp" && !memberSubmitting) otpFormRef.current?.requestSubmit();
   }, [otp, memberStep]);
+
+  useEffect(() => {
+    if (memberStep !== "register" || districts.length > 0 || districtsLoading) return;
+    setDistrictsLoading(true);
+    api
+      .get("/member-auth/districts")
+      .then((res) => setDistricts(res.data.data))
+      .catch(() => setDistricts([]))
+      .finally(() => setDistrictsLoading(false));
+  }, [memberStep, districts.length, districtsLoading]);
 
   if (isLoading || memberLoading) {
     return (
@@ -119,8 +139,51 @@ export default function Login() {
       setResendSeconds(60);
       setResendMessage("");
     } catch (err: any) {
+      if (err?.response?.data?.code === "PHONE_NOT_ON_FILE") {
+        setMemberStep("register");
+        setMemberError("");
+        return;
+      }
       setMemberError(
         err?.response?.data?.message || "Unable to send a verification code.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleRegisterPhone = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!regFullName.trim()) {
+      setMemberError("Enter your full name as it appears on your membership record.");
+      return;
+    }
+    if (!regDistrictId) {
+      setMemberError("Select your district.");
+      return;
+    }
+    if (!/^0\d{9}$/.test(regPhone.trim())) {
+      setMemberError("Enter a valid 10-digit phone number starting with 0.");
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      const res = await registerPhone({
+        controllerId: controllerId.trim(),
+        fullName: regFullName.trim(),
+        districtId: Number(regDistrictId),
+        phone: regPhone.trim(),
+      });
+      setChallengeToken(res.challengeToken);
+      setMemberStep("otp");
+      setResendSeconds(60);
+      setResendMessage("");
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to register your phone number.",
       );
     } finally {
       setMemberSubmitting(false);
@@ -176,6 +239,9 @@ export default function Login() {
     setMemberError("");
     setResendMessage("");
     setResendSeconds(0);
+    setRegFullName("");
+    setRegDistrictId("");
+    setRegPhone("");
   };
 
   return (
@@ -463,6 +529,91 @@ export default function Login() {
                 {(settings.organizationPhone || settings.organizationEmail) && <p className="mt-2">Need help? {settings.organizationPhone && <a className="font-semibold text-[#1e2761]" href={`tel:${settings.organizationPhone}`}>{settings.organizationPhone}</a>}{settings.organizationPhone && settings.organizationEmail ? " · " : ""}{settings.organizationEmail && <a className="font-semibold text-[#1e2761]" href={`mailto:${settings.organizationEmail}`}>{settings.organizationEmail}</a>}</p>}
                 {settings.privacyNotice && <details className="mt-2"><summary className="cursor-pointer font-semibold text-[#1e2761]">Privacy notice</summary><p className="mt-1 max-h-24 overflow-y-auto pr-2">{settings.privacyNotice}</p></details>}
               </div>
+            </>
+          ) : memberStep === "register" ? (
+            <>
+              <div className="mb-5 flex items-center gap-2 text-[10.5px] font-bold" aria-label="Step 1 of 2, register your phone number">
+                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">1</span><span className="text-[#1e2761]">Register your phone</span><span className="h-px flex-1 bg-[#dfe4ec]"/><span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">2</span><span className="text-[#7b8492]">Enter SMS code</span>
+              </div>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                No phone on file yet
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                We couldn't find a phone number for {settings.memberIdLabel} {controllerId}. Confirm your
+                details below to register one and continue signing in.
+              </div>
+
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleRegisterPhone} noValidate>
+                <div className="mb-3.5">
+                  <label htmlFor="reg-full-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    Full name (as on your membership record)
+                  </label>
+                  <input
+                    id="reg-full-name"
+                    value={regFullName}
+                    onChange={(e) => { setRegFullName(e.target.value); setMemberError(""); }}
+                    placeholder="e.g. Kwasi Akaadom"
+                    autoComplete="name"
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                </div>
+
+                <div className="mb-3.5">
+                  <label htmlFor="reg-district" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    District
+                  </label>
+                  <select
+                    id="reg-district"
+                    value={regDistrictId}
+                    onChange={(e) => { setRegDistrictId(e.target.value); setMemberError(""); }}
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  >
+                    <option value="">
+                      {districtsLoading ? "Loading districts…" : "Select your district"}
+                    </option>
+                    {districts.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} — {d.region.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3.5">
+                  <label htmlFor="reg-phone" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    Phone number
+                  </label>
+                  <input
+                    id="reg-phone"
+                    value={regPhone}
+                    onChange={(e) => { setRegPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setMemberError(""); }}
+                    placeholder="e.g. 0241234567"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                  <p className="mt-1.5 text-[11px] text-[#5b6472]">We'll text a verification code to this number.</p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {memberSubmitting ? "Registering…" : "Register & Send Code"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setMemberStep("id"); setMemberError(""); }}
+                  className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+                >
+                  Use a different {settings.memberIdLabel}
+                </button>
+              </form>
             </>
           ) : (
             <>

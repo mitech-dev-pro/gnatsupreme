@@ -8,7 +8,13 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
-const REMOVAL_REASONS = ["DEATH", "DISABILITY", "RETIREMENT", "RESIGNATION", "OTHER"];
+const REMOVAL_REASONS = [
+  "DEATH",
+  "DISABILITY",
+  "RETIREMENT",
+  "RESIGNATION",
+  "OTHER",
+];
 const ELEVATED_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"];
 
 const inputClasses =
@@ -77,9 +83,7 @@ function toDateInput(iso: string | null) {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="member-data-field">
-      <dt>
-        {label}
-      </dt>
+      <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
   );
@@ -97,7 +101,12 @@ export default function MemberDetail() {
   const [actionError, setActionError] = useState("");
   const [checkResult, setCheckResult] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ type: "spouse" } | { type: "beneficiary"; id: number; name: string } | { type: "approve" } | null>(null);
+  const [confirmation, setConfirmation] = useState<
+    | { type: "spouse" }
+    | { type: "beneficiary"; id: number; name: string }
+    | { type: "approve" }
+    | null
+  >(null);
 
   const [editing, setEditing] = useState(false);
   const [editFullName, setEditFullName] = useState("");
@@ -210,7 +219,9 @@ export default function MemberDetail() {
       setConfirmation(null);
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to remove spouse.");
+      setActionError(
+        err?.response?.data?.message || "Unable to remove spouse.",
+      );
     } finally {
       setBusy(false);
     }
@@ -227,10 +238,16 @@ export default function MemberDetail() {
         dateOfBirth: newBeneficiary.dateOfBirth || null,
       });
       setAddingBeneficiary(false);
-      setNewBeneficiary({ fullName: "", relationship: "CHILD", dateOfBirth: "" });
+      setNewBeneficiary({
+        fullName: "",
+        relationship: "CHILD",
+        dateOfBirth: "",
+      });
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to add beneficiary.");
+      setActionError(
+        err?.response?.data?.message || "Unable to add beneficiary.",
+      );
     } finally {
       setBusy(false);
     }
@@ -244,7 +261,9 @@ export default function MemberDetail() {
       setConfirmation(null);
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to remove beneficiary.");
+      setActionError(
+        err?.response?.data?.message || "Unable to remove beneficiary.",
+      );
     } finally {
       setBusy(false);
     }
@@ -289,7 +308,9 @@ export default function MemberDetail() {
       setConfirmation(null);
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to approve member.");
+      setActionError(
+        err?.response?.data?.message || "Unable to approve member.",
+      );
     } finally {
       setBusy(false);
     }
@@ -306,7 +327,9 @@ export default function MemberDetail() {
       setReturnNote("");
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to return member.");
+      setActionError(
+        err?.response?.data?.message || "Unable to return member.",
+      );
     } finally {
       setBusy(false);
     }
@@ -325,7 +348,9 @@ export default function MemberDetail() {
       setRemoveNote("");
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to remove member.");
+      setActionError(
+        err?.response?.data?.message || "Unable to remove member.",
+      );
     } finally {
       setBusy(false);
     }
@@ -333,41 +358,86 @@ export default function MemberDetail() {
 
   return (
     <div className="member-record">
-      <Link
-        to="/members"
-        className="member-record__back"
-      >
+      <Link to="/members" className="member-record__back">
         &larr; All Members
       </Link>
 
       {loading ? (
-        <div className="rounded-[12px] border border-(--border-default) bg-(--surface-raised) p-5"><table className="w-full"><tbody><TableSkeleton columns={3} rows={5} /></tbody></table></div>
+        <div className="rounded-[12px] border border-(--border-default) bg-(--surface-raised) p-5">
+          <table className="w-full">
+            <tbody>
+              <TableSkeleton columns={3} rows={5} />
+            </tbody>
+          </table>
+        </div>
       ) : error || !member ? (
         <Alert tone="error">{error || "Member not found."}</Alert>
       ) : (
         <>
           <header className="member-record__header">
             <div>
-              <div className="member-record__avatar">{member.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div>
-              <div>
-              <p>Member profile</p>
-              <h1 className="text-[22px] font-extrabold text-[#1e2761]">
-                {member.fullName}
-              </h1>
-              <div className="mt-1 text-[12.5px] text-[#5b6472]">
-                Controller ID {member.controllerId} · {member.district.name},{" "}
-                {member.district.region.name}
+              <div className="member-record__avatar">
+                {member.fullName
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")}
               </div>
+              <div>
+                <p>Member profile</p>
+                <h1 className="text-[22px] font-extrabold text-[#1e2761]">
+                  {member.fullName}
+                </h1>
+                <div className="mt-1 text-[12.5px] text-[#5b6472]">
+                  Controller ID {member.controllerId} · {member.district.name},{" "}
+                  {member.district.region.name}
+                </div>
               </div>
             </div>
-            <StatusBadge tone={member.status === "ACTIVE" ? "success" : member.status === "PENDING" || member.status === "RETURNED" ? "warning" : "danger"}>{member.status.charAt(0) + member.status.slice(1).toLowerCase()}</StatusBadge>
+            <StatusBadge
+              tone={
+                member.status === "ACTIVE"
+                  ? "success"
+                  : member.status === "PENDING" || member.status === "RETURNED"
+                    ? "warning"
+                    : "danger"
+              }
+            >
+              {member.status.charAt(0) + member.status.slice(1).toLowerCase()}
+            </StatusBadge>
           </header>
 
           <div className="member-record__signals">
-            <div><span className={member.phoneVerifiedAt ? "ok" : "warn"}>{member.phoneVerifiedAt ? "✓" : "!"}</span><p>Phone verification<strong>{member.phoneVerifiedAt ? "Verified" : "Not verified"}</strong></p></div>
-            <div><span className={member.report20Matched ? "ok" : "warn"}>{member.report20Matched ? "✓" : "!"}</span><p>Report 20<strong>{member.report20Matched ? "Matched" : "Not matched"}</strong></p></div>
-            <div><span className="neutral">{member.beneficiaries.length}</span><p>Beneficiaries<strong>{member.beneficiaries.length === 1 ? "1 person" : `${member.beneficiaries.length} people`}</strong></p></div>
-            <div><span className="neutral">{member.spouse ? "1" : "0"}</span><p>Spouse<strong>{member.spouse ? "Recorded" : "Not recorded"}</strong></p></div>
+            {/* <div><span className={member.phoneVerifiedAt ? "ok" : "warn"}>{member.phoneVerifiedAt ? "✓" : "!"}</span><p>Phone verification<strong>{member.phoneVerifiedAt ? "Verified" : "Not verified"}</strong></p></div> */}
+            <div>
+              <span className={member.report20Matched ? "ok" : "warn"}>
+                {member.report20Matched ? "✓" : "!"}
+              </span>
+              <p>
+                Report 20
+                <strong>
+                  {member.report20Matched ? "Matched" : "Not matched"}
+                </strong>
+              </p>
+            </div>
+            <div>
+              <span className="neutral">{member.beneficiaries.length}</span>
+              <p>
+                Beneficiaries
+                <strong>
+                  {member.beneficiaries.length === 1
+                    ? "1 person"
+                    : `${member.beneficiaries.length} people`}
+                </strong>
+              </p>
+            </div>
+            <div>
+              <span className="neutral">{member.spouse ? "1" : "0"}</span>
+              <p>
+                Spouse
+                <strong>{member.spouse ? "Recorded" : "Not recorded"}</strong>
+              </p>
+            </div>
           </div>
 
           {actionError && (
@@ -379,14 +449,40 @@ export default function MemberDetail() {
           {confirmation && (
             <div className="mb-4">
               <ConfirmationPanel
-                title={confirmation.type === "spouse" ? "Remove this spouse?" : confirmation.type === "beneficiary" ? `Remove ${confirmation.name}?` : `Approve ${member.fullName}?`}
-                description={confirmation.type === "spouse" ? "The spouse record will be removed from this member. This does not remove the member." : confirmation.type === "beneficiary" ? "This beneficiary will be removed from the member record." : `The member's resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`}
-                confirmLabel={confirmation.type === "approve" ? "Approve member" : "Remove record"}
-                busyLabel={confirmation.type === "approve" ? "Approving…" : "Removing…"}
+                title={
+                  confirmation.type === "spouse"
+                    ? "Remove this spouse?"
+                    : confirmation.type === "beneficiary"
+                      ? `Remove ${confirmation.name}?`
+                      : `Approve ${member.fullName}?`
+                }
+                description={
+                  confirmation.type === "spouse"
+                    ? "The spouse record will be removed from this member. This does not remove the member."
+                    : confirmation.type === "beneficiary"
+                      ? "This beneficiary will be removed from the member record."
+                      : `The member's resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`
+                }
+                confirmLabel={
+                  confirmation.type === "approve"
+                    ? "Approve member"
+                    : "Remove record"
+                }
+                busyLabel={
+                  confirmation.type === "approve" ? "Approving…" : "Removing…"
+                }
                 tone={confirmation.type === "approve" ? "warning" : "danger"}
-                confirmVariant={confirmation.type === "approve" ? "primary" : "danger"}
+                confirmVariant={
+                  confirmation.type === "approve" ? "primary" : "danger"
+                }
                 busy={busy}
-                onConfirm={() => confirmation.type === "spouse" ? void removeSpouse() : confirmation.type === "beneficiary" ? void removeBeneficiary(confirmation.id) : void approve()}
+                onConfirm={() =>
+                  confirmation.type === "spouse"
+                    ? void removeSpouse()
+                    : confirmation.type === "beneficiary"
+                      ? void removeBeneficiary(confirmation.id)
+                      : void approve()
+                }
                 onCancel={() => setConfirmation(null)}
               />
             </div>
@@ -473,20 +569,36 @@ export default function MemberDetail() {
                 </form>
               ) : (
                 <dl className="grid grid-cols-2 gap-4">
-                  <Field label="Date of Birth" value={formatDate(member.dateOfBirth)} />
-                  <Field label="Ghana Card ID" value={member.ghanaCardId ?? "—"} />
+                  <Field
+                    label="Date of Birth"
+                    value={formatDate(member.dateOfBirth)}
+                  />
+                  <Field
+                    label="Ghana Card ID"
+                    value={member.ghanaCardId ?? "—"}
+                  />
                   <Field label="Phone" value={member.phone ?? "—"} />
                   <Field
                     label="Phone Verified"
-                    value={member.phoneVerifiedAt ? formatDate(member.phoneVerifiedAt) : "No"}
+                    value={
+                      member.phoneVerifiedAt
+                        ? formatDate(member.phoneVerifiedAt)
+                        : "No"
+                    }
                   />
                   <Field label="School" value={member.school} />
                   <Field
                     label="Report 20 Matched"
                     value={member.report20Matched ? "Yes" : "No"}
                   />
-                  <Field label="Enrolled" value={formatDate(member.createdAt)} />
-                  <Field label="Enrolled By" value={member.createdBy?.fullName ?? "—"} />
+                  <Field
+                    label="Enrolled"
+                    value={formatDate(member.createdAt)}
+                  />
+                  <Field
+                    label="Enrolled By"
+                    value={member.createdBy?.fullName ?? "—"}
+                  />
                 </dl>
               )}
             </div>
@@ -566,11 +678,19 @@ export default function MemberDetail() {
               ) : member.spouse ? (
                 <dl className="grid grid-cols-2 gap-4">
                   <Field label="Name" value={member.spouse.fullName} />
-                  <Field label="Date of Birth" value={formatDate(member.spouse.dateOfBirth)} />
-                  <Field label="Ghana Card ID" value={member.spouse.ghanaCardId ?? "—"} />
+                  <Field
+                    label="Date of Birth"
+                    value={formatDate(member.spouse.dateOfBirth)}
+                  />
+                  <Field
+                    label="Ghana Card ID"
+                    value={member.spouse.ghanaCardId ?? "—"}
+                  />
                 </dl>
               ) : (
-                <div className="text-[12.5px] text-[#5b6472]">No spouse on record.</div>
+                <div className="text-[12.5px] text-[#5b6472]">
+                  No spouse on record.
+                </div>
               )}
             </div>
 
@@ -600,7 +720,10 @@ export default function MemberDetail() {
                     <input
                       value={newBeneficiary.fullName}
                       onChange={(e) =>
-                        setNewBeneficiary((p) => ({ ...p, fullName: e.target.value }))
+                        setNewBeneficiary((p) => ({
+                          ...p,
+                          fullName: e.target.value,
+                        }))
                       }
                       className={inputClasses}
                     />
@@ -610,7 +733,10 @@ export default function MemberDetail() {
                     <select
                       value={newBeneficiary.relationship}
                       onChange={(e) =>
-                        setNewBeneficiary((p) => ({ ...p, relationship: e.target.value }))
+                        setNewBeneficiary((p) => ({
+                          ...p,
+                          relationship: e.target.value,
+                        }))
                       }
                       className={inputClasses}
                     >
@@ -627,7 +753,10 @@ export default function MemberDetail() {
                       type="date"
                       value={newBeneficiary.dateOfBirth}
                       onChange={(e) =>
-                        setNewBeneficiary((p) => ({ ...p, dateOfBirth: e.target.value }))
+                        setNewBeneficiary((p) => ({
+                          ...p,
+                          dateOfBirth: e.target.value,
+                        }))
                       }
                       className={inputClasses}
                     />
@@ -668,16 +797,42 @@ export default function MemberDetail() {
                   </thead>
                   <tbody>
                     {member.beneficiaries.map((b) => (
-                      <tr key={b.id} className="border-b border-[#e5e9f0] last:border-0">
+                      <tr
+                        key={b.id}
+                        className="border-b border-[#e5e9f0] last:border-0"
+                      >
                         <td className="py-2 text-[#171b26]">{b.fullName}</td>
-                        <td className="py-2 text-[#5b6472]">{b.relationship}</td>
-                        <td className="py-2 text-[#5b6472]">{formatDate(b.dateOfBirth)}</td>
-                        <td className="py-2 text-[#5b6472]">{b.trusteeName ? <><strong className="member-trustee-name">{b.trusteeName}</strong><small className="member-trustee-card">{b.trusteeGhanaCardId || "No Ghana Card"}</small></> : "Not required"}</td>
+                        <td className="py-2 text-[#5b6472]">
+                          {b.relationship}
+                        </td>
+                        <td className="py-2 text-[#5b6472]">
+                          {formatDate(b.dateOfBirth)}
+                        </td>
+                        <td className="py-2 text-[#5b6472]">
+                          {b.trusteeName ? (
+                            <>
+                              <strong className="member-trustee-name">
+                                {b.trusteeName}
+                              </strong>
+                              <small className="member-trustee-card">
+                                {b.trusteeGhanaCardId || "No Ghana Card"}
+                              </small>
+                            </>
+                          ) : (
+                            "Not required"
+                          )}
+                        </td>
                         <td className="py-2 text-right">
                           {member.beneficiaries.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => setConfirmation({ type: "beneficiary", id: b.id, name: b.fullName })}
+                              onClick={() =>
+                                setConfirmation({
+                                  type: "beneficiary",
+                                  id: b.id,
+                                  name: b.fullName,
+                                })
+                              }
                               disabled={busy}
                               className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
                             >
@@ -693,13 +848,28 @@ export default function MemberDetail() {
             </div>
 
             <div id="workflow" className="member-panel member-panel--workflow">
-              <div className="member-workflow-heading"><div><h2>Workflow</h2><p>Review eligibility, update status, and view the decision history.</p></div><span className={`member-record__status member-record__status--${member.status.toLowerCase()}`}>{member.status}</span></div>
+              <div className="member-workflow-heading">
+                <div>
+                  <h2>Workflow</h2>
+                  <p>
+                    Review eligibility, update status, and view the decision
+                    history.
+                  </p>
+                </div>
+                <span
+                  className={`member-record__status member-record__status--${member.status.toLowerCase()}`}
+                >
+                  {member.status}
+                </span>
+              </div>
 
               {member.missingFromReport20At && (
                 <div className="mb-4 rounded-[9px] border border-[#f0c96b] bg-[#fdf6e3] px-3.5 py-2.5 text-[12.5px] text-[#7a5c00]">
-                  This member was not found in the most recently reconciled Report 20 file (as of{" "}
-                  {formatDate(member.missingFromReport20At)}). Confirm whether they should be removed using the
-                  action below, or leave as-is if this is expected to be temporary — the flag clears
+                  This member was not found in the most recently reconciled
+                  Report 20 file (as of{" "}
+                  {formatDate(member.missingFromReport20At)}). Confirm whether
+                  they should be removed using the action below, or leave as-is
+                  if this is expected to be temporary — the flag clears
                   automatically once they reappear in a future Report 20 upload.
                 </div>
               )}
@@ -717,25 +887,29 @@ export default function MemberDetail() {
                 )}
                 {canReview &&
                   (["PENDING", "RETURNED"].includes(member.status) ||
-                    (member.status === "FLAGGED" && member.report20Matched)) && (
+                    (member.status === "FLAGGED" &&
+                      member.report20Matched)) && (
                     <button
                       type="button"
                       onClick={() => setConfirmation({ type: "approve" })}
                       disabled={busy}
                       className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
-                      {member.report20Matched ? "Approve → Active" : "Approve → Flagged"}
+                      {member.report20Matched
+                        ? "Approve → Active"
+                        : "Approve → Flagged"}
                     </button>
                   )}
-                {canReview && ["PENDING", "FLAGGED"].includes(member.status) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowReturnForm((v) => !v)}
-                    className="rounded-[9px] bg-[#fbf0dd] px-3.5 py-2 text-[12.5px] font-bold text-[#b9791a]"
-                  >
-                    Return
-                  </button>
-                )}
+                {canReview &&
+                  ["PENDING", "FLAGGED"].includes(member.status) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReturnForm((v) => !v)}
+                      className="rounded-[9px] bg-[#fbf0dd] px-3.5 py-2 text-[12.5px] font-bold text-[#b9791a]"
+                    >
+                      Return
+                    </button>
+                  )}
                 {canReview && member.status !== "REMOVED" && (
                   <button
                     type="button"
@@ -764,9 +938,9 @@ export default function MemberDetail() {
                   {member.status === "FLAGGED" && (
                     <div className="-mt-3 mb-5 text-[11.5px] text-[#b9791a]">
                       This member is flagged and still isn't matched against
-                      Report 20 — use "Check against Report 20" above, or
-                      re-run reconciliation on the latest upload, and Approve
-                      will become available.
+                      Report 20 — use "Check against Report 20" above, or re-run
+                      reconciliation on the latest upload, and Approve will
+                      become available.
                     </div>
                   )}
                 </>
@@ -821,7 +995,8 @@ export default function MemberDetail() {
                     ))}
                   </select>
                   <label className={`${labelClasses} mt-3`}>
-                    Note {removeReason === "OTHER" ? "(required)" : "(optional)"}
+                    Note{" "}
+                    {removeReason === "OTHER" ? "(required)" : "(optional)"}
                   </label>
                   <textarea
                     value={removeNote}
@@ -832,7 +1007,9 @@ export default function MemberDetail() {
                   <div className="mt-3 flex gap-2">
                     <button
                       type="submit"
-                      disabled={busy || (removeReason === "OTHER" && !removeNote.trim())}
+                      disabled={
+                        busy || (removeReason === "OTHER" && !removeNote.trim())
+                      }
                       className="rounded-[9px] bg-[#c23b3b] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Confirm Remove
@@ -858,7 +1035,8 @@ export default function MemberDetail() {
                     <li key={event.id} className="py-2.5">
                       <div className="flex items-center justify-between text-[12.5px]">
                         <span className="font-semibold text-[#171b26]">
-                          {event.action}: {event.fromStatus} &rarr; {event.toStatus}
+                          {event.action}: {event.fromStatus} &rarr;{" "}
+                          {event.toStatus}
                         </span>
                         <span className="text-[11px] text-[#5b6472]">
                           {formatDate(event.createdAt)}

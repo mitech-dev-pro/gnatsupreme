@@ -128,6 +128,19 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
   ]);
   const membersByControllerId = new Map(members.map((member) => [member.controllerId, member]));
   const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
+
+  // Genuinely ambiguous raw spellings (e.g. "Pru" — resolved per member via the /resolve endpoint,
+  // see MemberDistrictSpellingConfirmation in schema.prisma) can't become a global alias without
+  // risking misassigning someone else who shares that spelling. A confirmation only counts while its
+  // snapshotted districtId still matches the member's *current* districtId — a later transfer makes
+  // it stop applying on its own, no separate cleanup needed.
+  const spellingConfirmations = await prisma.memberDistrictSpellingConfirmation.findMany({
+    where: { memberId: { in: members.map((member) => member.id) } },
+    select: { memberId: true, rawSpelling: true, districtId: true },
+  });
+  const confirmationMap = new Map(
+    spellingConfirmations.map((entry) => [`${entry.memberId}:${normalizeDistrictName(entry.rawSpelling)}`, entry.districtId]),
+  );
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
   const changedMemberIds = new Set<number>();
@@ -175,10 +188,14 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       // Resolved through the same alias/suffix matching as new-member enrollment, not a raw string
       // compare — otherwise a district that only differs by an aliased spelling (e.g. "Sagnerigu" vs
       // the member's actual "Sagnarigu") would wrongly flag as CHANGED every single run, even though
-      // it refers to the same district.
+      // it refers to the same district. Falls back to this member's own per-member spelling
+      // confirmation (see above) for raw spellings too ambiguous to alias globally.
       if (row.districtName) {
         const { district: resolvedDistrict } = resolveDistrict(row.districtName, row.regionName, districts, aliasMap);
-        if (!resolvedDistrict || resolvedDistrict.id !== member.districtId) issues.push("District differs");
+        const confirmedDistrictId = confirmationMap.get(`${member.id}:${normalizeDistrictName(row.districtName)}`);
+        const districtMatches =
+          resolvedDistrict?.id === member.districtId || confirmedDistrictId === member.districtId;
+        if (!districtMatches) issues.push("District differs");
       }
       if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)) issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";

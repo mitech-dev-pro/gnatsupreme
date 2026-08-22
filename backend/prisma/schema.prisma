@@ -194,6 +194,7 @@ model District {
   outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
   incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
   aliases           DistrictAlias[]
+  spellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
@@ -245,6 +246,7 @@ model User {
   organizationSettingsUpdates OrganizationSettings[]
   organizationSettingVersions OrganizationSettingsVersion[]
   districtAliasesCreated      DistrictAlias[]
+  districtSpellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt                   DateTime                      @default(now()) @map("created_at")
   updatedAt                   DateTime                      @updatedAt @map("updated_at")
 
@@ -281,6 +283,7 @@ model Member {
   otpChallenges    MemberOtpChallenge[]
   memberSessions   MemberSession[]
   notifications    Notification[]
+  districtSpellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")
 
@@ -288,6 +291,29 @@ model Member {
   @@index([status])
   @@index([fullName])
   @@map("members")
+}
+
+// A raw Report 20 district spelling that's genuinely ambiguous nationally (e.g. "Pru" — could mean
+// Pru East or Pru West) can never become a global DistrictAlias without risking misassigning some
+// other member who happens to share that spelling. Instead, staff resolve it per member (see
+// import.routes.ts's /resolve endpoint), and that decision is recorded here as an immutable
+// snapshot of (spelling, districtId) at confirmation time. Reconciliation only honors a confirmation
+// while districtId still matches the member's *current* district — if the member is later
+// transferred, the snapshot's districtId falls out of sync with the live one and the confirmation
+// silently stops applying on its own, with no separate cleanup step required.
+model MemberDistrictSpellingConfirmation {
+  id            Int      @id @default(autoincrement())
+  memberId      Int      @map("member_id")
+  member        Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  rawSpelling   String   @map("raw_spelling")
+  districtId    Int      @map("district_id")
+  district      District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  confirmedById Int?     @map("confirmed_by_id")
+  confirmedBy   User?    @relation(fields: [confirmedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([memberId])
+  @@map("member_district_spelling_confirmations")
 }
 
 model Spouse {

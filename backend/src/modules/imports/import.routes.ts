@@ -344,6 +344,21 @@ importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
         issues: ["Manually resolved by staff during review and enrolled with the selected district"],
       },
     });
+    // Records the raw spelling this member was resolved from, scoped to this member and this
+    // district — see the MemberDistrictSpellingConfirmation doc comment in schema.prisma for why
+    // this is a snapshot table rather than a mutable field. Only meaningful when the raw spelling
+    // couldn't already resolve to a district on its own (an aliasable spelling wouldn't have landed
+    // here as UNMATCHED in the first place).
+    if (row.districtName) {
+      await tx.memberDistrictSpellingConfirmation.create({
+        data: {
+          memberId: createdMember.id,
+          rawSpelling: row.districtName,
+          districtId: district.id,
+          confirmedById: currentUser.id,
+        },
+      });
+    }
     await tx.importJob.update({
       where: { id: params.data.id },
       data: { unmatchedRows: { decrement: 1 }, enrolledRows: { increment: 1 } },

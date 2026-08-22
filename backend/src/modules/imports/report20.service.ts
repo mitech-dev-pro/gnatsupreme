@@ -5,7 +5,10 @@ import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
-import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
+import {
+  normalizeDistrictName,
+  resolveDistrict,
+} from "../geography/district-match.js";
 
 const MAX_ROWS = 300_000;
 
@@ -21,8 +24,20 @@ type SourceRow = {
 };
 
 const aliases = {
-  controllerId: ["controllerid", "controller", "employeeno", "employeenumber", "staffid"],
-  fullName: ["fullname", "name", "membername", "employeename", "nameofemployee"],
+  controllerId: [
+    "controllerid",
+    "controller",
+    "employeeno",
+    "employeenumber",
+    "staffid",
+  ],
+  fullName: [
+    "fullname",
+    "name",
+    "membername",
+    "employeename",
+    "nameofemployee",
+  ],
   districtName: ["district", "districtname", "municipality", "mmda"],
   regionName: ["region", "regionname"],
   school: ["school", "schoolname", "institution", "managementunit"],
@@ -38,13 +53,16 @@ function normalizeValue(value: string | null | undefined) {
 }
 
 function field(rawData: Record<string, string>, names: readonly string[]) {
-  const entry = Object.entries(rawData).find(([header]) => names.includes(normalizeHeader(header)));
+  const entry = Object.entries(rawData).find(([header]) =>
+    names.includes(normalizeHeader(header)),
+  );
   return entry?.[1]?.trim() || null;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  for (let i = 0; i < items.length; i += size)
+    chunks.push(items.slice(i, i + size));
   return chunks;
 }
 
@@ -54,9 +72,15 @@ export async function sha256File(filePath: string) {
   return hash.digest("hex");
 }
 
-export async function parseReport20(filePath: string, mimeType: string): Promise<SourceRow[]> {
+export async function parseReport20(
+  filePath: string,
+  mimeType: string,
+): Promise<SourceRow[]> {
   const workbook = new ExcelJS.Workbook();
-  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  if (
+    mimeType ===
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
     await workbook.xlsx.readFile(filePath);
   } else {
     await workbook.csv.readFile(filePath);
@@ -64,13 +88,18 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
   const worksheet = workbook.worksheets[0];
   if (!worksheet) throw new Error("The file does not contain a worksheet");
   if (worksheet.rowCount < 2) throw new Error("The file has no data rows");
-  if (worksheet.rowCount - 1 > MAX_ROWS) throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
+  if (worksheet.rowCount - 1 > MAX_ROWS)
+    throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
 
   const headers: string[] = [];
   worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
     headers[column] = cell.text.trim() || `Column ${column}`;
   });
-  if (!headers.some((header) => aliases.controllerId.some((alias) => alias === normalizeHeader(header)))) {
+  if (
+    !headers.some((header) =>
+      aliases.controllerId.some((alias) => alias === normalizeHeader(header)),
+    )
+  ) {
     throw new Error("A Controller ID or Employee No column is required");
   }
 
@@ -79,7 +108,8 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
     const row = worksheet.getRow(rowNumber);
     const rawData: Record<string, string> = {};
     headers.forEach((header, column) => {
-      if (header && column > 0) rawData[header] = row.getCell(column).text.trim();
+      if (header && column > 0)
+        rawData[header] = row.getCell(column).text.trim();
     });
     if (!Object.values(rawData).some(Boolean)) continue;
     rows.push({
@@ -97,10 +127,18 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
   return rows;
 }
 
-export async function reconcileReport20(importJobId: number, sourceRows: SourceRow[]) {
+export async function reconcileReport20(
+  importJobId: number,
+  sourceRows: SourceRow[],
+) {
   await prisma.importJob.update({
     where: { id: importJobId },
-    data: { status: "PROCESSING", startedAt: new Date(), totalRows: sourceRows.length, processedRows: 0 },
+    data: {
+      status: "PROCESSING",
+      startedAt: new Date(),
+      totalRows: sourceRows.length,
+      processedRows: 0,
+    },
   });
 
   const controllerIds = [
@@ -110,54 +148,89 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  const [members, districts, districtAliases, activeMembers] = await Promise.all([
-    prisma.member.findMany({
-      where: { controllerId: { in: controllerIds } },
-      include: { district: { select: { name: true } } },
-    }),
-    prisma.district.findMany({ include: { region: { select: { name: true } } } }),
-    prisma.districtAlias.findMany({ select: { alias: true, districtId: true } }),
-    // Report 20 is treated as the full national payroll file, so any currently-recognized
-    // member (ACTIVE or already-FLAGGED) not seen in this run is presumed missing from payroll.
-    // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
-    // are already off the books.
-    prisma.member.findMany({
-      where: { status: { in: ["ACTIVE", "FLAGGED"] } },
-      select: { id: true, controllerId: true, missingFromReport20At: true },
-    }),
-  ]);
-  const membersByControllerId = new Map(members.map((member) => [member.controllerId, member]));
-  const aliasMap = new Map(districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]));
+  const [members, districts, districtAliases, activeMembers] =
+    await Promise.all([
+      prisma.member.findMany({
+        where: { controllerId: { in: controllerIds } },
+        include: { district: { select: { name: true } } },
+      }),
+      prisma.district.findMany({
+        include: { region: { select: { name: true } } },
+      }),
+      prisma.districtAlias.findMany({
+        select: { alias: true, districtId: true },
+      }),
+      // Report 20 is treated as the full national payroll file, so any currently-recognized
+      // member (ACTIVE or already-FLAGGED) not seen in this run is presumed missing from payroll.
+      // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
+      // are already off the books.
+      prisma.member.findMany({
+        where: { status: { in: ["ACTIVE", "FLAGGED"] } },
+        select: { id: true, controllerId: true, missingFromReport20At: true },
+      }),
+    ]);
+  const membersByControllerId = new Map(
+    members.map((member) => [member.controllerId, member]),
+  );
+  const aliasMap = new Map(
+    districtAliases.map((entry) => [
+      normalizeDistrictName(entry.alias),
+      entry.districtId,
+    ]),
+  );
 
   // Genuinely ambiguous raw spellings (e.g. "Pru" — resolved per member via the /resolve endpoint,
   // see MemberDistrictSpellingConfirmation in schema.prisma) can't become a global alias without
   // risking misassigning someone else who shares that spelling. A confirmation only counts while its
   // snapshotted districtId still matches the member's *current* districtId — a later transfer makes
   // it stop applying on its own, no separate cleanup needed.
-  const spellingConfirmations = await prisma.memberDistrictSpellingConfirmation.findMany({
-    where: { memberId: { in: members.map((member) => member.id) } },
-    select: { memberId: true, rawSpelling: true, districtId: true },
-  });
+  const spellingConfirmations =
+    await prisma.memberDistrictSpellingConfirmation.findMany({
+      where: { memberId: { in: members.map((member) => member.id) } },
+      select: { memberId: true, rawSpelling: true, districtId: true },
+    });
   const confirmationMap = new Map(
-    spellingConfirmations.map((entry) => [`${entry.memberId}:${normalizeDistrictName(entry.rawSpelling)}`, entry.districtId]),
+    spellingConfirmations.map((entry) => [
+      `${entry.memberId}:${normalizeDistrictName(entry.rawSpelling)}`,
+      entry.districtId,
+    ]),
   );
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
   const changedMemberIds = new Set<number>();
   const enrolledDistrictIds = new Map<string, number>();
-  const counts = { matched: 0, changed: 0, unmatched: 0, duplicate: 0, invalid: 0, enrolled: 0 };
-  const nextControllerIdToCreate: { controllerId: string; data: Prisma.MemberCreateManyInput }[] = [];
+  const counts = {
+    matched: 0,
+    changed: 0,
+    unmatched: 0,
+    duplicate: 0,
+    invalid: 0,
+    enrolled: 0,
+  };
+  const nextControllerIdToCreate: {
+    controllerId: string;
+    data: Prisma.MemberCreateManyInput;
+  }[] = [];
 
   function classifyRow(row: SourceRow): Prisma.Report20RowCreateManyInput {
     const issues: string[] = [];
-    let status: "MATCHED" | "CHANGED" | "UNMATCHED" | "DUPLICATE" | "INVALID" | "ENROLLED";
+    let status:
+      | "MATCHED"
+      | "CHANGED"
+      | "UNMATCHED"
+      | "DUPLICATE"
+      | "INVALID"
+      | "ENROLLED";
     const controllerId = row.controllerId?.replace(/\s+/g, "") ?? null;
-    const member = controllerId ? membersByControllerId.get(controllerId) : undefined;
+    const member = controllerId
+      ? membersByControllerId.get(controllerId)
+      : undefined;
 
     if (!controllerId || !/^\d{4,7}$/.test(controllerId) || !row.fullName) {
       status = "INVALID";
       if (!controllerId) issues.push("Controller ID is required");
-      else if (!/^\d{4,7}$/.test(controllerId)) issues.push("Controller ID must contain 4 to 7 digits");
+      else if (!/^\d{4,7}$/.test(controllerId))
+        issues.push("Controller ID must contain 4 to 7 digits");
       if (!row.fullName) issues.push("Full name is required");
     } else if (seen.has(controllerId)) {
       status = "DUPLICATE";
@@ -183,21 +256,38 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         issues.push("Auto-enrolled from Report 20 as a new active member");
       }
     } else {
-      if (normalizeValue(row.fullName) !== normalizeValue(member.fullName)) issues.push("Full name differs");
-      if (row.school && normalizeValue(row.school) !== normalizeValue(member.school)) issues.push("School differs");
+      if (normalizeValue(row.fullName) !== normalizeValue(member.fullName))
+        issues.push("Full name differs");
+      if (
+        row.school &&
+        normalizeValue(row.school) !== normalizeValue(member.school)
+      )
+        issues.push("School differs");
       // Resolved through the same alias/suffix matching as new-member enrollment, not a raw string
       // compare — otherwise a district that only differs by an aliased spelling (e.g. "Sagnerigu" vs
       // the member's actual "Sagnarigu") would wrongly flag as CHANGED every single run, even though
       // it refers to the same district. Falls back to this member's own per-member spelling
       // confirmation (see above) for raw spellings too ambiguous to alias globally.
       if (row.districtName) {
-        const { district: resolvedDistrict } = resolveDistrict(row.districtName, row.regionName, districts, aliasMap);
-        const confirmedDistrictId = confirmationMap.get(`${member.id}:${normalizeDistrictName(row.districtName)}`);
+        const { district: resolvedDistrict } = resolveDistrict(
+          row.districtName,
+          row.regionName,
+          districts,
+          aliasMap,
+        );
+        const confirmedDistrictId = confirmationMap.get(
+          `${member.id}:${normalizeDistrictName(row.districtName)}`,
+        );
         const districtMatches =
-          resolvedDistrict?.id === member.districtId || confirmedDistrictId === member.districtId;
+          resolvedDistrict?.id === member.districtId ||
+          confirmedDistrictId === member.districtId;
         if (!districtMatches) issues.push("District differs");
       }
-      if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)) issues.push("Ghana Card ID differs");
+      if (
+        row.ghanaCardId &&
+        normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)
+      )
+        issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";
       // Only a clean match counts toward report20Matched — CHANGED means the row was found but
       // the data disagrees with what's on file, which still needs staff review before it's "matched".
@@ -235,13 +325,18 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
   for (const rowBatch of chunk(sourceRows, CLASSIFY_BATCH_SIZE)) {
     for (const row of rowBatch) data.push(classifyRow(row));
     classifiedSoFar += rowBatch.length;
-    await prisma.importJob.update({ where: { id: importJobId }, data: { processedRows: classifiedSoFar } });
+    await prisma.importJob.update({
+      where: { id: importJobId },
+      data: { processedRows: classifiedSoFar },
+    });
   }
 
   // Newly-enrolled members need real ids before the Report20Row rows can reference them, so
   // create them first and then patch memberId onto the corresponding row payloads.
   const enrolledRowsByControllerId = new Map(
-    data.filter((row) => row.status === "ENROLLED" && row.controllerId).map((row) => [row.controllerId as string, row]),
+    data
+      .filter((row) => row.status === "ENROLLED" && row.controllerId)
+      .map((row) => [row.controllerId as string, row]),
   );
   for (const [controllerId, districtId] of enrolledDistrictIds) {
     const row = enrolledRowsByControllerId.get(controllerId);
@@ -271,7 +366,8 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       data: batch.map((entry) => entry.data),
       select: { id: true, controllerId: true },
     });
-    for (const member of created) createdIdByControllerId.set(member.controllerId, member.id);
+    for (const member of created)
+      createdIdByControllerId.set(member.controllerId, member.id);
   }
   for (const row of data) {
     if (row.status === "ENROLLED" && row.controllerId) {
@@ -284,27 +380,46 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     .filter((member) => !seenControllerIds.has(member.controllerId))
     .map((member) => member.id);
   const reappearedMemberIds = activeMembers
-    .filter((member) => seenControllerIds.has(member.controllerId) && member.missingFromReport20At)
+    .filter(
+      (member) =>
+        seenControllerIds.has(member.controllerId) &&
+        member.missingFromReport20At,
+    )
     .map((member) => member.id);
 
   await prisma.$transaction(
     async (tx) => {
       // Clears any rows from a previous run of this same job (see rerunReport20) before inserting fresh ones.
       await tx.report20Row.deleteMany({ where: { importJobId } });
-      for (const batch of chunk(data, 20_000)) await tx.report20Row.createMany({ data: batch });
-      await tx.member.updateMany({ where: { id: { in: [...matchedMemberIds] } }, data: { report20Matched: true } });
+      for (const batch of chunk(data, 20_000))
+        await tx.report20Row.createMany({ data: batch });
+      await tx.member.updateMany({
+        where: { id: { in: [...matchedMemberIds] } },
+        data: { report20Matched: true },
+      });
       // Anything that used to be matched but isn't any more this run — now CHANGED, or missing
       // from the file entirely — has its flag cleared so it doesn't keep reporting as matched
       // against a file that no longer agrees with it.
-      const noLongerMatchedIds = [...new Set([...changedMemberIds, ...missingMemberIds])];
+      const noLongerMatchedIds = [
+        ...new Set([...changedMemberIds, ...missingMemberIds]),
+      ];
       if (noLongerMatchedIds.length) {
-        await tx.member.updateMany({ where: { id: { in: noLongerMatchedIds } }, data: { report20Matched: false } });
+        await tx.member.updateMany({
+          where: { id: { in: noLongerMatchedIds } },
+          data: { report20Matched: false },
+        });
       }
       if (missingMemberIds.length) {
-        await tx.member.updateMany({ where: { id: { in: missingMemberIds } }, data: { missingFromReport20At: new Date() } });
+        await tx.member.updateMany({
+          where: { id: { in: missingMemberIds } },
+          data: { missingFromReport20At: new Date() },
+        });
       }
       if (reappearedMemberIds.length) {
-        await tx.member.updateMany({ where: { id: { in: reappearedMemberIds } }, data: { missingFromReport20At: null } });
+        await tx.member.updateMany({
+          where: { id: { in: reappearedMemberIds } },
+          data: { missingFromReport20At: null },
+        });
       }
       await tx.importJob.update({
         where: { id: importJobId },

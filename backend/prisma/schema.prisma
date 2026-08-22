@@ -156,6 +156,14 @@ enum ChangeRequestStatus {
   @@map("change_request_status")
 }
 
+enum SpouseDeclarationStatus {
+  UNKNOWN
+  NONE
+  HAS_SPOUSE
+
+  @@map("spouse_declaration_status")
+}
+
 enum NotificationChannel {
   IN_APP
   SMS
@@ -265,6 +273,8 @@ model Member {
   status           MemberStatus              @default(PENDING)
   report20Matched  Boolean                   @default(false) @map("report20_matched")
   missingFromReport20At DateTime?            @map("missing_from_report20_at")
+  spouseDeclarationStatus SpouseDeclarationStatus @default(UNKNOWN) @map("spouse_declaration_status")
+  profileCompletionDismissedAt DateTime?     @map("profile_completion_dismissed_at")
   districtId       Int                       @map("district_id")
   createdById      Int?                      @map("created_by_id")
   district         District                  @relation(fields: [districtId], references: [id], onDelete: Restrict)

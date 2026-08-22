@@ -75,6 +75,8 @@ const endpoints: Endpoint[] = [
   { method: "get", path: "/api/member-portal/profile", summary: "Member profile and benefits", tag: "Member portal", security: "member" },
   { method: "get", path: "/api/member-portal/claims", summary: "Member claims", tag: "Member portal", security: "member" },
   { method: "get", path: "/api/member-portal/notifications", summary: "Member notifications", tag: "Member portal", security: "member" },
+  { method: "patch", path: "/api/member-portal/profile-completion/dismiss", summary: "Collapse the member profile completion prompt", tag: "Member portal", security: "member" },
+  { method: "patch", path: "/api/member-portal/profile-completion/spouse-declaration", summary: "Declare that no spouse should be recorded", tag: "Member portal", security: "member" },
   { method: "post", path: "/api/member-portal/change-requests", summary: "Submit member change request", tag: "Member portal", security: "member" },
   { method: "patch", path: "/api/member-portal/change-requests/{id}/cancel", summary: "Cancel a pending member change request", tag: "Member portal", security: "member" },
 ];

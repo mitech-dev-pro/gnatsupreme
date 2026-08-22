@@ -168,6 +168,7 @@ memberRouter.post("/", async (request, response) => {
     data: {
       ...memberData,
       createdById: user.id,
+      spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
       ...(spouse ? { spouse: { create: spouse } } : {}),
       beneficiaries: { create: beneficiaries },
     },
@@ -298,10 +299,17 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     return;
   }
 
-  const spouse = await prisma.spouse.upsert({
-    where: { memberId: member.id },
-    update: body.data,
-    create: { ...body.data, memberId: member.id },
+  const spouse = await prisma.$transaction(async (transaction) => {
+    const saved = await transaction.spouse.upsert({
+      where: { memberId: member.id },
+      update: body.data,
+      create: { ...body.data, memberId: member.id },
+    });
+    await transaction.member.update({
+      where: { id: member.id },
+      data: { spouseDeclarationStatus: "HAS_SPOUSE" },
+    });
+    return saved;
   });
   await recordAudit({
     request,
@@ -328,7 +336,13 @@ memberRouter.delete("/:id/spouse", async (request, response) => {
     response.status(404).json({ success: false, message: "Member not found" });
     return;
   }
-  await prisma.spouse.deleteMany({ where: { memberId: member.id } });
+  await prisma.$transaction([
+    prisma.spouse.deleteMany({ where: { memberId: member.id } }),
+    prisma.member.update({
+      where: { id: member.id },
+      data: { spouseDeclarationStatus: "UNKNOWN" },
+    }),
+  ]);
   await recordAudit({
     request,
     actor: currentUser(response),

@@ -225,7 +225,7 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
           const created = await transaction.member.create({
             data: {
               controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, dateOfBirth: row.dateOfBirth, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
-              ...(extra.spouseName ? { spouse: { create: { fullName: extra.spouseName, dateOfBirth: optionalDate(extra.spouseDateOfBirth), ghanaCardId: extra.spouseGhanaCardId } } } : {}),
+              ...(extra.spouseName ? { spouseDeclarationStatus: "HAS_SPOUSE", spouse: { create: { fullName: extra.spouseName, dateOfBirth: optionalDate(extra.spouseDateOfBirth), ghanaCardId: extra.spouseGhanaCardId } } } : {}),
               beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName, trusteeGhanaCardId: extra.trusteeGhanaCardId } },
             },
           });

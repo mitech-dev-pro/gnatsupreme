@@ -63,10 +63,23 @@ const BENEFIT_LABELS: Record<string, string> = {
 
 type MemberNotification = {
   id: number;
+  type: string;
   title: string;
   message: string;
   readAt: string | null;
   createdAt: string;
+};
+
+type ProfileCompletion = {
+  complete: boolean;
+  percentage: number;
+  showExpandedPrompt: boolean;
+  items: Array<{
+    key: "dateOfBirth" | "ghanaCardId" | "spouse" | "beneficiary";
+    label: string;
+    status: "COMPLETE" | "PENDING" | "MISSING";
+    requestType: "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD";
+  }>;
 };
 
 type ChangeRequest = {
@@ -369,6 +382,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
   useMemberAuth();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
+  const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -386,11 +400,20 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
   const [cancellingRequest, setCancellingRequest] = useState(false);
   const [cancelRequestError, setCancelRequestError] = useState("");
   const [requestComposer, setRequestComposer] = useState<"MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | null>(null);
+  const [completionBusy, setCompletionBusy] = useState(false);
+  const [completionError, setCompletionError] = useState("");
 
   const loadProfile = async () => {
     const res = await api.get("/member-portal/profile");
     setProfile(res.data.data.member);
     setBenefitPlan(res.data.data.benefitPlan);
+    setProfileCompletion(res.data.data.profileCompletion);
+  };
+
+  const loadNotifications = async () => {
+    const res = await api.get("/member-portal/notifications");
+    setNotifications(res.data.data);
+    setUnreadCount(res.data.unreadCount);
   };
 
   const loadRequests = async () => {
@@ -407,6 +430,13 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
     (async () => {
       try {
         await loadProfile();
+        if (!cancelled) {
+          try {
+            await loadNotifications();
+          } catch {
+            // Notifications are supplementary; the member profile remains usable.
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -437,12 +467,38 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
   };
 
   const afterRequestSubmitted = async () => {
-    await loadRequests();
+    await Promise.all([loadRequests(), loadProfile()]);
   };
 
   const finishComposedRequest = async () => {
-    await loadRequests();
+    await Promise.all([loadRequests(), loadProfile()]);
     setRequestComposer(null);
+  };
+
+  const dismissCompletionPrompt = async () => {
+    setCompletionBusy(true);
+    setCompletionError("");
+    try {
+      await api.patch("/member-portal/profile-completion/dismiss");
+      setProfileCompletion((current) => current ? { ...current, showExpandedPrompt: false } : current);
+    } catch (error: any) {
+      setCompletionError(error?.response?.data?.message || "Unable to save this preference.");
+    } finally {
+      setCompletionBusy(false);
+    }
+  };
+
+  const declareNoSpouse = async () => {
+    setCompletionBusy(true);
+    setCompletionError("");
+    try {
+      await api.patch("/member-portal/profile-completion/spouse-declaration", { hasSpouse: false });
+      await loadProfile();
+    } catch (error: any) {
+      setCompletionError(error?.response?.data?.message || "Unable to save your spouse declaration.");
+    } finally {
+      setCompletionBusy(false);
+    }
   };
 
   const cancelChangeRequest = async () => {
@@ -451,7 +507,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
     setCancelRequestError("");
     try {
       await api.patch(`/member-portal/change-requests/${requestToCancel.id}/cancel`);
-      await loadRequests();
+      await Promise.all([loadRequests(), loadProfile()]);
       setRequestToCancel(null);
     } catch (error: any) {
       setCancelRequestError(error?.response?.data?.message || "Unable to cancel this request.");
@@ -509,6 +565,56 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--border-default) px-5 py-3 text-[11.5px] text-(--text-muted)"><span>{settings.memberIdLabel}: <strong className="text-(--text-strong)">{profile.controllerId}</strong></span>{benefitPlan && <span>Plan effective {formatDate(benefitPlan.effectiveFrom)}</span>}<Link to="/member/coverage" className="ml-auto font-bold text-(--action-primary) no-underline hover:underline">View coverage</Link></div>
               </section>
 
+              {profileCompletion && !profileCompletion.complete && (
+                <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="profile-completion-title">
+                  {profileCompletion.showExpandedPrompt ? (
+                    <>
+                      <header className="flex flex-col gap-4 border-b border-(--border-default) bg-(--warning-soft) px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                        <div className="max-w-[70ch]">
+                          <div className="mb-2 flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.07em] text-(--warning)">
+                            <span aria-hidden="true" className="grid size-5 place-items-center rounded-full bg-(--surface-raised)">!</span>
+                            Profile check
+                          </div>
+                          <h2 id="profile-completion-title" className="text-[17px] font-extrabold text-(--text-strong)">Complete your membership details</h2>
+                          <p className="mt-1 text-[11.5px] leading-relaxed text-(--text-muted)">Report 20 does not contain every detail needed for your membership. Submit the missing information below; you can continue using the portal while your district reviews it.</p>
+                        </div>
+                        <div className="min-w-32 shrink-0">
+                          <div className="flex items-center justify-between text-[10.5px] font-bold text-(--text-muted)"><span>Profile progress</span><span>{profileCompletion.percentage}%</span></div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-(--surface-raised)" role="progressbar" aria-label="Profile completion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={profileCompletion.percentage}><span className="block h-full rounded-full bg-(--action-primary)" style={{ width: `${profileCompletion.percentage}%` }}/></div>
+                        </div>
+                      </header>
+                      <ul className="divide-y divide-(--border-default)">
+                        {profileCompletion.items.map((item) => (
+                          <li key={item.key} className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span aria-hidden="true" className={`grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-extrabold ${item.status === "COMPLETE" ? "bg-(--success-soft) text-(--success)" : item.status === "PENDING" ? "bg-(--warning-soft) text-(--warning)" : "bg-(--surface-subtle) text-(--text-muted)"}`}>{item.status === "COMPLETE" ? "✓" : item.status === "PENDING" ? "…" : "•"}</span>
+                              <span><strong className="block text-[12.5px] text-(--text-strong)">{item.label}</strong><small className="mt-0.5 block text-[10.5px] text-(--text-muted)">{item.status === "COMPLETE" ? "Recorded" : item.status === "PENDING" ? "Submitted and awaiting district review" : "Information needed"}</small></span>
+                            </div>
+                            {item.status === "MISSING" && (
+                              <div className="flex shrink-0 flex-wrap gap-2">
+                                {(item.key === "dateOfBirth" || item.key === "ghanaCardId") && <button type="button" onClick={() => setRequestComposer("MEMBER_DETAILS")} className="min-h-9 rounded-[8px] bg-(--action-primary) px-3 text-[11px] font-bold text-white">Add personal details</button>}
+                                {item.key === "spouse" && <><button type="button" onClick={() => setRequestComposer("SPOUSE")} className="min-h-9 rounded-[8px] bg-(--action-primary) px-3 text-[11px] font-bold text-white">Add spouse</button><button type="button" disabled={completionBusy} onClick={() => void declareNoSpouse()} className="min-h-9 rounded-[8px] border border-(--border-default) px-3 text-[11px] font-bold text-(--brand-primary) disabled:opacity-55">I have no spouse</button></>}
+                                {item.key === "beneficiary" && <button type="button" onClick={() => setRequestComposer("BENEFICIARY_ADD")} className="min-h-9 rounded-[8px] bg-(--action-primary) px-3 text-[11px] font-bold text-white">Add beneficiary</button>}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      {completionError && <p role="alert" className="mx-5 mt-4 rounded-[9px] bg-(--danger-soft) px-3 py-2 text-[11.5px] font-semibold text-(--danger) sm:mx-6">{completionError}</p>}
+                      {requestComposer === "MEMBER_DETAILS" && <MemberDetailsForm profile={profile} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} />}
+                      {requestComposer === "SPOUSE" && <div className="border-t border-(--border-default) px-5 pb-5 sm:px-6"><SpouseForm spouse={profile.spouse} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} /></div>}
+                      {requestComposer === "BENEFICIARY_ADD" && <div className="border-t border-(--border-default) px-5 pb-5 sm:px-6"><BeneficiaryForm beneficiary={null} onClose={() => setRequestComposer(null)} onSubmitted={finishComposedRequest} /></div>}
+                      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-default) px-5 py-3 sm:px-6"><p className="text-[10.5px] text-(--text-muted)">Approved changes will appear here automatically.</p><button type="button" disabled={completionBusy} onClick={() => void dismissCompletionPrompt()} className="min-h-8 text-[11px] font-bold text-(--text-muted) hover:text-(--brand-primary) disabled:opacity-55">Remind me later</button></footer>
+                    </>
+                  ) : (
+                    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                      <div><h2 id="profile-completion-title" className="text-[13px] font-bold text-(--text-strong)">Your profile is {profileCompletion.percentage}% complete</h2><p className="mt-0.5 text-[10.5px] text-(--text-muted)">{profileCompletion.items.filter((item) => item.status === "MISSING").length} details needed, {profileCompletion.items.filter((item) => item.status === "PENDING").length} awaiting review</p></div>
+                      <button type="button" onClick={() => setProfileCompletion((current) => current ? { ...current, showExpandedPrompt: true } : current)} className="min-h-9 rounded-[8px] border border-(--border-default) px-3 text-[11px] font-bold text-(--brand-primary) hover:bg-(--surface-subtle)">Review missing details</button>
+                    </div>
+                  )}
+                </section>
+              )}
+
               <section className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5" aria-labelledby="member-actions-title">
                 <h2 id="member-actions-title" className="text-[14px] font-bold text-(--text-strong)">What would you like to do?</h2>
                 <nav className="mt-3 divide-y divide-(--border-default)" aria-label="Member actions">
@@ -528,7 +634,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
 
               <section className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5 md:col-span-2 xl:col-span-1" aria-labelledby="recent-notifications-title">
                 <div className="flex items-center justify-between gap-3"><h2 id="recent-notifications-title" className="text-[14px] font-bold text-(--text-strong)">Recent notifications</h2><Link to="/member/notifications" className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline">View all {unreadCount > 0 ? `(${unreadCount})` : ""}</Link></div>
-                {notifications.length === 0 ? <p className="mt-3 text-[12px] text-(--text-muted)">No notifications yet.</p> : <ul className="mt-2 divide-y divide-(--border-default)">{notifications.slice(0, 3).map((item) => <li key={item.id} className="flex items-start gap-2.5 py-2.5">{!item.readAt && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-(--action-primary)"/>}<span className="min-w-0 flex-1"><strong className="block truncate text-[12px] text-(--text-strong)">{item.title}</strong><small className="mt-0.5 line-clamp-1 block text-[10.5px] text-(--text-muted)">{item.message}</small></span><time className="shrink-0 text-[9.5px] text-(--text-muted)">{timeAgo(item.createdAt)}</time></li>)}</ul>}
+                {notifications.length === 0 ? <p className="mt-3 text-[12px] text-(--text-muted)">No notifications yet.</p> : <ul className="mt-2 divide-y divide-(--border-default)">{notifications.slice(0, 3).map((item) => <li key={item.id} className="flex items-start gap-2.5 py-2.5">{!item.readAt && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-(--action-primary)"/>}{item.type === "PROFILE_COMPLETION_REQUIRED" ? <Link to="/member" className="min-w-0 flex-1 no-underline"><strong className="block truncate text-[12px] text-(--text-strong)">{item.title}</strong><small className="mt-0.5 line-clamp-1 block text-[10.5px] text-(--text-muted)">{item.message}</small></Link> : <span className="min-w-0 flex-1"><strong className="block truncate text-[12px] text-(--text-strong)">{item.title}</strong><small className="mt-0.5 line-clamp-1 block text-[10.5px] text-(--text-muted)">{item.message}</small></span>}<time className="shrink-0 text-[9.5px] text-(--text-muted)">{timeAgo(item.createdAt)}</time></li>)}</ul>}
               </section>
             </>}
 
@@ -680,7 +786,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
             {section === "coverage" && benefitPlan && (
               <section className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2" aria-labelledby="coverage-heading">
                 <header className="border-b border-(--border-default) px-4 py-4 sm:px-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="coverage-heading" className="text-[15px] font-bold text-(--brand-primary)">Your benefit plan</h2><a href="/policy/terms-and-conditions.pdf" target="_blank" rel="noopener noreferrer" className="rounded-[8px] border border-(--border-default) px-3 py-1.5 text-[11px] font-bold text-(--brand-primary) no-underline hover:bg-(--surface-subtle)">View Terms &amp; Conditions ↗</a></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="coverage-heading" className="text-[15px] font-bold text-(--brand-primary)">Your benefit plan</h2><div className="flex flex-wrap gap-2"><a href="/policy/terms-and-conditions.pdf" target="_blank" rel="noopener noreferrer" className="rounded-[8px] border border-(--border-default) px-3 py-1.5 text-[11px] font-bold text-(--brand-primary) no-underline hover:bg-(--surface-subtle)">View Terms &amp; Conditions ↗</a><a href="/policy/terms-and-conditions.pdf" download="GNAT-Supreme-Care-Terms-and-Conditions.pdf" className="rounded-[8px] border border-(--border-default) px-3 py-1.5 text-[11px] font-bold text-(--brand-primary) no-underline hover:bg-(--surface-subtle)">Download PDF</a></div></div>
                   <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-3">
                     <div><dt className="text-(--text-muted)">Effective from</dt><dd className="font-semibold text-(--ink)">{new Date(benefitPlan.effectiveFrom).toLocaleDateString()}</dd></div>
                     <div><dt className="text-(--text-muted)">Monthly premium</dt><dd className="font-semibold text-(--ink)">{formatCurrency(benefitPlan.monthlyPremium, settings.currency)}</dd></div>
@@ -833,7 +939,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
                 <ul className="divide-y divide-[#e5e9f0]">
                   {notifications.slice(0, 8).map((item) => (
                     <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#171b26]">
                           {!item.readAt && (
                             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1f9c7c]" />
@@ -843,6 +949,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
                         <div className="mt-0.5 text-[12px] text-[#5b6472]">
                           {item.message}
                         </div>
+                        {item.type === "PROFILE_COMPLETION_REQUIRED" && <Link to="/member" className="mt-1.5 inline-block text-[11px] font-bold text-(--action-primary) no-underline hover:underline">Review missing details</Link>}
                       </div>
                       <div className="whitespace-nowrap text-[11px] text-[#9aa2c4]">
                         {timeAgo(item.createdAt)}

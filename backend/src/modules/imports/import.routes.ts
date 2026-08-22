@@ -202,6 +202,13 @@ importRouter.get("/:id", async (request, response) => {
   response.json({ success: true, data: job });
 });
 
+// A worker that's genuinely still working updates processedRows every couple thousand rows (see
+// reconcileReport20's batched auto-enroll loop), so updatedAt keeps moving. If a PENDING/PROCESSING
+// job hasn't been touched in this long, its worker process died without ever reporting back (e.g.
+// killed by a dev-server restart mid-run) — otherwise a stuck job could never be retried, since
+// nothing else ever flips it out of PENDING.
+const STUCK_JOB_THRESHOLD_MS = 15 * 60 * 1_000;
+
 importRouter.post("/:id/rerun", async (request, response) => {
   const params = idSchema.safeParse(request.params);
   if (!params.success) {
@@ -209,15 +216,31 @@ importRouter.post("/:id/rerun", async (request, response) => {
     return;
   }
   const job = await prisma.importJob.findFirst({
-    where: { id: params.data.id, type: "REPORT_20", status: "COMPLETED" },
+    where: { id: params.data.id, type: "REPORT_20" },
     include: { file: { select: { originalName: true, storagePath: true, mimeType: true } } },
   });
   if (!job) {
-    response.status(404).json({ success: false, message: "Completed Report 20 import not found" });
+    response.status(404).json({ success: false, message: "Report 20 import not found" });
+    return;
+  }
+  const isStuck =
+    (job.status === "PENDING" || job.status === "PROCESSING") &&
+    Date.now() - job.updatedAt.getTime() > STUCK_JOB_THRESHOLD_MS;
+  if (job.status !== "COMPLETED" && !isStuck) {
+    response.status(409).json({
+      success: false,
+      message:
+        job.status === "PENDING" || job.status === "PROCESSING"
+          ? "This import is still being processed"
+          : "Only a completed Report 20 import can be re-run",
+    });
     return;
   }
   const currentUser = user(response);
-  await prisma.importJob.update({ where: { id: job.id }, data: { status: "PENDING", errorMessage: null, completedAt: null } });
+  await prisma.importJob.update({
+    where: { id: job.id },
+    data: { status: "PENDING", errorMessage: null, completedAt: null, totalRows: 0, processedRows: 0 },
+  });
 
   startReport20Worker(
     request,

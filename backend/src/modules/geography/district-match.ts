@@ -37,13 +37,22 @@ export function resolveDistrict(
   const normalizedName = normalizeDistrictName(rawName);
   const normalizedRegion = rawRegion ? normalizeDistrictName(rawRegion) : null;
 
-  const candidates = districts.filter(
-    (district) =>
-      normalizeDistrictName(district.name) === normalizedName &&
-      (!normalizedRegion || normalizeDistrictName(district.region.name) === normalizedRegion),
+  // District names are unique nationally in Ghana, so a single name match is trusted outright —
+  // region is only used to break a tie if the same name somehow matches more than one district.
+  // Requiring region agreement unconditionally used to reject perfectly good matches whenever a
+  // source file had a stale/wrong region label for an otherwise-correct district name (e.g. a row
+  // for "Pru East" mislabeled region "Ahafo" instead of "Bono East").
+  const nameMatches = districts.filter(
+    (district) => normalizeDistrictName(district.name) === normalizedName,
   );
-  if (candidates.length === 1) return { district: candidates[0]!, ambiguous: false };
-  if (candidates.length > 1) return { district: null, ambiguous: true };
+  if (nameMatches.length === 1) return { district: nameMatches[0]!, ambiguous: false };
+  if (nameMatches.length > 1) {
+    const regionMatches = normalizedRegion
+      ? nameMatches.filter((district) => normalizeDistrictName(district.region.name) === normalizedRegion)
+      : [];
+    if (regionMatches.length === 1) return { district: regionMatches[0]!, ambiguous: false };
+    return { district: null, ambiguous: true };
+  }
 
   const aliasedId = aliasMap.get(normalizedName);
   if (aliasedId) {

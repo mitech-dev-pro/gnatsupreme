@@ -135,7 +135,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
   const counts = { matched: 0, changed: 0, unmatched: 0, duplicate: 0, invalid: 0, enrolled: 0 };
   const nextControllerIdToCreate: { controllerId: string; data: Prisma.MemberCreateManyInput }[] = [];
 
-  const data: Prisma.Report20RowCreateManyInput[] = sourceRows.map((row) => {
+  function classifyRow(row: SourceRow): Prisma.Report20RowCreateManyInput {
     const issues: string[] = [];
     let status: "MATCHED" | "CHANGED" | "UNMATCHED" | "DUPLICATE" | "INVALID" | "ENROLLED";
     const controllerId = row.controllerId?.replace(/\s+/g, "") ?? null;
@@ -199,7 +199,20 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       issues,
       rawData: row.rawData,
     };
-  });
+  }
+
+  // Classifying every row is the dominant cost on a rerun of an already-populated dataset (most
+  // rows just re-match an existing member), so it's what processedRows tracks — chunked with
+  // periodic progress writes instead of one big synchronous .map(), so the frontend's progress bar
+  // actually moves instead of sitting still until the very end.
+  const CLASSIFY_BATCH_SIZE = 5_000;
+  const data: Prisma.Report20RowCreateManyInput[] = [];
+  let classifiedSoFar = 0;
+  for (const rowBatch of chunk(sourceRows, CLASSIFY_BATCH_SIZE)) {
+    for (const row of rowBatch) data.push(classifyRow(row));
+    classifiedSoFar += rowBatch.length;
+    await prisma.importJob.update({ where: { id: importJobId }, data: { processedRows: classifiedSoFar } });
+  }
 
   // Newly-enrolled members need real ids before the Report20Row rows can reference them, so
   // create them first and then patch memberId onto the corresponding row payloads.
@@ -222,21 +235,19 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     });
   }
 
-  // Auto-enrolling new members is the dominant cost for a file with many first-time Controller
-  // IDs (each is its own row), so it's done as its own batched, progress-reporting phase ahead of
-  // the final transaction rather than one-by-one inside it — both faster (bulk insert per batch
-  // instead of N individual creates) and lets polling clients see live progress on a long import.
+  // Auto-enrolling new members is done as its own batched phase ahead of the final transaction —
+  // bulk insert per batch instead of N individual creates — rather than a progress-reporting one:
+  // processedRows already reflects rows classified (see above), and new enrollments are a subset
+  // of those rows, so writing a smaller "enrolled so far" count here would make the progress bar
+  // rewind partway through instead of finishing at 100%.
   const createdIdByControllerId = new Map<string, number>();
   const ENROLL_BATCH_SIZE = 2_000;
-  let enrolledSoFar = 0;
   for (const batch of chunk(nextControllerIdToCreate, ENROLL_BATCH_SIZE)) {
     const created = await prisma.member.createManyAndReturn({
       data: batch.map((entry) => entry.data),
       select: { id: true, controllerId: true },
     });
     for (const member of created) createdIdByControllerId.set(member.controllerId, member.id);
-    enrolledSoFar += batch.length;
-    await prisma.importJob.update({ where: { id: importJobId }, data: { processedRows: enrolledSoFar } });
   }
   for (const row of data) {
     if (row.status === "ENROLLED" && row.controllerId) {

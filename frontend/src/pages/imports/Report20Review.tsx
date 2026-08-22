@@ -18,6 +18,7 @@ type ImportJob = {
   flaggedForRemovalRows: number;
   errorMessage: string | null;
   createdAt: string;
+  updatedAt: string;
   file: { originalName: string };
   uploadedBy: { id: number; fullName: string };
 };
@@ -35,6 +36,11 @@ type ReportRow = {
 };
 
 const ROW_STATUSES = ["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID", "ENROLLED"];
+
+// Mirrors the backend's STUCK_JOB_THRESHOLD_MS (import.routes.ts) — a PENDING/PROCESSING job that
+// hasn't moved in this long had its worker die without reporting back, so it needs a manual retry
+// rather than waiting on progress that will never come.
+const STUCK_JOB_THRESHOLD_MS = 15 * 60 * 1_000;
 
 const ROW_STATUS_STYLES: Record<string, string> = {
   MATCHED: "bg-[#dff7ee] text-[#17805f]",
@@ -105,7 +111,10 @@ export default function Report20Review() {
   // Job status/progress polls quickly (it's a cheap single-row read); the row list polls less
   // often since it's a bigger query and doesn't change meaningfully every couple of seconds.
   useEffect(() => {
-    if (!job || (job.status !== "PENDING" && job.status !== "PROCESSING")) return;
+    if (!job || (job.status !== "PENDING" && job.status !== "PROCESSING")) {
+      setRerunMessage("");
+      return;
+    }
     const jobTimer = setInterval(loadJob, 1500);
     const rowsTimer = setInterval(loadRows, 5000);
     return () => {
@@ -144,6 +153,10 @@ export default function Report20Review() {
     return <div className="text-[13px] text-[#5b6472]">Loading…</div>;
   }
 
+  const isStuck =
+    (job.status === "PENDING" || job.status === "PROCESSING") &&
+    Date.now() - new Date(job.updatedAt).getTime() > STUCK_JOB_THRESHOLD_MS;
+
   return (
     <div>
       <Link
@@ -167,14 +180,14 @@ export default function Report20Review() {
           <span className="rounded-full bg-[#eef0fa] px-3 py-1 text-[12px] font-bold text-[#1e2761]">
             {job.status}
           </span>
-          {job.status === "COMPLETED" && (
+          {(job.status === "COMPLETED" || isStuck) && (
             <button
               type="button"
               onClick={() => setConfirmingRerun(true)}
               disabled={rerunning}
               className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:border-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {rerunning ? "Re-running…" : "Re-run Reconciliation"}
+              {rerunning ? "Re-running…" : isStuck ? "Retry (appears stuck)" : "Re-run Reconciliation"}
             </button>
           )}
         </div>
@@ -184,7 +197,11 @@ export default function Report20Review() {
         <div className="mb-4">
           <ConfirmationPanel
             title="Re-run this reconciliation?"
-            description="The file will be checked against the current member list. Existing reconciliation rows for this upload will be replaced."
+            description={
+              isStuck
+                ? "This reconciliation hasn't made progress in a while and appears stuck. Retrying will restart it from scratch against the current member list."
+                : "The file will be checked against the current member list. Existing reconciliation rows for this upload will be replaced."
+            }
             confirmLabel="Re-run reconciliation"
             busyLabel="Starting…"
             tone="warning"

@@ -58,6 +58,7 @@ export default function Login() {
   const [challengeToken, setChallengeToken] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberSubmitting, setMemberSubmitting] = useState(false);
+  const [requestRetrySeconds, setRequestRetrySeconds] = useState(0);
   const [resendSeconds, setResendSeconds] = useState(0);
   const [resendMessage, setResendMessage] = useState("");
   const otpFormRef = useRef<HTMLFormElement>(null);
@@ -80,9 +81,17 @@ export default function Login() {
   }, [resendSeconds]);
 
   useEffect(() => {
-    if (otp.length === 6 && memberStep === "otp" && !memberSubmitting)
-      otpFormRef.current?.requestSubmit();
-  }, [otp, memberStep]);
+    if (requestRetrySeconds <= 0) return;
+    const timer = window.setInterval(
+      () => setRequestRetrySeconds((seconds) => Math.max(0, seconds - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [requestRetrySeconds]);
+
+  useEffect(() => {
+    if (otp.length === 6 && memberStep === "otp" && !memberSubmitting) otpFormRef.current?.requestSubmit();
+  }, [otp, memberStep, memberSubmitting]);
 
   useEffect(() => {
     if (memberStep !== "register" || districts.length > 0 || districtsLoading)
@@ -161,6 +170,12 @@ export default function Login() {
       setResendSeconds(60);
       setResendMessage("");
     } catch (err: any) {
+      const retryAfter = Number(
+        err?.response?.data?.retryAfterSeconds ?? err?.response?.headers?.["retry-after"],
+      );
+      if (err?.response?.status === 429 && Number.isFinite(retryAfter)) {
+        setRequestRetrySeconds(Math.max(1, Math.ceil(retryAfter)));
+      }
       if (err?.response?.data?.code === "PHONE_NOT_ON_FILE") {
         setMemberStep("register");
         setMemberError("");
@@ -249,10 +264,13 @@ export default function Login() {
       setResendSeconds(60);
       setResendMessage("A new verification code has been sent.");
     } catch (err: any) {
-      setMemberError(
-        err?.response?.data?.message ||
-          "Unable to resend the verification code.",
+      const retryAfter = Number(
+        err?.response?.data?.retryAfterSeconds ?? err?.response?.headers?.["retry-after"],
       );
+      if (err?.response?.status === 429 && Number.isFinite(retryAfter)) {
+        setResendSeconds(Math.max(1, Math.ceil(retryAfter)));
+      }
+      setMemberError(err?.response?.data?.message || "Unable to resend the verification code.");
     } finally {
       setMemberSubmitting(false);
     }
@@ -266,6 +284,7 @@ export default function Login() {
     setMemberError("");
     setResendMessage("");
     setResendSeconds(0);
+    setRequestRetrySeconds(0);
     setRegFullName("");
     setRegDistrictId("");
     setRegPhone("");
@@ -602,13 +621,20 @@ export default function Login() {
 
                 <button
                   type="submit"
-                  disabled={memberSubmitting}
+                  disabled={memberSubmitting || requestRetrySeconds > 0}
                   className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {memberSubmitting
                     ? "Sending code…"
-                    : "Send Verification Code"}
+                    : requestRetrySeconds > 0
+                      ? `Try again in ${Math.ceil(requestRetrySeconds / 60)} min`
+                      : "Send Verification Code"}
                 </button>
+                {requestRetrySeconds > 0 && (
+                  <p className="mt-2 text-center text-[11px] leading-relaxed text-[#5b6472]" aria-live="polite">
+                    Requests are temporarily paused for this membership on this network. The button will become available automatically.
+                  </p>
+                )}
               </form>
               <div className="mt-5 border-t border-[#edf0f5] pt-4 text-[11px] leading-relaxed text-[#5b6472]">
                 We use the SMS code only to verify access to your membership

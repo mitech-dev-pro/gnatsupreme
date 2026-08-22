@@ -1,10 +1,24 @@
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import type { Request, Response } from "express";
+import { logger } from "../lib/logger.js";
 
-const jsonRateLimitHandler = (_request: Request, response: Response) => {
+const jsonRateLimitHandler = (limiter: string) => (request: Request, response: Response) => {
+  const resetTime = (request as Request & { rateLimit?: { resetTime?: Date } })
+    .rateLimit?.resetTime?.getTime();
+  const retryAfterSeconds = Math.max(
+    1,
+    resetTime ? Math.ceil((resetTime - Date.now()) / 1_000) : 60,
+  );
+
+  response.set("Retry-After", String(retryAfterSeconds));
+  logger.warn(
+    { limiter, ipAddress: request.ip, path: request.originalUrl, retryAfterSeconds },
+    "Request rate limit exceeded",
+  );
   response.status(429).json({
     success: false,
-    message: "Too many requests. Please try again later.",
+    message: `Too many requests. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minute${retryAfterSeconds > 60 ? "s" : ""}.`,
+    retryAfterSeconds,
   });
 };
 
@@ -13,7 +27,7 @@ export const apiRateLimiter = rateLimit({
   limit: 400,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler,
+  handler: jsonRateLimitHandler("api"),
 });
 
 export const loginRateLimiter = rateLimit({
@@ -22,7 +36,7 @@ export const loginRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  handler: jsonRateLimitHandler,
+  handler: jsonRateLimitHandler("staff-login"),
 });
 
 export const refreshRateLimiter = rateLimit({
@@ -30,15 +44,32 @@ export const refreshRateLimiter = rateLimit({
   limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler,
+  handler: jsonRateLimitHandler("session-refresh"),
 });
 
+// Isolate the small allowance by member ID and client IP. Members sharing a school or
+// office network therefore do not consume one another's five requests.
 export const memberOtpRequestRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler,
+  keyGenerator: (request) => {
+    const controllerId = String(request.body?.controllerId ?? "invalid")
+      .trim()
+      .replace(/\D/g, "") || "invalid";
+    return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
+  },
+  handler: jsonRateLimitHandler("member-otp-member"),
+});
+
+// A higher IP-wide ceiling still stops one network from cycling through many member IDs.
+export const memberOtpIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("member-otp-network"),
 });
 
 export const memberOtpVerifyRateLimiter = rateLimit({
@@ -46,15 +77,12 @@ export const memberOtpVerifyRateLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler,
+  handler: jsonRateLimitHandler("member-otp-verify"),
 });
-
 export const memberPhoneRegisterRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler,
+  handler: jsonRateLimitHandler("member-phone-register"),
 });
-
-//this middleware sets up rate limiting for different types of requests. The `apiRateLimiter` allows 300 requests per 15 minutes, the `loginRateLimiter` allows 5 failed login attempts per 15 minutes (skipping successful logins), and the `refreshRateLimiter` allows 30 requests per minute. If a client exceeds the limit, a 429 Too Many Requests response is sent with a JSON message.

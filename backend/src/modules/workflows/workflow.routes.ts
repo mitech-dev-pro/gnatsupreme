@@ -378,6 +378,7 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
       if (item.type === "SPOUSE") {
         const data = spouseSchema.parse(item.proposedData);
         await transaction.spouse.upsert({ where: { memberId: item.memberId }, update: data, create: { ...data, memberId: item.memberId } });
+        await transaction.member.update({ where: { id: item.memberId }, data: { spouseDeclarationStatus: "HAS_SPOUSE" } });
       }
       if (item.type === "BENEFICIARY_ADD") await transaction.beneficiary.create({ data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId } });
       if (item.type === "BENEFICIARY_UPDATE") await transaction.beneficiary.update({ where: { id: item.targetBeneficiaryId! }, data: beneficiarySchema.parse(item.proposedData) });

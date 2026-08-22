@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
 import {
+  memberOtpIpRateLimiter,
   memberOtpRequestRateLimiter,
   memberOtpVerifyRateLimiter,
   memberPhoneRegisterRateLimiter,
@@ -123,6 +124,7 @@ memberAuthRouter.get("/districts", async (_request, response) => {
 
 memberAuthRouter.post(
   "/request-otp",
+  memberOtpIpRateLimiter,
   memberOtpRequestRateLimiter,
   async (request, response) => {
     const startedAt = Date.now();

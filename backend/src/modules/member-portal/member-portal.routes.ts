@@ -6,8 +6,9 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
-import { notifyStaffForMember } from "../notifications/notification.service.js";
+import { notifyMember, notifyStaffForMember } from "../notifications/notification.service.js";
 import { getOrganizationSettings, publicBranding } from "../settings/settings.service.js";
+import { getMemberProfileCompletion } from "./profile-completion.service.js";
 
 export const memberPortalRouter = Router();
 
@@ -28,7 +29,7 @@ memberPortalRouter.get("/settings", async (_request, response) => {
 
 memberPortalRouter.get("/profile", async (_request, response) => {
   const currentMember = member(response);
-  const [profile, benefitPlan] = await Promise.all([
+  const [profile, benefitPlan, profileCompletion] = await Promise.all([
     prisma.member.findUnique({
       where: { id: currentMember.id },
       select: {
@@ -48,8 +49,78 @@ memberPortalRouter.get("/profile", async (_request, response) => {
       },
     }),
     prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { lte: new Date() } }, include: { benefits: { orderBy: { type: "asc" } } }, orderBy: { effectiveFrom: "desc" } }),
+    getMemberProfileCompletion(currentMember.id),
   ]);
-  response.json({ success: true, data: { member: profile, benefitPlan } });
+  if (!profileCompletion.complete) {
+    const incompleteLabels = profileCompletion.items
+      .filter((item) => item.status !== "COMPLETE")
+      .map((item) => item.label);
+    await notifyMember({
+      memberId: currentMember.id,
+      type: "PROFILE_COMPLETION_REQUIRED",
+      title: "Complete your membership details",
+      message: `Please review these details: ${incompleteLabels.join(", ")}.`,
+      idempotencyKey: `profile-completion:${currentMember.id}:v1`,
+      sendSms: false,
+    });
+  }
+  response.json({ success: true, data: { member: profile, benefitPlan, profileCompletion } });
+});
+
+memberPortalRouter.patch("/profile-completion/dismiss", async (request, response) => {
+  const currentMember = member(response);
+  const dismissedAt = new Date();
+  await prisma.member.update({
+    where: { id: currentMember.id },
+    data: { profileCompletionDismissedAt: dismissedAt },
+  });
+  await recordAudit({
+    request,
+    action: "MEMBER_PROFILE_COMPLETION_DISMISSED",
+    entityType: "MEMBER",
+    entityId: currentMember.id,
+    description: `Member ${currentMember.controllerId} chose to complete their profile later`,
+    afterData: { profileCompletionDismissedAt: dismissedAt },
+  });
+  response.json({ success: true, data: { dismissedAt } });
+});
+
+memberPortalRouter.patch("/profile-completion/spouse-declaration", async (request, response) => {
+  const parsed = z.object({ hasSpouse: z.literal(false) }).safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Confirm that no spouse should be recorded" });
+    return;
+  }
+  const currentMember = member(response);
+  const [existingSpouse, pendingRequest] = await Promise.all([
+    prisma.spouse.findUnique({ where: { memberId: currentMember.id }, select: { id: true } }),
+    prisma.memberChangeRequest.findFirst({
+      where: { memberId: currentMember.id, type: "SPOUSE", status: "PENDING" },
+      select: { id: true },
+    }),
+  ]);
+  if (existingSpouse) {
+    response.status(409).json({ success: false, message: "A spouse is already recorded. Submit a change request if this is incorrect." });
+    return;
+  }
+  if (pendingRequest) {
+    response.status(409).json({ success: false, message: "A spouse request is already awaiting review" });
+    return;
+  }
+  await prisma.member.update({
+    where: { id: currentMember.id },
+    data: { spouseDeclarationStatus: "NONE" },
+  });
+  await recordAudit({
+    request,
+    action: "MEMBER_SPOUSE_NONE_DECLARED",
+    entityType: "MEMBER",
+    entityId: currentMember.id,
+    description: `Member ${currentMember.controllerId} declared that no spouse should be recorded`,
+    beforeData: { spouseDeclarationStatus: "UNKNOWN" },
+    afterData: { spouseDeclarationStatus: "NONE" },
+  });
+  response.json({ success: true, data: await getMemberProfileCompletion(currentMember.id) });
 });
 
 memberPortalRouter.get("/claims", async (_request, response) => {

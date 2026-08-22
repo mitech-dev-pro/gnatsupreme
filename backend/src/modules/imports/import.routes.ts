@@ -10,6 +10,7 @@ import { prisma } from "../../lib/prisma.js";
 import { spawnWorker } from "../../lib/spawn-worker.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { recordAudit } from "../audit/audit.service.js";
 import {
   hasValidReport20Signature,
   report20FileUpload,
@@ -36,6 +37,11 @@ const issueListSchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
   status: z.enum(["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID", "ENROLLED"]).optional(),
 });
+const resolveRowParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  rowId: z.coerce.number().int().positive(),
+});
+const resolveRowBodySchema = z.object({ districtId: z.coerce.number().int().positive() });
 
 function user(response: Response) {
   return response.locals.user as AuthenticatedUser;
@@ -275,4 +281,87 @@ importRouter.get("/:id/issues", async (request, response) => {
     prisma.report20Row.count({ where }),
   ]);
   response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+});
+
+// Resolves one UNMATCHED row by hand — for cases a district alias can't safely cover, e.g. a raw
+// name like "Pru" or "Awutu Senya" that legitimately maps to two different real districts, so which
+// one applies has to be decided per member rather than blanket-aliased (see district-match.ts).
+// Immediately enrolls the member with the district staff picked; no rerun required.
+importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
+  const params = resolveRowParamsSchema.safeParse(request.params);
+  const body = resolveRowBodySchema.safeParse(request.body);
+  if (!params.success || !body.success) {
+    response.status(400).json({ success: false, message: "Invalid request" });
+    return;
+  }
+  const row = await prisma.report20Row.findFirst({
+    where: { id: params.data.rowId, importJobId: params.data.id },
+  });
+  if (!row) {
+    response.status(404).json({ success: false, message: "Report 20 row not found" });
+    return;
+  }
+  if (row.status !== "UNMATCHED") {
+    response.status(409).json({ success: false, message: "Only unmatched rows can be resolved this way" });
+    return;
+  }
+  if (!row.controllerId || !row.fullName) {
+    response.status(409).json({
+      success: false,
+      message: "This row is missing a Controller ID or name and cannot be enrolled",
+    });
+    return;
+  }
+  const existingMember = await prisma.member.findUnique({ where: { controllerId: row.controllerId } });
+  if (existingMember) {
+    response.status(409).json({ success: false, message: "A member with this Controller ID already exists" });
+    return;
+  }
+  const district = await prisma.district.findUnique({ where: { id: body.data.districtId } });
+  if (!district) {
+    response.status(400).json({ success: false, message: "Selected district does not exist" });
+    return;
+  }
+
+  const currentUser = user(response);
+  const member = await prisma.$transaction(async (tx) => {
+    const createdMember = await tx.member.create({
+      data: {
+        controllerId: row.controllerId as string,
+        fullName: row.fullName as string,
+        school: row.school ?? "",
+        districtId: district.id,
+        status: "ACTIVE",
+        report20Matched: true,
+        createdById: currentUser.id,
+      },
+    });
+    await tx.report20Row.update({
+      where: { id: row.id },
+      data: {
+        memberId: createdMember.id,
+        status: "ENROLLED",
+        issues: ["Manually resolved by staff during review and enrolled with the selected district"],
+      },
+    });
+    await tx.importJob.update({
+      where: { id: params.data.id },
+      data: { unmatchedRows: { decrement: 1 }, enrolledRows: { increment: 1 } },
+    });
+    return createdMember;
+  });
+
+  await recordAudit({
+    request,
+    actor: currentUser,
+    action: "REPORT20_ROW_MANUALLY_RESOLVED",
+    entityType: "MEMBER",
+    entityId: member.id,
+    description: `Manually resolved Report 20 row ${row.rowNumber} (Controller ID ${row.controllerId}) to district ${district.name}`,
+    afterData: { districtId: district.id, districtName: district.name },
+    regionId: district.regionId,
+    districtId: district.id,
+  });
+
+  response.json({ success: true, data: { member, districtName: district.name } });
 });

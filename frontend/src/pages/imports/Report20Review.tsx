@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import { useDistricts } from "@/lib/useDistricts";
 
 type ImportJob = {
   id: number;
@@ -72,6 +73,52 @@ export default function Report20Review() {
   const [confirmingRerun, setConfirmingRerun] = useState(false);
   const [rerunMessage, setRerunMessage] = useState("");
   const limit = 50;
+
+  const { districts } = useDistricts();
+  const [actionRowId, setActionRowId] = useState<number | null>(null);
+  const [actionMode, setActionMode] = useState<"resolve" | "alias" | null>(null);
+  const [actionDistrictId, setActionDistrictId] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+
+  const openAction = (rowId: number, mode: "resolve" | "alias") => {
+    setActionRowId((current) => (current === rowId && actionMode === mode ? null : rowId));
+    setActionMode(mode);
+    setActionDistrictId("");
+    setActionError("");
+  };
+
+  const submitResolve = async (row: ReportRow) => {
+    if (!actionDistrictId) return;
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await api.post(`/imports/${id}/rows/${row.id}/resolve`, { districtId: Number(actionDistrictId) });
+      setActionMessage(`Row ${row.rowNumber} was enrolled and marked resolved.`);
+      setActionRowId(null);
+      await Promise.all([loadJob(), loadRows()]);
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message || "Unable to resolve this row.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const submitAlias = async (row: ReportRow) => {
+    if (!actionDistrictId || !row.districtName) return;
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await api.post("/districts/aliases", { alias: row.districtName, districtId: Number(actionDistrictId) });
+      setActionMessage(`Mapped "${row.districtName}" — re-run reconciliation to apply it to every matching row.`);
+      setActionRowId(null);
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message || "Unable to save this alias.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const loadJob = async () => {
     try {
@@ -292,6 +339,12 @@ export default function Report20Review() {
         </select>
       </div>
 
+      {actionMessage && (
+        <div className="mb-4 rounded-lg bg-[#dff7ee] px-3 py-2 text-[12.5px] font-semibold text-[#17805f]">
+          {actionMessage}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-[12px] border border-[#e5e9f0] bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-[12.5px]">
@@ -303,51 +356,132 @@ export default function Report20Review() {
                 <th className="px-4 py-2.5">District</th>
                 <th className="px-4 py-2.5">Status</th>
                 <th className="px-4 py-2.5">Issues</th>
+                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[#5b6472]">
+                  <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
                     No rows found.
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-b border-[#e5e9f0] last:border-0">
-                    <td className="px-4 py-2.5 text-[#5b6472]">{row.rowNumber}</td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{row.controllerId ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-[#171b26]">
-                      {row.member ? (
-                        <Link
-                          to={`/members/${row.member.id}`}
-                          className="font-semibold text-[#1e2761] hover:underline"
-                        >
-                          {row.fullName ?? row.member.fullName}
-                        </Link>
-                      ) : (
-                        (row.fullName ?? "—")
+                rows.map((row) => {
+                  const canResolve = row.status === "UNMATCHED" && row.controllerId && row.fullName;
+                  const canAlias = row.status === "UNMATCHED" && row.districtName;
+                  return (
+                    <Fragment key={row.id}>
+                      <tr className="border-b border-[#e5e9f0] last:border-0">
+                        <td className="px-4 py-2.5 text-[#5b6472]">{row.rowNumber}</td>
+                        <td className="px-4 py-2.5 text-[#171b26]">{row.controllerId ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-[#171b26]">
+                          {row.member ? (
+                            <Link
+                              to={`/members/${row.member.id}`}
+                              className="font-semibold text-[#1e2761] hover:underline"
+                            >
+                              {row.fullName ?? row.member.fullName}
+                            </Link>
+                          ) : (
+                            (row.fullName ?? "—")
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-[#c23b3b]">
+                          {row.issues && row.issues.length > 0 ? row.issues.join("; ") : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          {canResolve && (
+                            <button
+                              type="button"
+                              onClick={() => openAction(row.id, "resolve")}
+                              className="mr-3 text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
+                            >
+                              Resolve
+                            </button>
+                          )}
+                          {canAlias && (
+                            <button
+                              type="button"
+                              onClick={() => openAction(row.id, "alias")}
+                              className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
+                            >
+                              Map as Alias
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {actionRowId === row.id && actionMode && (
+                        <tr className="border-b border-[#e5e9f0] bg-[#fafbfd] last:border-0">
+                          <td colSpan={7} className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-[12.5px] text-[#5b6472]">
+                                {actionMode === "resolve"
+                                  ? `Enroll Controller ID ${row.controllerId} in:`
+                                  : `Map "${row.districtName}" to:`}
+                              </span>
+                              <select
+                                value={actionDistrictId}
+                                onChange={(e) => setActionDistrictId(e.target.value)}
+                                className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
+                              >
+                                <option value="">Select a district…</option>
+                                {districts.map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name} · {d.region.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => void (actionMode === "resolve" ? submitResolve(row) : submitAlias(row))}
+                                disabled={actionBusy || !actionDistrictId}
+                                className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {actionBusy
+                                  ? "Saving…"
+                                  : actionMode === "resolve"
+                                    ? "Enroll Member"
+                                    : "Save Mapping"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActionRowId(null)}
+                                className="text-[11.5px] font-semibold text-[#5b6472]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {actionMode === "resolve" && (
+                              <p className="mt-2 text-[11px] text-[#5b6472]">
+                                Enrolls this member immediately with the district you pick — use this for a one-off or
+                                ambiguous spelling. To fix the spelling for every future upload instead, use "Map as
+                                Alias".
+                              </p>
+                            )}
+                            {actionError && (
+                              <p className="mt-2 text-[11.5px] font-semibold text-[#c23b3b]">{actionError}</p>
+                            )}
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-[#c23b3b]">
-                      {row.issues && row.issues.length > 0 ? row.issues.join("; ") : "—"}
-                    </td>
-                  </tr>
-                ))
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -296,6 +296,51 @@ const geography: Record<string, string[]> = {
   ],
 };
 
+// Spelling/naming variants seen in real Report 20 / bulk-import files that don't match any district
+// after suffix-stripping (see district-match.ts) but unambiguously refer to one — confirmed against
+// the live DB and, where uncertain, an authoritative source (see conversation history for the
+// Assin Central / East Akim research). Each key is stored as its own DistrictAlias row; the matcher
+// normalizes both the alias and the incoming raw name the same way, so hyphens/spacing/suffix don't
+// need to match exactly, only the seeded spelling variant does.
+const districtAliases: Record<string, string> = {
+  "Akwapim North": "Akuapem North",
+  "Akwapim South": "Akuapem South",
+  Bunkpurugu: "Bunkpurugu Nakpanduri",
+  "Dafiama Bussie Issa": "Daffiama Bussie Issa",
+  Gushiegu: "Gushegu",
+  "Kasena Nankana East": "Kassena Nankana East",
+  "Kwabere East": "Kwabre East",
+  Kwaebibirim: "Kwaebibirem",
+  "Lambussie-Kami": "Lambussie Karni",
+  Sagnerigu: "Sagnarigu",
+  "Twifo-Ati Morkwa": "Twifo Atti Morkwa",
+  "Yunyoo-Nansuan": "Yunyoo Nasuan",
+  // Assin Fosu Municipal District is the official alternate name for Assin Central Municipal
+  // District (per Wikipedia) — not a missing district, just a different name for the same one.
+  "Assin Central": "Assin Fosu",
+};
+
+async function seedDistrictAliases() {
+  for (const [alias, canonicalName] of Object.entries(districtAliases)) {
+    const matches = await prisma.district.findMany({
+      where: { name: canonicalName },
+    });
+    if (matches.length !== 1) {
+      throw new Error(
+        `Invalid district alias seed: "${canonicalName}" matched ${matches.length} districts (expected exactly 1)`,
+      );
+    }
+    await prisma.districtAlias.upsert({
+      where: { alias },
+      update: { districtId: matches[0]!.id },
+      create: { alias, districtId: matches[0]!.id },
+    });
+  }
+  console.log(
+    `District alias seed complete: ${Object.keys(districtAliases).length} aliases.`,
+  );
+}
+
 async function seedGeography() {
   const expectedRegions = Object.keys(geography).length;
   const expectedDistricts = Object.values(geography).reduce(
@@ -334,6 +379,7 @@ async function seedGeography() {
 
 try {
   await seedGeography();
+  await seedDistrictAliases();
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown error";
   console.error(`Unable to seed geography: ${message}`);

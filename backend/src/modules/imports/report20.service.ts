@@ -172,7 +172,14 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
     } else {
       if (normalizeValue(row.fullName) !== normalizeValue(member.fullName)) issues.push("Full name differs");
       if (row.school && normalizeValue(row.school) !== normalizeValue(member.school)) issues.push("School differs");
-      if (row.districtName && normalizeDistrictName(row.districtName) !== normalizeDistrictName(member.district.name)) issues.push("District differs");
+      // Resolved through the same alias/suffix matching as new-member enrollment, not a raw string
+      // compare — otherwise a district that only differs by an aliased spelling (e.g. "Sagnerigu" vs
+      // the member's actual "Sagnarigu") would wrongly flag as CHANGED every single run, even though
+      // it refers to the same district.
+      if (row.districtName) {
+        const { district: resolvedDistrict } = resolveDistrict(row.districtName, row.regionName, districts, aliasMap);
+        if (!resolvedDistrict || resolvedDistrict.id !== member.districtId) issues.push("District differs");
+      }
       if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)) issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";
       // Only a clean match counts toward report20Matched — CHANGED means the row was found but

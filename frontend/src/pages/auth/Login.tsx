@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
+import Dropdown from "@/components/ui/Dropdown";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -710,22 +711,16 @@ export default function Login() {
                   <label htmlFor="setup-district" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
                     District (optional)
                   </label>
-                  <select
+                  <Dropdown
                     id="setup-district"
                     value={setupDistrictId}
-                    onChange={(e) => {
-                      setSetupDistrictId(e.target.value);
+                    onChange={(value) => {
+                      setSetupDistrictId(value);
                       setMemberError("");
                     }}
-                    className={inputClasses.replace("pl-9", "pl-3")}
-                  >
-                    <option value="">Select your district if known</option>
-                    {districts.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} — {d.region.name}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Select your district if known"
+                    options={districts.map((d) => ({ value: String(d.id), label: `${d.name} — ${d.region.name}` }))}
+                  />
                   <p className="mt-1.5 text-[11px] text-[#5b6472]">
                     Not required to continue — only used to fill in your district if it's missing from your record.
                   </p>

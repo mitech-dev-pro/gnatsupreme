@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dropdown from "@/components/ui/Dropdown";
 import { InputField } from "@/components/ui/FormField";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
 import Button from "@/components/ui/Button";
@@ -204,42 +205,32 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       </div>
       <div>
         <label className={labelClasses}>Role</label>
-        <select
+        <Dropdown
           value={form.role}
-          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value, regionId: "", districtId: "" }))}
-          className={inputClasses}
-        >
-          {availableRoles.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => setForm((f) => ({ ...f, role: value, regionId: "", districtId: "" }))}
+          options={availableRoles.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+        />
       </div>
       {form.role === "REGIONAL_ADMIN" && (
         <div>
           <label className={labelClasses}>Region</label>
-          <select value={form.regionId} onChange={(e) => setForm((f) => ({ ...f, regionId: e.target.value }))} className={inputClasses}>
-            <option value="">Select region</option>
-            {regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            value={form.regionId}
+            onChange={(value) => setForm((f) => ({ ...f, regionId: value }))}
+            placeholder="Select region"
+            options={regions.map((r) => ({ value: String(r.id), label: r.name }))}
+          />
         </div>
       )}
       {form.role === "DISTRICT_ADMIN" && (
         <div>
           <label className={labelClasses}>District</label>
-          <select value={form.districtId} onChange={(e) => setForm((f) => ({ ...f, districtId: e.target.value }))} className={inputClasses}>
-            <option value="">Select district</option>
-            {districts.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name} ({d.region.name})
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            value={form.districtId}
+            onChange={(value) => setForm((f) => ({ ...f, districtId: value }))}
+            placeholder="Select district"
+            options={districts.map((d) => ({ value: String(d.id), label: `${d.name} (${d.region.name})` }))}
+          />
         </div>
       )}
     </div>
@@ -250,14 +241,12 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or email" className={`max-w-64 ${inputClasses}`} />
-          <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }} className={`max-w-48 ${inputClasses}`}>
-            <option value="">All roles</option>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            className="w-48"
+            value={roleFilter}
+            onChange={(value) => { setRoleFilter(value); setPage(1); }}
+            options={[{ value: "", label: "All roles" }, ...ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))]}
+          />
         </div>
         <Button
           variant={showCreate ? "secondary" : "primary"}

@@ -2,11 +2,12 @@ import { Fragment, useCallback, useEffect, useState, type FormEvent } from "reac
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dropdown from "@/components/ui/Dropdown";
 import Pagination from "@/components/ui/Pagination";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
-import { SelectField, TextareaField } from "@/components/ui/FormField";
+import { TextareaField } from "@/components/ui/FormField";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TableFrame from "@/components/ui/TableFrame";
 import { useAuth } from "@/lib/AuthContext";
@@ -157,20 +158,15 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
         </div>
 
         <div className="max-w-72">
-          <SelectField
-            label="Destination district"
+          <label className="mb-1.5 block text-[11.5px] font-bold text-(--text-strong)">Destination district</label>
+          <Dropdown
             value={toDistrictId}
-            onChange={(e) => setToDistrictId(e.target.value)}
-          >
-            <option value="">Select district</option>
-            {districts
+            onChange={setToDistrictId}
+            placeholder="Select district"
+            options={districts
               .filter((d) => d.id !== member?.districtId)
-              .map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.region.name})
-                </option>
-              ))}
-          </SelectField>
+              .map((d) => ({ value: String(d.id), label: `${d.name} (${d.region.name})` }))}
+          />
         </div>
 
           <TextareaField
@@ -287,18 +283,12 @@ export default function Transfers() {
       {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
       <div className="mb-4 max-w-52">
-        <SelectField
-          label="Transfer status"
+        <label className="mb-1.5 block text-[11.5px] font-bold text-(--text-strong)">Transfer status</label>
+        <Dropdown
           value={status}
-          onChange={(e) => updateParams({ status: e.target.value || null, page: null })}
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </SelectField>
+          onChange={(value) => updateParams({ status: value || null, page: null })}
+          options={[{ value: "", label: "All statuses" }, ...STATUSES.map((s) => ({ value: s, label: s }))]}
+        />
       </div>
 
       <TableFrame label="Transfer requests" className="min-w-[900px]">

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dropdown from "@/components/ui/Dropdown";
 import { useDistricts } from "@/lib/useDistricts";
 
 type ImportJob = {
@@ -331,21 +332,16 @@ export default function Report20Review() {
       </div>
 
       <div className="mb-4 flex items-center gap-2.5">
-        <select
+        <Dropdown
+          className="w-56"
           value={rowStatus}
-          onChange={(e) => {
-            setRowStatus(e.target.value);
+          onChange={(value) => {
+            setRowStatus(value);
             setPage(1);
           }}
-          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
-        >
-          <option value="">All non-matched rows</option>
-          {ROW_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          aria-label="Filter by row status"
+          options={[{ value: "", label: "All non-matched rows" }, ...ROW_STATUSES.map((s) => ({ value: s, label: s }))]}
+        />
         {(refreshing || job.status === "PENDING" || job.status === "PROCESSING") && (
           <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#5b6472]">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#e5e9f0] border-t-[#1f9c7c]" />
@@ -449,18 +445,13 @@ export default function Report20Review() {
                                   ? `Enroll Controller ID ${row.controllerId} in:`
                                   : `Map "${row.districtName}" to:`}
                               </span>
-                              <select
+                              <Dropdown
+                                className="w-64"
                                 value={actionDistrictId}
-                                onChange={(e) => setActionDistrictId(e.target.value)}
-                                className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
-                              >
-                                <option value="">Select a district…</option>
-                                {districts.map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name} · {d.region.name}
-                                  </option>
-                                ))}
-                              </select>
+                                onChange={setActionDistrictId}
+                                placeholder="Select a district…"
+                                options={districts.map((d) => ({ value: String(d.id), label: `${d.name} · ${d.region.name}` }))}
+                              />
                               <button
                                 type="button"
                                 onClick={() => void (actionMode === "resolve" ? submitResolve(row) : submitAlias(row))}

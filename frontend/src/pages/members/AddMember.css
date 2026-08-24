@@ -1,9 +1,841 @@
-.enroll-page{max-width:1240px;margin:0 auto;color:oklch(.28 .025 273)}.enroll-back{display:inline-flex;margin-bottom:18px;color:oklch(.51 .025 273);font-size:11.5px;font-weight:700;text-decoration:none}.enroll-back:hover{color:oklch(.34 .08 275)}.enroll-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:24px}.enroll-heading p{margin:0 0 6px;color:oklch(.48 .1 165);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em}.enroll-heading h1{margin:0;color:oklch(.29 .085 275);font-size:26px;letter-spacing:-.035em}.enroll-heading>div>span{display:block;margin-top:7px;color:oklch(.53 .02 273);font-size:12px}.enroll-progress{display:flex!important;align-items:center;gap:9px;padding:10px 13px;border:1px solid oklch(.88 .012 273);border-radius:10px;background:oklch(.99 .004 273)}.enroll-progress strong{color:oklch(.42 .1 165);font-size:15px}.enroll-progress span{margin:0!important;font-size:10.5px!important}.enroll-alert{display:flex;align-items:flex-start;gap:7px;margin-bottom:17px;padding:11px 13px;border:1px solid oklch(.88 .06 25);border-radius:9px;background:oklch(.96 .025 25);color:oklch(.48 .13 25);font-size:11.5px}.enroll-alert strong{white-space:nowrap}.enroll-alert span{color:oklch(.47 .055 25)}
-.enroll-workspace{display:grid;grid-template-columns:220px minmax(0,1fr);align-items:start;gap:22px}.enroll-nav{position:sticky;top:76px;padding:16px;border:1px solid oklch(.89 .012 273);border-radius:13px;background:oklch(.99 .004 273);box-shadow:0 8px 24px oklch(.25 .025 273/.035)}.enroll-nav>p{margin:0 0 10px;padding:0 7px;color:oklch(.6 .02 273);font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em}.enroll-nav>button{display:flex;width:100%;align-items:center;gap:10px;border:0;border-radius:8px;padding:10px 7px;background:transparent;color:oklch(.34 .03 273);text-align:left;cursor:pointer}.enroll-nav>button:hover{background:oklch(.96 .012 273)}.enroll-nav>button i,.enroll-section-title>i{display:grid;width:25px;height:25px;flex:0 0 auto;place-items:center;border-radius:50%;background:oklch(.93 .025 275);color:oklch(.38 .09 275);font-size:10px;font-style:normal;font-weight:800}.enroll-nav>button span{font-size:11.5px;font-weight:700}.enroll-nav>button small{display:block;margin-top:2px;color:oklch(.6 .02 273);font-size:9.5px;font-weight:500}.enroll-nav>div{margin-top:13px;padding:13px 7px 2px;border-top:1px solid oklch(.92 .009 273)}.enroll-nav>div strong,.enroll-nav>div small{display:block}.enroll-nav>div strong{margin-bottom:7px;font-size:10px}.enroll-nav>div small{margin-top:7px;color:oklch(.6 .02 273);font-size:9.5px}
-.enroll-form{overflow:hidden;border:1px solid oklch(.89 .012 273);border-radius:14px;background:oklch(.99 .004 273);box-shadow:0 10px 28px oklch(.25 .025 273/.045)}.enroll-form>section{scroll-margin-top:88px;padding:26px 28px;border-bottom:1px solid oklch(.91 .01 273)}.enroll-section-title{display:flex;align-items:flex-start;gap:11px;margin-bottom:22px}.enroll-section-title h2{margin:1px 0 4px;color:oklch(.3 .065 275);font-size:16px;letter-spacing:-.015em}.enroll-section-title p{margin:0;color:oklch(.57 .02 273);font-size:10.5px}.enroll-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px 18px}.enroll-field{display:block}.enroll-field>span:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;color:oklch(.36 .035 273);font-size:10.5px;font-weight:750}.enroll-field>span b{color:oklch(.56 .025 273);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.enroll-field input,.enroll-field select{width:100%;height:40px;border:1px solid oklch(.87 .012 273);border-radius:8px;padding:0 11px;background:oklch(.985 .005 273);color:oklch(.29 .025 273);font:inherit;outline:none;transition:border-color .16s ease-out,box-shadow .16s ease-out}.enroll-field input::placeholder{color:oklch(.68 .015 273)}.enroll-field input:focus,.enroll-field select:focus{border-color:oklch(.58 .11 165);box-shadow:0 0 0 3px oklch(.93 .03 165)}.enroll-field.has-error input,.enroll-field.has-error select{border-color:oklch(.61 .16 25);box-shadow:0 0 0 3px oklch(.95 .025 25)}.enroll-field>small{display:block;margin-top:5px;color:oklch(.61 .018 273);font-size:9px;line-height:1.35}.enroll-field>small.enroll-field__error{color:oklch(.51 .15 25);font-weight:650}.enroll-location{align-self:end;min-height:40px;padding:8px 11px;border-radius:8px;background:oklch(.96 .02 165)}.enroll-location span,.enroll-location strong,.enroll-location small{display:block}.enroll-location span{color:oklch(.55 .04 165);font-size:8.5px;text-transform:uppercase;letter-spacing:.05em}.enroll-location strong{margin-top:2px;color:oklch(.37 .075 165);font-size:11px}.enroll-location small{margin-top:2px;color:oklch(.5 .05 165);font-size:9px}
-.enroll-spouse{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px;border-radius:10px;background:oklch(.965 .012 273)}.enroll-spouse strong,.enroll-spouse span{display:block}.enroll-spouse strong{font-size:11.5px}.enroll-spouse span{margin-top:4px;color:oklch(.57 .02 273);font-size:9.5px}.enroll-spouse>div:last-child{display:flex;padding:3px;border:1px solid oklch(.88 .012 273);border-radius:8px;background:oklch(.99 .004 273)}.enroll-spouse button{width:48px;height:29px;border:0;border-radius:6px;background:transparent;color:oklch(.53 .025 273);font-size:10.5px;font-weight:700;cursor:pointer}.enroll-spouse button.active{background:oklch(.36 .09 275);color:oklch(.98 .006 273)}.enroll-spouse-fields{margin-top:17px}.enroll-beneficiary-heading{display:flex;align-items:end;justify-content:space-between;gap:15px;margin:27px 0 13px}.enroll-beneficiary-heading h3{margin:0;color:oklch(.31 .055 275);font-size:14px}.enroll-beneficiary-heading p{margin:4px 0 0;color:oklch(.58 .02 273);font-size:9.5px}.enroll-beneficiary-heading button{height:34px;border:1px solid oklch(.86 .012 273);border-radius:8px;padding:0 12px;background:oklch(.99 .004 273);color:oklch(.37 .07 275);font-size:10px;font-weight:750;cursor:pointer}.enroll-beneficiary-heading button:disabled{cursor:not-allowed;opacity:.45}.enroll-beneficiaries{display:grid;gap:12px}.enroll-beneficiaries article{border:1px solid oklch(.9 .01 273);border-radius:10px}.enroll-beneficiaries article>header{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid oklch(.92 .009 273);background:oklch(.975 .007 273)}.enroll-beneficiaries article>header>span{display:grid;width:24px;height:24px;place-items:center;border-radius:7px;background:oklch(.92 .025 275);color:oklch(.4 .08 275);font-size:9.5px;font-weight:800}.enroll-beneficiaries header strong,.enroll-beneficiaries header small{display:block}.enroll-beneficiaries header strong{font-size:10.5px}.enroll-beneficiaries header small{margin-top:2px;color:oklch(.61 .018 273);font-size:8.5px}.enroll-beneficiaries header button{margin-left:auto;border:0;background:transparent;color:oklch(.52 .14 25);font-size:9.5px;font-weight:700;cursor:pointer}.enroll-beneficiaries article>.enroll-fields{padding:15px}
-.enroll-footer{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:oklch(.99 .004 273);box-shadow:0 -8px 20px oklch(.25 .025 273/.06)}.enroll-footer>a{color:oklch(.53 .025 273);font-size:10.5px;font-weight:700;text-decoration:none}.enroll-footer>div{display:flex;align-items:center;gap:14px}.enroll-footer span{color:oklch(.58 .02 273);font-size:9.5px}.enroll-footer button,.enroll-review__actions button{height:38px;border:0;border-radius:8px;padding:0 15px;background:oklch(.34 .1 275);color:oklch(.98 .006 273);font-size:10.5px;font-weight:750;cursor:pointer}
-.enroll-review{overflow:hidden;border:1px solid oklch(.89 .012 273);border-radius:14px;background:oklch(.99 .004 273);box-shadow:0 10px 28px oklch(.25 .025 273/.045)}.enroll-review__heading{display:flex;align-items:center;justify-content:space-between;padding:22px 25px;border-bottom:1px solid oklch(.91 .01 273)}.enroll-review__heading p{margin:0 0 5px;color:oklch(.48 .1 165);font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em}.enroll-review__heading h2{margin:0;font-size:19px}.enroll-review__heading div>span{display:block;margin-top:4px;color:oklch(.57 .02 273);font-size:10px}.enroll-pending{display:inline-flex!important;width:max-content;align-items:center;border-radius:999px;padding:5px 8px;background:oklch(.96 .055 80);color:oklch(.52 .12 65)!important;font-size:9.5px!important;font-weight:750}.enroll-review__grid{display:grid;grid-template-columns:repeat(2,1fr)}.enroll-review__grid>section{padding:24px 25px;border-bottom:1px solid oklch(.92 .009 273)}.enroll-review__grid>section:nth-child(odd){border-right:1px solid oklch(.92 .009 273)}.enroll-review__grid h3{margin:0 0 15px;color:oklch(.33 .055 275);font-size:12px}.enroll-summary-row{display:grid;grid-template-columns:130px 1fr;gap:10px;padding:7px 0}.enroll-summary-row dt{color:oklch(.59 .02 273);font-size:9.5px}.enroll-summary-row dd{margin:0;color:oklch(.35 .025 273);font-size:10.5px;font-weight:650}.enroll-summary-row dd>span{color:oklch(.66 .015 273);font-weight:500}.enroll-review ol{margin:0;padding:0;list-style:none}.enroll-review li{padding:8px 0;border-bottom:1px solid oklch(.94 .008 273)}.enroll-review li:last-child{border:0}.enroll-review li strong,.enroll-review li span{display:block}.enroll-review li strong{font-size:10.5px}.enroll-review li span{margin-top:3px;color:oklch(.59 .02 273);font-size:9px;text-transform:capitalize}.enroll-review__actions{display:flex;justify-content:flex-end;gap:9px;padding:14px 18px}.enroll-review__actions button{border:1px solid oklch(.86 .012 273);background:transparent;color:oklch(.39 .04 273)}.enroll-review__actions button.primary{border-color:oklch(.34 .1 275);background:oklch(.34 .1 275);color:oklch(.98 .006 273)}.enroll-review__actions button:disabled{cursor:not-allowed;opacity:.55}
-.enroll-success{max-width:600px;margin:70px auto;padding:40px;border:1px solid oklch(.88 .012 273);border-radius:15px;background:oklch(.99 .004 273);text-align:center;box-shadow:0 14px 38px oklch(.25 .025 273/.06)}.enroll-success__mark{display:grid;width:50px;height:50px;margin:0 auto 15px;place-items:center;border-radius:50%;background:oklch(.94 .045 160);color:oklch(.44 .12 160);font-size:21px;font-weight:800}.enroll-success>p{margin:0;color:oklch(.47 .1 165);font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.enroll-success h1{margin:8px auto 22px;max-width:440px;color:oklch(.29 .075 275);font-size:21px;line-height:1.35}.enroll-success dl{max-width:360px;margin:0 auto 25px;padding:12px 16px;border-radius:10px;background:oklch(.97 .009 273);text-align:left}.enroll-success>div:last-child{display:flex;justify-content:center;gap:9px}.enroll-success>div:last-child a,.enroll-success>div:last-child button{display:inline-flex;height:38px;align-items:center;border:1px solid oklch(.34 .1 275);border-radius:8px;padding:0 14px;background:oklch(.34 .1 275);color:oklch(.98 .006 273);font-size:10.5px;font-weight:750;text-decoration:none;cursor:pointer}.enroll-success>div:last-child button{border-color:oklch(.86 .012 273);background:transparent;color:oklch(.38 .04 273)}
-@media(max-width:900px){.enroll-workspace{grid-template-columns:1fr}.enroll-nav{position:static;display:flex;align-items:center;gap:4px;overflow-x:auto}.enroll-nav>p,.enroll-nav>div{display:none}.enroll-nav>button{width:auto;min-width:max-content}.enroll-nav>button small{display:none}}
-@media(max-width:650px){.enroll-heading{align-items:flex-start;flex-direction:column}.enroll-progress{align-self:stretch}.enroll-form>section{padding:21px 17px}.enroll-fields{grid-template-columns:1fr}.enroll-spouse{align-items:flex-start;flex-direction:column}.enroll-beneficiary-heading{align-items:flex-start;flex-direction:column}.enroll-footer{align-items:flex-end}.enroll-footer>div{align-items:flex-end;flex-direction:column;gap:7px}.enroll-review__grid{grid-template-columns:1fr}.enroll-review__grid>section:nth-child(odd){border-right:0}.enroll-review__actions{display:grid;grid-template-columns:1fr 1fr}.enroll-summary-row{grid-template-columns:110px 1fr}.enroll-success{margin:20px auto;padding:28px 18px}.enroll-success>div:last-child{flex-direction:column}.enroll-success>div:last-child a,.enroll-success>div:last-child button{justify-content:center}}
+.enroll-page {
+    max-width: 1240px;
+    margin: 0 auto;
+    color: oklch(.28 .025 273)
+}
+
+.enroll-back {
+    display: inline-flex;
+    margin-bottom: 18px;
+    color: oklch(.51 .025 273);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-decoration: none
+}
+
+.enroll-back:hover {
+    color: oklch(.34 .08 275)
+}
+
+.enroll-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px
+}
+
+.enroll-heading p {
+    margin: 0 0 6px;
+    color: oklch(.48 .1 165);
+    font-size: 10.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .09em
+}
+
+.enroll-heading h1 {
+    margin: 0;
+    color: oklch(.29 .085 275);
+    font-size: 26px;
+    letter-spacing: -.035em
+}
+
+.enroll-heading>div>span {
+    display: block;
+    margin-top: 7px;
+    color: oklch(.53 .02 273);
+    font-size: 12px
+}
+
+.enroll-progress {
+    display: flex !important;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 13px;
+    border: 1px solid oklch(.88 .012 273);
+    border-radius: 10px;
+    background: oklch(.99 .004 273)
+}
+
+.enroll-progress strong {
+    color: oklch(.42 .1 165);
+    font-size: 15px
+}
+
+.enroll-progress span {
+    margin: 0 !important;
+    font-size: 10.5px !important
+}
+
+.enroll-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-bottom: 17px;
+    padding: 11px 13px;
+    border: 1px solid oklch(.88 .06 25);
+    border-radius: 9px;
+    background: oklch(.96 .025 25);
+    color: oklch(.48 .13 25);
+    font-size: 11.5px
+}
+
+.enroll-alert strong {
+    white-space: nowrap
+}
+
+.enroll-alert span {
+    color: oklch(.47 .055 25)
+}
+
+.enroll-workspace {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    align-items: start;
+    gap: 22px
+}
+
+.enroll-nav {
+    position: sticky;
+    top: 76px;
+    padding: 16px;
+    border: 1px solid oklch(.89 .012 273);
+    border-radius: 13px;
+    background: oklch(.99 .004 273);
+    box-shadow: 0 8px 24px oklch(.25 .025 273/.035)
+}
+
+.enroll-nav>p {
+    margin: 0 0 10px;
+    padding: 0 7px;
+    color: oklch(.6 .02 273);
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .09em
+}
+
+.enroll-nav>button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 7px;
+    background: transparent;
+    color: oklch(.34 .03 273);
+    text-align: left;
+    cursor: pointer
+}
+
+.enroll-nav>button:hover {
+    background: oklch(.96 .012 273)
+}
+
+.enroll-nav>button i,
+.enroll-section-title>i {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: oklch(.93 .025 275);
+    color: oklch(.38 .09 275);
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 800
+}
+
+.enroll-nav>button span {
+    font-size: 11.5px;
+    font-weight: 700
+}
+
+.enroll-nav>button small {
+    display: block;
+    margin-top: 2px;
+    color: oklch(.6 .02 273);
+    font-size: 9.5px;
+    font-weight: 500
+}
+
+.enroll-nav>div {
+    margin-top: 13px;
+    padding: 13px 7px 2px;
+    border-top: 1px solid oklch(.92 .009 273)
+}
+
+.enroll-nav>div strong,
+.enroll-nav>div small {
+    display: block
+}
+
+.enroll-nav>div strong {
+    margin-bottom: 7px;
+    font-size: 10px
+}
+
+.enroll-nav>div small {
+    margin-top: 7px;
+    color: oklch(.6 .02 273);
+    font-size: 9.5px
+}
+
+.enroll-form {
+    overflow: hidden;
+    border: 1px solid oklch(.89 .012 273);
+    border-radius: 14px;
+    background: oklch(.99 .004 273);
+    box-shadow: 0 10px 28px oklch(.25 .025 273/.045)
+}
+
+.enroll-form>section {
+    scroll-margin-top: 88px;
+    padding: 26px 28px;
+    border-bottom: 1px solid oklch(.91 .01 273)
+}
+
+.enroll-section-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    margin-bottom: 22px
+}
+
+.enroll-section-title h2 {
+    margin: 1px 0 4px;
+    color: oklch(.3 .065 275);
+    font-size: 16px;
+    letter-spacing: -.015em
+}
+
+.enroll-section-title p {
+    margin: 0;
+    color: oklch(.57 .02 273);
+    font-size: 10.5px
+}
+
+.enroll-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 17px 18px
+}
+
+.enroll-field {
+    display: block
+}
+
+.enroll-field>span:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    color: oklch(.36 .035 273);
+    font-size: 10.5px;
+    font-weight: 750
+}
+
+.enroll-field>span b {
+    color: oklch(.56 .025 273);
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em
+}
+
+.enroll-field input,
+.enroll-field select {
+    width: 100%;
+    height: 40px;
+    border: 1px solid oklch(.87 .012 273);
+    border-radius: 8px;
+    padding: 0 11px;
+    background: oklch(.985 .005 273);
+    color: oklch(.29 .025 273);
+    font: inherit;
+    outline: none;
+    transition: border-color .16s ease-out, box-shadow .16s ease-out
+}
+
+.enroll-field input::placeholder {
+    color: oklch(.68 .015 273)
+}
+
+.enroll-field input:focus,
+.enroll-field select:focus {
+    border-color: oklch(.58 .11 165);
+    box-shadow: 0 0 0 3px oklch(.93 .03 165)
+}
+
+.enroll-field.has-error input,
+.enroll-field.has-error select {
+    border-color: oklch(.61 .16 25);
+    box-shadow: 0 0 0 3px oklch(.95 .025 25)
+}
+
+.enroll-field>small {
+    display: block;
+    margin-top: 5px;
+    color: oklch(.61 .018 273);
+    font-size: 9px;
+    line-height: 1.35
+}
+
+.enroll-field>small.enroll-field__error {
+    color: oklch(.51 .15 25);
+    font-weight: 650
+}
+
+.enroll-location {
+    align-self: end;
+    min-height: 40px;
+    padding: 8px 11px;
+    border-radius: 8px;
+    background: oklch(.96 .02 165)
+}
+
+.enroll-location span,
+.enroll-location strong,
+.enroll-location small {
+    display: block
+}
+
+.enroll-location span {
+    color: oklch(.55 .04 165);
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: .05em
+}
+
+.enroll-location strong {
+    margin-top: 2px;
+    color: oklch(.37 .075 165);
+    font-size: 11px
+}
+
+.enroll-location small {
+    margin-top: 2px;
+    color: oklch(.5 .05 165);
+    font-size: 9px
+}
+
+.enroll-spouse {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px;
+    border-radius: 10px;
+    background: oklch(.965 .012 273)
+}
+
+.enroll-spouse strong,
+.enroll-spouse span {
+    display: block
+}
+
+.enroll-spouse strong {
+    font-size: 11.5px
+}
+
+.enroll-spouse span {
+    margin-top: 4px;
+    color: oklch(.57 .02 273);
+    font-size: 9.5px
+}
+
+.enroll-spouse>div:last-child {
+    display: flex;
+    padding: 3px;
+    border: 1px solid oklch(.88 .012 273);
+    border-radius: 8px;
+    background: oklch(.99 .004 273)
+}
+
+.enroll-spouse button {
+    width: 48px;
+    height: 29px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: oklch(.53 .025 273);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer
+}
+
+.enroll-spouse button.active {
+    background: oklch(.36 .09 275);
+    color: oklch(.98 .006 273)
+}
+
+.enroll-spouse-fields {
+    margin-top: 17px
+}
+
+.enroll-beneficiary-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 15px;
+    margin: 27px 0 13px
+}
+
+.enroll-beneficiary-heading h3 {
+    margin: 0;
+    color: oklch(.31 .055 275);
+    font-size: 14px
+}
+
+.enroll-beneficiary-heading p {
+    margin: 4px 0 0;
+    color: oklch(.58 .02 273);
+    font-size: 9.5px
+}
+
+.enroll-beneficiary-heading button {
+    height: 34px;
+    border: 1px solid oklch(.86 .012 273);
+    border-radius: 8px;
+    padding: 0 12px;
+    background: oklch(.99 .004 273);
+    color: oklch(.37 .07 275);
+    font-size: 10px;
+    font-weight: 750;
+    cursor: pointer
+}
+
+.enroll-beneficiary-heading button:disabled {
+    cursor: not-allowed;
+    opacity: .45
+}
+
+.enroll-beneficiaries {
+    display: grid;
+    gap: 12px
+}
+
+.enroll-beneficiaries article {
+    border: 1px solid oklch(.9 .01 273);
+    border-radius: 10px
+}
+
+.enroll-beneficiaries article>header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 13px;
+    border-bottom: 1px solid oklch(.92 .009 273);
+    background: oklch(.975 .007 273)
+}
+
+.enroll-beneficiaries article>header>span {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border-radius: 7px;
+    background: oklch(.92 .025 275);
+    color: oklch(.4 .08 275);
+    font-size: 9.5px;
+    font-weight: 800
+}
+
+.enroll-beneficiaries header strong,
+.enroll-beneficiaries header small {
+    display: block
+}
+
+.enroll-beneficiaries header strong {
+    font-size: 10.5px
+}
+
+.enroll-beneficiaries header small {
+    margin-top: 2px;
+    color: oklch(.61 .018 273);
+    font-size: 8.5px
+}
+
+.enroll-beneficiaries header button {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: oklch(.52 .14 25);
+    font-size: 9.5px;
+    font-weight: 700;
+    cursor: pointer
+}
+
+.enroll-beneficiaries article>.enroll-fields {
+    padding: 15px
+}
+
+.enroll-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: oklch(.99 .004 273);
+    box-shadow: 0 -8px 20px oklch(.25 .025 273/.06)
+}
+
+.enroll-footer>a {
+    color: oklch(.53 .025 273);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-decoration: none
+}
+
+.enroll-footer>div {
+    display: flex;
+    align-items: center;
+    gap: 14px
+}
+
+.enroll-footer span {
+    color: oklch(.58 .02 273);
+    font-size: 9.5px
+}
+
+.enroll-footer button,
+.enroll-review__actions button {
+    height: 38px;
+    border: 0;
+    border-radius: 8px;
+    padding: 0 15px;
+    background: oklch(.34 .1 275);
+    color: oklch(.98 .006 273);
+    font-size: 10.5px;
+    font-weight: 750;
+    cursor: pointer
+}
+
+.enroll-review {
+    overflow: hidden;
+    border: 1px solid oklch(.89 .012 273);
+    border-radius: 14px;
+    background: oklch(.99 .004 273);
+    box-shadow: 0 10px 28px oklch(.25 .025 273/.045)
+}
+
+.enroll-review__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 25px;
+    border-bottom: 1px solid oklch(.91 .01 273)
+}
+
+.enroll-review__heading p {
+    margin: 0 0 5px;
+    color: oklch(.48 .1 165);
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .07em
+}
+
+.enroll-review__heading h2 {
+    margin: 0;
+    font-size: 19px
+}
+
+.enroll-review__heading div>span {
+    display: block;
+    margin-top: 4px;
+    color: oklch(.57 .02 273);
+    font-size: 10px
+}
+
+.enroll-pending {
+    display: inline-flex !important;
+    width: max-content;
+    align-items: center;
+    border-radius: 999px;
+    padding: 5px 8px;
+    background: oklch(.96 .055 80);
+    color: oklch(.52 .12 65) !important;
+    font-size: 9.5px !important;
+    font-weight: 750
+}
+
+.enroll-review__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr)
+}
+
+.enroll-review__grid>section {
+    padding: 24px 25px;
+    border-bottom: 1px solid oklch(.92 .009 273)
+}
+
+.enroll-review__grid>section:nth-child(odd) {
+    border-right: 1px solid oklch(.92 .009 273)
+}
+
+.enroll-review__grid h3 {
+    margin: 0 0 15px;
+    color: oklch(.33 .055 275);
+    font-size: 12px
+}
+
+.enroll-summary-row {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 10px;
+    padding: 7px 0
+}
+
+.enroll-summary-row dt {
+    color: oklch(.59 .02 273);
+    font-size: 9.5px
+}
+
+.enroll-summary-row dd {
+    margin: 0;
+    color: oklch(.35 .025 273);
+    font-size: 10.5px;
+    font-weight: 650
+}
+
+.enroll-summary-row dd>span {
+    color: oklch(.66 .015 273);
+    font-weight: 500
+}
+
+.enroll-review ol {
+    margin: 0;
+    padding: 0;
+    list-style: none
+}
+
+.enroll-review li {
+    padding: 8px 0;
+    border-bottom: 1px solid oklch(.94 .008 273)
+}
+
+.enroll-review li:last-child {
+    border: 0
+}
+
+.enroll-review li strong,
+.enroll-review li span {
+    display: block
+}
+
+.enroll-review li strong {
+    font-size: 10.5px
+}
+
+.enroll-review li span {
+    margin-top: 3px;
+    color: oklch(.59 .02 273);
+    font-size: 9px;
+    text-transform: capitalize
+}
+
+.enroll-review__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    padding: 14px 18px
+}
+
+.enroll-review__actions button {
+    border: 1px solid oklch(.86 .012 273);
+    background: transparent;
+    color: oklch(.39 .04 273)
+}
+
+.enroll-review__actions button.primary {
+    border-color: oklch(.34 .1 275);
+    background: oklch(.34 .1 275);
+    color: oklch(.98 .006 273)
+}
+
+.enroll-review__actions button:disabled {
+    cursor: not-allowed;
+    opacity: .55
+}
+
+.enroll-success {
+    max-width: 600px;
+    margin: 70px auto;
+    padding: 40px;
+    border: 1px solid oklch(.88 .012 273);
+    border-radius: 15px;
+    background: oklch(.99 .004 273);
+    text-align: center;
+    box-shadow: 0 14px 38px oklch(.25 .025 273/.06)
+}
+
+.enroll-success__mark {
+    display: grid;
+    width: 50px;
+    height: 50px;
+    margin: 0 auto 15px;
+    place-items: center;
+    border-radius: 50%;
+    background: oklch(.94 .045 160);
+    color: oklch(.44 .12 160);
+    font-size: 21px;
+    font-weight: 800
+}
+
+.enroll-success>p {
+    margin: 0;
+    color: oklch(.47 .1 165);
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em
+}
+
+.enroll-success h1 {
+    margin: 8px auto 22px;
+    max-width: 440px;
+    color: oklch(.29 .075 275);
+    font-size: 21px;
+    line-height: 1.35
+}
+
+.enroll-success dl {
+    max-width: 360px;
+    margin: 0 auto 25px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: oklch(.97 .009 273);
+    text-align: left
+}
+
+.enroll-success>div:last-child {
+    display: flex;
+    justify-content: center;
+    gap: 9px
+}
+
+.enroll-success>div:last-child a,
+.enroll-success>div:last-child button {
+    display: inline-flex;
+    height: 38px;
+    align-items: center;
+    border: 1px solid oklch(.34 .1 275);
+    border-radius: 8px;
+    padding: 0 14px;
+    background: oklch(.34 .1 275);
+    color: oklch(.98 .006 273);
+    font-size: 10.5px;
+    font-weight: 750;
+    text-decoration: none;
+    cursor: pointer
+}
+
+.enroll-success>div:last-child button {
+    border-color: oklch(.86 .012 273);
+    background: transparent;
+    color: oklch(.38 .04 273)
+}
+
+@media(max-width:900px) {
+    .enroll-workspace {
+        grid-template-columns: 1fr
+    }
+
+    .enroll-nav {
+        position: static;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        overflow-x: auto
+    }
+
+    .enroll-nav>p,
+    .enroll-nav>div {
+        display: none
+    }
+
+    .enroll-nav>button {
+        width: auto;
+        min-width: max-content
+    }
+
+    .enroll-nav>button small {
+        display: none
+    }
+}
+
+@media(max-width:650px) {
+    .enroll-heading {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .enroll-progress {
+        align-self: stretch
+    }
+
+    .enroll-form>section {
+        padding: 21px 17px
+    }
+
+    .enroll-fields {
+        grid-template-columns: 1fr
+    }
+
+    .enroll-spouse {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .enroll-beneficiary-heading {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .enroll-footer {
+        align-items: flex-end
+    }
+
+    .enroll-footer>div {
+        align-items: flex-end;
+        flex-direction: column;
+        gap: 7px
+    }
+
+    .enroll-review__grid {
+        grid-template-columns: 1fr
+    }
+
+    .enroll-review__grid>section:nth-child(odd) {
+        border-right: 0
+    }
+
+    .enroll-review__actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr
+    }
+
+    .enroll-summary-row {
+        grid-template-columns: 110px 1fr
+    }
+
+    .enroll-success {
+        margin: 20px auto;
+        padding: 28px 18px
+    }
+
+    .enroll-success>div:last-child {
+        flex-direction: column
+    }
+
+    .enroll-success>div:last-child a,
+    .enroll-success>div:last-child button {
+        justify-content: center
+    }
+}

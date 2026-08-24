@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
-import { SelectField } from "@/components/ui/FormField";
 import Pagination from "@/components/ui/Pagination";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TableFrame from "@/components/ui/TableFrame";
@@ -140,20 +140,12 @@ export default function Claims() {
       {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 
       <div className="mb-4 max-w-52">
-        <SelectField
-          label="Submission status"
+        <label className="mb-1.5 block text-[11.5px] font-bold text-(--text-strong)">Submission status</label>
+        <Dropdown
           value={status}
-          onChange={(e) =>
-            updateParams({ status: e.target.value || null, page: null })
-          }
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace("_", " ")}
-            </option>
-          ))}
-        </SelectField>
+          onChange={(value) => updateParams({ status: value || null, page: null })}
+          options={[{ value: "", label: "All statuses" }, ...STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))]}
+        />
       </div>
 
       <TableFrame label="Claim submissions" className="min-w-190">

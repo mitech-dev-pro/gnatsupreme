@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dropdown from "@/components/ui/Dropdown";
 import { CURRENCIES } from "@/lib/currency";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 
@@ -438,25 +439,21 @@ export default function Settings() {
               </div>
               <div>
                 <label htmlFor="settings-currency" className={labelClasses}>Currency</label>
-                <select
+                <Dropdown
                   id="settings-currency"
                   value={form.currency}
-                  onChange={(e) => updateField("currency", e.target.value.toUpperCase())}
-                  className={inputClasses}
-                >
-                  {CURRENCIES.map((currency) => <option key={currency.value} value={currency.value}>{currency.label}</option>)}
-                </select>
+                  onChange={(value) => updateField("currency", value.toUpperCase())}
+                  options={CURRENCIES.map((currency) => ({ value: currency.value, label: currency.label }))}
+                />
               </div>
               <div>
                 <label htmlFor="settings-timezone" className={labelClasses}>Timezone</label>
-                <select
+                <Dropdown
                   id="settings-timezone"
                   value={form.timezone}
-                  onChange={(e) => updateField("timezone", e.target.value)}
-                  className={inputClasses}
-                >
-                  {TIMEZONES.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}
-                </select>
+                  onChange={(value) => updateField("timezone", value)}
+                  options={TIMEZONES.map((timezone) => ({ value: timezone, label: timezone }))}
+                />
               </div>
             </div>
           </section>

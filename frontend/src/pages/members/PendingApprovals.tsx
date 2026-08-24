@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import "./PendingApprovals.css";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -67,7 +68,7 @@ export default function PendingApprovals() {
 
   return <main className="approvals-page">
     <PageHeader eyebrow="Member administration" title="Pending approvals" description={`${total.toLocaleString()} member${total === 1 ? "" : "s"} waiting for review`} actions={<div className="approvals-key"><Signal good yes="Ready" no="Needs attention"/><Signal good={false} yes="" no="Review required"/></div>} />
-    <div className="approvals-toolbar"><form onSubmit={submitSearch}><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search pending members"/><button>Search</button></form><label>Show <select value={limit} onChange={(event) => updateParams({ limit: event.target.value, page: null })}>{[5,10,20].map((size) => <option key={size}>{size}</option>)}</select></label></div>
+    <div className="approvals-toolbar"><form onSubmit={submitSearch}><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search pending members"/><button>Search</button></form><label>Show <Dropdown className="w-[74px]" value={limit} onChange={(value) => updateParams({ limit: value, page: null })} options={[5,10,20].map((size) => ({ value: size, label: String(size) }))}/></label></div>
     {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
     {result && <div className="mb-3"><Alert tone={result.failed ? "warning" : "success"}><strong>{result.succeeded} of {result.requested} completed.</strong> {result.failed ? `${result.failed} member${result.failed === 1 ? "" : "s"} could not be processed.` : "All selected members were processed successfully."}{result.failed > 0 && <ul className="mt-2 list-disc pl-5">{result.results.filter((item) => !item.success).map((item) => <li key={item.memberId}>{item.memberName || `Member ${item.memberId}`}: {item.message}</li>)}</ul>}<button className="ml-2 underline" onClick={() => setResult(null)}>Dismiss</button></Alert></div>}
 

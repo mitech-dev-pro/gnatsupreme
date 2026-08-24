@@ -3,9 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import DatePicker from "@/components/ui/DatePicker";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useDistricts } from "@/lib/useDistricts";
+import { parseISODate, toISODate } from "@/lib/utils";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -464,18 +467,13 @@ export default function MemberDetail() {
                   <div className="mt-2">
                     {assigningDistrict ? (
                       <form onSubmit={submitAssignDistrict} className="flex flex-wrap items-center gap-2">
-                        <select
+                        <Dropdown
+                          className="w-64"
                           value={assignDistrictId}
-                          onChange={(e) => setAssignDistrictId(e.target.value)}
-                          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
-                        >
-                          <option value="">Select a district…</option>
-                          {districts.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name} · {d.region.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={setAssignDistrictId}
+                          placeholder="Select a district…"
+                          options={districts.map((d) => ({ value: String(d.id), label: `${d.name} · ${d.region.name}` }))}
+                        />
                         <button
                           type="submit"
                           disabled={assignBusy || !assignDistrictId}
@@ -630,12 +628,11 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className={labelClasses}>Date of Birth</label>
-                      <input
-                        type="date"
-                        value={editDob}
-                        onChange={(e) => setEditDob(e.target.value)}
-                        className={inputClasses}
+                      <DatePicker
+                        label="Date of Birth"
+                        maxDate={new Date()}
+                        value={parseISODate(editDob)}
+                        onChange={(date) => setEditDob(date ? toISODate(date) : "")}
                       />
                     </div>
                     <div>
@@ -818,12 +815,11 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className={labelClasses}>Date of Birth</label>
-                      <input
-                        type="date"
-                        value={spouseDob}
-                        onChange={(e) => setSpouseDob(e.target.value)}
-                        className={inputClasses}
+                      <DatePicker
+                        label="Date of Birth"
+                        maxDate={new Date()}
+                        value={parseISODate(spouseDob)}
+                        onChange={(date) => setSpouseDob(date ? toISODate(date) : "")}
                       />
                     </div>
                     <div>
@@ -907,35 +903,28 @@ export default function MemberDetail() {
                   </div>
                   <div>
                     <label className={labelClasses}>Relationship</label>
-                    <select
+                    <Dropdown
                       value={newBeneficiary.relationship}
-                      onChange={(e) =>
+                      onChange={(value) =>
                         setNewBeneficiary((p) => ({
                           ...p,
-                          relationship: e.target.value,
+                          relationship: value,
                         }))
                       }
-                      className={inputClasses}
-                    >
-                      {RELATIONSHIPS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      options={RELATIONSHIPS.map((r) => ({ value: r, label: r }))}
+                    />
                   </div>
                   <div>
-                    <label className={labelClasses}>Date of Birth</label>
-                    <input
-                      type="date"
-                      value={newBeneficiary.dateOfBirth}
-                      onChange={(e) =>
+                    <DatePicker
+                      label="Date of Birth"
+                      maxDate={new Date()}
+                      value={parseISODate(newBeneficiary.dateOfBirth)}
+                      onChange={(date) =>
                         setNewBeneficiary((p) => ({
                           ...p,
-                          dateOfBirth: e.target.value,
+                          dateOfBirth: date ? toISODate(date) : "",
                         }))
                       }
-                      className={inputClasses}
                     />
                   </div>
                   <div className="flex items-end gap-2">
@@ -1182,17 +1171,11 @@ export default function MemberDetail() {
                   className="mb-5 rounded-[10px] border border-[#e5e9f0] p-4"
                 >
                   <label className={labelClasses}>Reason</label>
-                  <select
+                  <Dropdown
                     value={removeReason}
-                    onChange={(e) => setRemoveReason(e.target.value)}
-                    className={inputClasses}
-                  >
-                    {REMOVAL_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setRemoveReason}
+                    options={REMOVAL_REASONS.map((r) => ({ value: r, label: r }))}
+                  />
                   <label className={`${labelClasses} mt-3`}>
                     Note{" "}
                     {removeReason === "OTHER" ? "(required)" : "(optional)"}

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import Button from "@/components/ui/Button";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -219,21 +220,15 @@ export default function ImportReview() {
       )}
 
       <div className="mb-4">
-        <select
+        <Dropdown
+          className="w-56"
           value={rowStatus}
-          onChange={(e) => {
-            setRowStatus(e.target.value);
+          onChange={(value) => {
+            setRowStatus(value);
             setPage(1);
           }}
-          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-2 text-[12.5px] text-[#171b26]"
-        >
-          <option value="">All rows</option>
-          {ROW_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          options={[{ value: "", label: "All rows" }, ...ROW_STATUSES.map((s) => ({ value: s, label: s }))]}
+        />
       </div>
 
       <TableFrame label="Import rows" className="min-w-[720px]">
@@ -294,18 +289,13 @@ export default function ImportReview() {
                               <span className="text-[12.5px] text-[#5b6472]">
                                 Map "{row.districtName}" to:
                               </span>
-                              <select
+                              <Dropdown
+                                className="w-64"
                                 value={mappingDistrictId}
-                                onChange={(e) => setMappingDistrictId(e.target.value)}
-                                className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
-                              >
-                                <option value="">Select a district…</option>
-                                {districts.map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name} · {d.region.name}
-                                  </option>
-                                ))}
-                              </select>
+                                onChange={setMappingDistrictId}
+                                placeholder="Select a district…"
+                                options={districts.map((d) => ({ value: String(d.id), label: `${d.name} · ${d.region.name}` }))}
+                              />
                               <button
                                 type="button"
                                 onClick={() => submitDistrictMapping(row)}

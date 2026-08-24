@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
+import Dropdown from "@/components/ui/Dropdown";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -98,9 +99,34 @@ export default function MembersList() {
 
     <section className="members-toolbar" aria-label="Member filters">
       <form onSubmit={submitSearch} className="members-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search name, Controller ID, Ghana Card or school" aria-label="Search members"/><button type="submit">Search</button></form>
-      <select value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })} aria-label="Filter by status"><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select>
-      <select value={districtId} onChange={(event) => updateParams({ districtId: event.target.value || null, page: null })} aria-label="Filter by district"><option value="">All districts</option>{regions.map((region) => <optgroup key={region} label={region}>{districts.filter((item) => item.region.name === region).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>)}</select>
-      <label className="members-page-size"><span>Show</span><select value={limit} onChange={(event) => updateParams({ limit: event.target.value, page: null })} aria-label="Rows per page">{[5, 10, 20].map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+      <Dropdown
+        className="w-[190px]"
+        value={status}
+        onChange={(value) => updateParams({ status: value || null, page: null })}
+        aria-label="Filter by status"
+        options={[{ value: "", label: "All statuses" }, ...STATUSES.map((item) => ({ value: item, label: item.charAt(0) + item.slice(1).toLowerCase() }))]}
+      />
+      <Dropdown
+        className="w-[190px]"
+        value={districtId}
+        onChange={(value) => updateParams({ districtId: value || null, page: null })}
+        aria-label="Filter by district"
+        options={[{ value: "", label: "All districts" }]}
+        groups={regions.map((region) => ({
+          label: region,
+          options: districts.filter((item) => item.region.name === region).map((item) => ({ value: String(item.id), label: item.name })),
+        }))}
+      />
+      <label className="members-page-size">
+        <span>Show</span>
+        <Dropdown
+          className="w-[74px]"
+          value={limit}
+          onChange={(value) => updateParams({ limit: value, page: null })}
+          aria-label="Rows per page"
+          options={[5, 10, 20].map((size) => ({ value: size, label: String(size) }))}
+        />
+      </label>
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#5b6472", whiteSpace: "nowrap" }}>
         <input type="checkbox" checked={missingFromReport20} onChange={(event) => updateParams({ missingFromReport20: event.target.checked ? "1" : null, page: null })} />
         Missing from Report 20

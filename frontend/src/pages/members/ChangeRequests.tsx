@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -72,7 +73,10 @@ export default function ChangeRequests() {
 
   return <main className="change-page">
     <PageHeader eyebrow="Member administration" title="Change requests" description={`${total.toLocaleString()} ${status ? status.toLowerCase() : "matching"} request${total === 1 ? "" : "s"} in your access scope`} />
-    <div className="change-filters" aria-label="Change request filters"><select aria-label="Filter by status" value={status} onChange={(event) => updateParams({ status: event.target.value || null, page: null })}><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}</select><select aria-label="Filter by request type" value={type} onChange={(event) => updateParams({ type: event.target.value || null, page: null })}><option value="">All request types</option>{TYPES.map((item) => <option key={item} value={item}>{labels[item]}</option>)}</select></div>
+    <div className="change-filters" aria-label="Change request filters">
+      <Dropdown aria-label="Filter by status" className="w-48" value={status} onChange={(value) => updateParams({ status: value || null, page: null })} options={[{ value: "", label: "All statuses" }, ...STATUSES.map((item) => ({ value: item, label: item.charAt(0) + item.slice(1).toLowerCase() }))]} />
+      <Dropdown aria-label="Filter by request type" className="w-56" value={type} onChange={(value) => updateParams({ type: value || null, page: null })} options={[{ value: "", label: "All request types" }, ...TYPES.map((item) => ({ value: item, label: labels[item] }))]} />
+    </div>
     {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
     <div className="change-workspace">
       <section className="change-queue" aria-labelledby="request-queue-heading">

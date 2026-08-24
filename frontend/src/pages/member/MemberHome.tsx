@@ -5,6 +5,9 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { formatCurrency } from "@/lib/currency";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import DatePicker from "@/components/ui/DatePicker";
+import Dropdown from "@/components/ui/Dropdown";
+import { parseISODate, toISODate } from "@/lib/utils";
 
 type Beneficiary = {
   id: number;
@@ -181,7 +184,7 @@ function MemberDetailsForm({ profile, onClose, onSubmitted }: { profile: MemberP
     <div className="mb-4"><h3 className="text-[13.5px] font-bold text-(--text-strong)">Request profile changes</h3><p className="mt-0.5 text-[11.5px] text-(--text-muted)">Your current details remain active until an administrator approves this request.</p></div>
     <div className="grid gap-4 sm:grid-cols-2">
       <div><label htmlFor="member-profile-name" className={labelClasses}>Full legal name</label><input id="member-profile-name" value={fullName} onChange={(event) => setFullName(event.target.value)} className={inputClasses} minLength={2} required /></div>
-      <div><label htmlFor="member-profile-dob" className={labelClasses}>Date of birth</label><input id="member-profile-dob" type="date" max={new Date().toISOString().slice(0, 10)} value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className={inputClasses} /></div>
+      <div><DatePicker label="Date of birth" maxDate={new Date()} value={parseISODate(dateOfBirth)} onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")} /></div>
       <div><label htmlFor="member-profile-card" className={labelClasses}>Ghana Card ID</label><input id="member-profile-card" value={ghanaCardId} onChange={(event) => setGhanaCardId(event.target.value.toUpperCase())} placeholder="GHA-000000000-0" className={inputClasses} /></div>
       <div><label htmlFor="member-profile-phone" className={labelClasses}>Phone number</label><input id="member-profile-phone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} className={inputClasses} /></div>
       <div className="sm:col-span-2"><label htmlFor="member-profile-school" className={labelClasses}>School or institution</label><input id="member-profile-school" value={school} onChange={(event) => setSchool(event.target.value)} className={inputClasses} minLength={2} required /></div>
@@ -239,8 +242,7 @@ function SpouseForm({
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className={labelClasses}>Date of Birth</label>
-          <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className={inputClasses} />
+          <DatePicker label="Date of Birth" maxDate={new Date()} value={parseISODate(dateOfBirth)} onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")} />
         </div>
         <div>
           <label className={labelClasses}>Ghana Card ID</label>
@@ -326,18 +328,15 @@ function BeneficiaryForm({
         </div>
         <div>
           <label className={labelClasses}>Relationship</label>
-          <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inputClasses}>
-            {RELATIONSHIPS.map((r) => (
-              <option key={r} value={r}>
-                {r.charAt(0) + r.slice(1).toLowerCase()}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            value={relationship}
+            onChange={setRelationship}
+            options={RELATIONSHIPS.map((r) => ({ value: r, label: r.charAt(0) + r.slice(1).toLowerCase() }))}
+          />
         </div>
       </div>
-      <div>
-        <label className={labelClasses}>Date of Birth</label>
-        <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className={`max-w-52 ${inputClasses}`} />
+      <div className="max-w-52">
+        <DatePicker label="Date of Birth" maxDate={new Date()} value={parseISODate(dateOfBirth)} onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")} />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import api from "@/lib/api";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import DatePicker from "@/components/ui/DatePicker";
+import Dropdown from "@/components/ui/Dropdown";
 import { useAuth } from "@/lib/AuthContext";
 import PageHeader from "@/components/ui/PageHeader";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
+import { parseISODate, toISODate } from "@/lib/utils";
 
 type Region = { id: number; name: string; _count: { districts: number } };
 type District = { id: number; name: string; region: { id: number; name: string }; _count: { members: number } };
@@ -425,14 +428,12 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
             </div>
             <div>
               <label className={labelClasses}>Region</label>
-              <select value={newDistrictRegionId} onChange={(e) => setNewDistrictRegionId(e.target.value)} className={inputClasses}>
-                <option value="">Select region</option>
-                {regions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+              <Dropdown
+                value={newDistrictRegionId}
+                onChange={setNewDistrictRegionId}
+                placeholder="Select region"
+                options={regions.map((r) => ({ value: String(r.id), label: r.name }))}
+              />
             </div>
             <button
               type="submit"
@@ -470,17 +471,12 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
                   </td>
                   <td className="py-2 text-[#5b6472]">
                     {editingDistrictId === district.id ? (
-                      <select
+                      <Dropdown
+                        className="w-40"
                         value={editingDistrictRegionId}
-                        onChange={(e) => setEditingDistrictRegionId(e.target.value)}
-                        className={inputClasses}
-                      >
-                        {regions.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setEditingDistrictRegionId}
+                        options={regions.map((r) => ({ value: String(r.id), label: r.name }))}
+                      />
                     ) : (
                       district.region.name
                     )}
@@ -587,14 +583,12 @@ function GeographyTab({ canEdit }: { canEdit: boolean }) {
               </div>
               <div>
                 <label className={labelClasses}>Correct district</label>
-                <select value={aliasDistrictId} onChange={(e) => setAliasDistrictId(e.target.value)} className={inputClasses}>
-                  <option value="">Select district</option>
-                  {districts.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.region.name})
-                    </option>
-                  ))}
-                </select>
+                <Dropdown
+                  value={aliasDistrictId}
+                  onChange={setAliasDistrictId}
+                  placeholder="Select district"
+                  options={districts.map((d) => ({ value: String(d.id), label: `${d.name} (${d.region.name})` }))}
+                />
               </div>
               <button
                 type="submit"
@@ -821,8 +815,7 @@ function BenefitsTab({ canEdit }: { canEdit: boolean }) {
           </div>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <label className={labelClasses}>Effective From</label>
-              <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className={inputClasses} required />
+              <DatePicker label="Effective From" required value={parseISODate(effectiveFrom)} onChange={(date) => setEffectiveFrom(date ? toISODate(date) : "")} />
             </div>
             <div>
               <label className={labelClasses}>Monthly Premium (GHS)</label>

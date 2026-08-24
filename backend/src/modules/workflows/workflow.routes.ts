@@ -86,7 +86,7 @@ memberWorkflowRouter.post("/:id/verify-phone", async (request, response) => {
     return;
   }
   const member = await prisma.member.update({ where: { id: existing.id }, data: { phoneVerifiedAt: new Date() } });
-  await recordAudit({ request, actor, action: "MEMBER_PHONE_VERIFIED", entityType: "MEMBER", entityId: member.id, description: `Verified the member phone number for ${member.fullName}`, afterData: { phoneVerifiedAt: member.phoneVerifiedAt }, regionId: existing.district.regionId, districtId: existing.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_PHONE_VERIFIED", entityType: "MEMBER", entityId: member.id, description: `Verified the member phone number for ${member.fullName}`, afterData: { phoneVerifiedAt: member.phoneVerifiedAt }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "PHONE_VERIFIED", title: "Phone number verified", message: "Your phone number has been verified for GNAT Supreme Care member access.", idempotencyKey: `phone-verified:${member.id}:${member.phoneVerifiedAt!.getTime()}` });
   response.json({ success: true, data: { id: member.id, phoneVerifiedAt: member.phoneVerifiedAt } });
 });
@@ -144,7 +144,7 @@ memberWorkflowRouter.post("/:id/check-report20", async (request, response) => {
     return;
   }
   const member = await prisma.member.update({ where: { id: existing.id }, data: { report20Matched: true } });
-  await recordAudit({ request, actor, action: "MEMBER_REPORT20_MATCHED", entityType: "MEMBER", entityId: member.id, description: `Matched ${member.fullName} against Report 20 file ${checkedImport.fileName}`, afterData: { report20Matched: true, importJobId: latestImport.id }, regionId: existing.district.regionId, districtId: existing.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_REPORT20_MATCHED", entityType: "MEMBER", entityId: member.id, description: `Matched ${member.fullName} against Report 20 file ${checkedImport.fileName}`, afterData: { report20Matched: true, importJobId: latestImport.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   response.json({ success: true, data: { matched: true, alreadyMatched: false, checkedImport, member } });
 });
 
@@ -167,7 +167,7 @@ memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATION
         prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
         prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
       ]);
-      await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Bulk-approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id, bulk: true }, regionId: existing.district.regionId, districtId: existing.districtId });
+      await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Bulk-approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id, bulk: true }, regionId: existing.district?.regionId, districtId: existing.districtId });
       await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
       results.push({ memberId, success: true, memberName: member.fullName, status: toStatus });
     } catch (error) {
@@ -195,7 +195,7 @@ memberWorkflowRouter.post("/bulk/return", authorizeRoles("SUPER_ADMIN", "NATIONA
         prisma.member.update({ where: { id: existing.id }, data: { status: "RETURNED" } }),
         prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "RETURNED", fromStatus: existing.status, toStatus: "RETURNED", note: body.data.note, performedById: actor.id } }),
       ]);
-      await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Bulk-returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id, bulk: true }, regionId: existing.district.regionId, districtId: existing.districtId });
+      await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Bulk-returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id, bulk: true }, regionId: existing.district?.regionId, districtId: existing.districtId });
       await notifyMember({ memberId: member.id, type: "MEMBER_RETURNED", title: "Membership needs correction", message: `Your membership record was returned for correction: ${body.data.note}`, idempotencyKey: `member-workflow:${event.id}` });
       results.push({ memberId, success: true, memberName: member.fullName, status: "RETURNED" });
     } catch (error) {
@@ -231,7 +231,7 @@ memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONA
     prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
     prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
   ]);
-  await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id }, regionId: existing.district.regionId, districtId: existing.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
   response.json({ success: true, data: { member, event } });
 });
@@ -257,7 +257,7 @@ memberWorkflowRouter.post("/:id/return", authorizeRoles("SUPER_ADMIN", "NATIONAL
     prisma.member.update({ where: { id: existing.id }, data: { status: "RETURNED" } }),
     prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "RETURNED", fromStatus: existing.status, toStatus: "RETURNED", note: body.data.note, performedById: actor.id } }),
   ]);
-  await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id }, regionId: existing.district.regionId, districtId: existing.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "MEMBER_RETURNED", title: "Membership needs correction", message: `Your membership record was returned for correction: ${body.data.note}`, idempotencyKey: `member-workflow:${event.id}` });
   response.json({ success: true, data: { member, event } });
 });
@@ -287,7 +287,7 @@ memberWorkflowRouter.post("/:id/remove", authorizeRoles("SUPER_ADMIN", "NATIONAL
       : null;
     return { member, event, claim };
   });
-  await recordAudit({ request, actor, action: "MEMBER_REMOVED", entityType: "MEMBER", entityId: result.member.id, description: `Removed ${result.member.fullName}: ${body.data.reason}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, reason: body.data.reason, workflowEventId: result.event.id, claimSubmissionId: result.claim?.id }, regionId: existing.district.regionId, districtId: existing.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_REMOVED", entityType: "MEMBER", entityId: result.member.id, description: `Removed ${result.member.fullName}: ${body.data.reason}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, reason: body.data.reason, workflowEventId: result.event.id, claimSubmissionId: result.claim?.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: result.member.id, type: "MEMBER_REMOVED", title: "Membership status changed", message: `Your GNAT Supreme Care membership has been removed. Reason: ${body.data.reason}.`, idempotencyKey: `member-workflow:${result.event.id}` });
   response.json({ success: true, data: result });
 });
@@ -333,7 +333,7 @@ changeRequestRouter.post("/members/:id", async (request, response) => {
     return;
   }
   const item = await prisma.memberChangeRequest.create({ data: { memberId: member.id, type: body.data.type, targetBeneficiaryId: targetId, proposedData: "proposedData" in body.data ? asJson(body.data.proposedData) : undefined, requestNote: body.data.requestNote, requestedById: actor.id } });
-  await recordAudit({ request, actor, action: "MEMBER_CHANGE_REQUESTED", entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `Requested ${item.type} change for ${member.fullName}`, afterData: { type: item.type, targetBeneficiaryId: item.targetBeneficiaryId }, regionId: member.district.regionId, districtId: member.districtId });
+  await recordAudit({ request, actor, action: "MEMBER_CHANGE_REQUESTED", entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `Requested ${item.type} change for ${member.fullName}`, afterData: { type: item.type, targetBeneficiaryId: item.targetBeneficiaryId }, regionId: member.district?.regionId, districtId: member.districtId });
   response.status(201).json({ success: true, data: item });
 });
 
@@ -392,7 +392,7 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
     await prisma.memberChangeRequest.update({ where: { id: item.id }, data: { status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
   }
   const reviewed = await prisma.memberChangeRequest.findUnique({ where: { id: item.id } });
-  await recordAudit({ request, actor, action: `MEMBER_CHANGE_${reviewed!.status}`, entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `${reviewed!.status} ${item.type} change for ${item.member.fullName}`, afterData: { status: reviewed!.status, reviewNote: reviewed!.reviewNote }, regionId: item.member.district.regionId, districtId: item.member.districtId });
+  await recordAudit({ request, actor, action: `MEMBER_CHANGE_${reviewed!.status}`, entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `${reviewed!.status} ${item.type} change for ${item.member.fullName}`, afterData: { status: reviewed!.status, reviewNote: reviewed!.reviewNote }, regionId: item.member.district?.regionId, districtId: item.member.districtId });
   await notifyMember({ memberId: item.memberId, type: `CHANGE_REQUEST_${reviewed!.status}`, title: "Change request updated", message: `Your ${item.type.toLowerCase().replaceAll("_", " ")} request was ${reviewed!.status.toLowerCase()}${reviewed!.reviewNote ? `: ${reviewed!.reviewNote}` : "."}`, idempotencyKey: `change-request-review:${item.id}:${reviewed!.status}` });
   response.json({ success: true, data: reviewed });
 });

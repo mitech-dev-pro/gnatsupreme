@@ -133,6 +133,13 @@ transferRouter.post("/", async (request, response) => {
     response.status(409).json({ success: false, message: "A removed member cannot be transferred" });
     return;
   }
+  if (!member.districtId) {
+    response.status(409).json({
+      success: false,
+      message: "This member has no district on file yet — assign one directly on their record before requesting a transfer",
+    });
+    return;
+  }
   if (member.districtId === parsed.data.toDistrictId) {
     response.status(400).json({ success: false, message: "Destination must differ from the current district" });
     return;
@@ -171,7 +178,7 @@ transferRouter.post("/", async (request, response) => {
       action: "TRANSFER_REQUESTED",
       entityType: "MEMBER_TRANSFER",
       entityId: transfer.id,
-      description: `Requested transfer for ${member.fullName} from ${member.district.name} to ${destination.name}`,
+      description: `Requested transfer for ${member.fullName} from ${member.district!.name} to ${destination.name}`,
       afterData: {
         memberId: member.id,
         fromDistrictId: member.districtId,
@@ -179,10 +186,10 @@ transferRouter.post("/", async (request, response) => {
         reason: parsed.data.reason,
         status: transfer.status,
       },
-      regionId: member.district.regionId,
+      regionId: member.district!.regionId,
       districtId: member.districtId,
     });
-    await notifyMember({ memberId: member.id, type: "TRANSFER_REQUESTED", title: "Transfer requested", message: `A transfer from ${member.district.name} to ${destination.name} has been requested for your membership.`, idempotencyKey: `transfer:${transfer.id}:requested` });
+    await notifyMember({ memberId: member.id, type: "TRANSFER_REQUESTED", title: "Transfer requested", message: `A transfer from ${member.district!.name} to ${destination.name} has been requested for your membership.`, idempotencyKey: `transfer:${transfer.id}:requested` });
     response.status(201).json({ success: true, data: transfer });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "P2002") {

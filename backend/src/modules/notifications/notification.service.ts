@@ -83,13 +83,21 @@ export async function notifyStaffForMember(input: {
     select: { districtId: true, district: { select: { regionId: true } } },
   });
   if (!member) return [];
+  // A member with no district yet (e.g. auto-enrolled from Report 20 with an unresolved district)
+  // has no region/district admin to route to — only national-level staff can resolve it, so
+  // district-scoped recipients are simply omitted rather than passing regionId/districtId as
+  // undefined, which Prisma would treat as "no filter" and notify every regional/district admin.
   const recipients = await prisma.user.findMany({
     where: {
       isActive: true,
       OR: [
         { role: { in: ["SUPER_ADMIN", "NATIONAL_ADMIN"] } },
-        { role: "REGIONAL_ADMIN", regionId: member.district.regionId },
-        { role: "DISTRICT_ADMIN", districtId: member.districtId },
+        ...(member.district
+          ? [
+              { role: "REGIONAL_ADMIN" as const, regionId: member.district.regionId },
+              { role: "DISTRICT_ADMIN" as const, districtId: member.districtId },
+            ]
+          : []),
       ],
     },
     select: { id: true },

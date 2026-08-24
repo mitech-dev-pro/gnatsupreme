@@ -112,8 +112,8 @@ memberFileRouter.post(
     const category = categorySchema.safeParse(request.body.category ?? "MEMBER_DOCUMENT");
     const member = response.locals.fileMember as {
       id: number;
-      districtId: number;
-      district: { regionId: number };
+      districtId: number | null;
+      district: { regionId: number } | null;
       spouse: { id: number } | null;
     };
     if (!category.success) {
@@ -170,7 +170,7 @@ memberFileRouter.post(
           mimeType: file.mimeType,
           sizeBytes: file.sizeBytes,
         },
-        regionId: member.district.regionId,
+        regionId: member.district?.regionId,
         districtId: member.districtId,
       });
       response.status(201).json({ success: true, data: file });
@@ -195,7 +195,7 @@ fileRouter.get("/:storedName", async (request, response) => {
   const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
   const accessible = file?.member
     ? elevated ||
-      (user.role === "REGIONAL_ADMIN" && file.member.district.regionId === user.regionId) ||
+      (user.role === "REGIONAL_ADMIN" && file.member.district?.regionId === user.regionId) ||
       (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
     : elevated;
   if (!file || !accessible) {
@@ -232,7 +232,7 @@ fileRouter.delete("/:id", async (request, response) => {
   const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
   const accessible = file?.member
     ? elevated ||
-      (user.role === "REGIONAL_ADMIN" && file.member.district.regionId === user.regionId) ||
+      (user.role === "REGIONAL_ADMIN" && file.member.district?.regionId === user.regionId) ||
       (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
     : elevated;
   if (!file || !accessible) {
@@ -264,7 +264,7 @@ fileRouter.delete("/:id", async (request, response) => {
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
     },
-    regionId: file.member?.district.regionId,
+    regionId: file.member?.district?.regionId,
     districtId: file.member?.districtId,
   });
   response.status(204).send();

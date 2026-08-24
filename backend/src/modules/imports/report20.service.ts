@@ -198,7 +198,7 @@ export async function reconcileReport20(
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
   const changedMemberIds = new Set<number>();
-  const enrolledDistrictIds = new Map<string, number>();
+  const enrolledDistrictIds = new Map<string, number | null>();
   const counts = {
     matched: 0,
     changed: 0,
@@ -237,23 +237,26 @@ export async function reconcileReport20(
       issues.push("Controller ID appears more than once in this file");
     } else if (!member) {
       // A Controller ID that's genuinely new gets auto-enrolled as ACTIVE, using only what
-      // Report 20 provides — beneficiary/Ghana Card/DOB/phone are left blank for staff to fill in later.
+      // Report 20 provides — beneficiary/Ghana Card/DOB/phone are left blank for staff to fill in
+      // later. District is not a show-stopper either: an unresolved district (missing, ambiguous, or
+      // an unaliased spelling) no longer blocks enrollment — the member is created with districtId
+      // null and flagged for follow-up, resolved later by a system user (editing the member) or by
+      // the member themselves, rather than being left out of the system entirely.
       const { district, ambiguous } = row.districtName
         ? resolveDistrict(row.districtName, row.regionName, districts, aliasMap)
         : { district: null, ambiguous: false };
-      if (!district) {
-        status = "UNMATCHED";
+      status = "ENROLLED";
+      enrolledDistrictIds.set(controllerId, district?.id ?? null);
+      if (district) {
+        issues.push("Auto-enrolled from Report 20 as a new active member");
+      } else {
         issues.push(
           !row.districtName
-            ? "New member could not be auto-enrolled: district is required"
+            ? "Auto-enrolled without a district — none was provided. Needs follow-up."
             : ambiguous
-              ? "New member could not be auto-enrolled: district is ambiguous"
-              : "New member could not be auto-enrolled: district was not found",
+              ? `Auto-enrolled without a district — "${row.districtName}" matches more than one district. Needs follow-up.`
+              : `Auto-enrolled without a district — "${row.districtName}" was not recognized. Needs follow-up.`,
         );
-      } else {
-        status = "ENROLLED";
-        enrolledDistrictIds.set(controllerId, district.id);
-        issues.push("Auto-enrolled from Report 20 as a new active member");
       }
     } else {
       if (normalizeValue(row.fullName) !== normalizeValue(member.fullName))

@@ -190,7 +190,7 @@ memberRouter.post("/", async (request, response) => {
       spouseRecorded: Boolean(member.spouse),
       beneficiaryCount: member.beneficiaries.length,
     },
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.status(201).json({ success: true, data: member });
@@ -262,7 +262,7 @@ memberRouter.patch("/:id", async (request, response) => {
       districtId: member.districtId,
       report20Matched: member.report20Matched,
     },
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.json({ success: true, data: member });
@@ -322,7 +322,7 @@ memberRouter.put("/:id/spouse", async (request, response) => {
       ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
       : undefined,
     afterData: { fullName: spouse.fullName, dateOfBirth: spouse.dateOfBirth },
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.json({ success: true, data: spouse });
@@ -353,7 +353,7 @@ memberRouter.delete("/:id/spouse", async (request, response) => {
     beforeData: member.spouse
       ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
       : undefined,
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.status(204).send();
@@ -384,7 +384,7 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
     entityId: beneficiary.id,
     description: `Added beneficiary for ${member.fullName}`,
     afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.status(201).json({ success: true, data: beneficiary });
@@ -414,7 +414,7 @@ memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response
     description: `Updated beneficiary for ${member.fullName}`,
     beforeData: previous ? { fullName: previous.fullName, relationship: previous.relationship } : undefined,
     afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.json({ success: true, data: beneficiary });
@@ -444,7 +444,7 @@ memberRouter.delete("/:id/beneficiaries/:beneficiaryId", async (request, respons
     beforeData: beneficiary
       ? { fullName: beneficiary.fullName, relationship: beneficiary.relationship }
       : undefined,
-    regionId: member.district.regionId,
+    regionId: member.district?.regionId,
     districtId: member.districtId,
   });
   response.status(204).send();

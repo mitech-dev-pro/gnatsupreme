@@ -32,7 +32,7 @@ type MemberProfile = {
   school: string;
   status: string;
   report20Matched: boolean;
-  district: { id: number; name: string; region: { id: number; name: string } };
+  district: { id: number; name: string; region: { id: number; name: string } } | null;
   spouse: Spouse | null;
   beneficiaries: Beneficiary[];
 };
@@ -558,7 +558,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
                   <div>
                     <div className="mb-2 flex items-center gap-2"><span className="rounded-full bg-white/14 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide">{profile.status}</span><span className="text-[11px] text-white/65">Membership coverage</span></div>
                     <h2 id="coverage-summary-title" className="text-[19px] font-extrabold">Your cover is {profile.status === "ACTIVE" ? "active" : profile.status.toLowerCase()}</h2>
-                    <p className="mt-1 max-w-[60ch] text-[12px] leading-relaxed text-white/72">{profile.school} · {profile.district.name}, {profile.district.region.name}</p>
+                    <p className="mt-1 max-w-[60ch] text-[12px] leading-relaxed text-white/72">{profile.school} · {profile.district ? `${profile.district.name}, ${profile.district.region.name}` : "District not yet assigned"}</p>
                   </div>
                   {benefitPlan && <div className="shrink-0 border-t border-white/14 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0"><span className="block text-[10px] font-semibold uppercase tracking-wide text-white/58">Monthly premium</span><strong className="mt-0.5 block text-[18px]">{formatCurrency(benefitPlan.monthlyPremium, settings.currency)}</strong><span className="mt-0.5 block text-[10.5px] text-white/65">via {benefitPlan.collectionMethod}</span></div>}
                 </div>
@@ -646,7 +646,7 @@ export default function MemberHome({ section = "overview" }: { section?: MemberP
 
               <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
                 <div className="px-5 py-5 sm:px-6 lg:border-r lg:border-(--border-default)"><h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">Personal and contact details</h3><dl className="mt-3 divide-y divide-(--border-default)">{[["Full legal name", profile.fullName], ["Date of birth", formatDate(profile.dateOfBirth)], ["Ghana Card ID", profile.ghanaCardId ?? "Not provided"], ["Phone number", profile.phone ?? "Not provided"]].map(([label, value]) => <div key={label} className="grid gap-1 py-3 sm:grid-cols-[150px_1fr]"><dt className="text-[11.5px] text-(--text-muted)">{label}</dt><dd className="break-words text-[12.5px] font-semibold text-(--ink)">{value}{label === "Phone number" && profile.phoneVerifiedAt && <span className="ml-2 rounded-full bg-(--success-soft) px-2 py-0.5 text-[9px] font-bold text-(--success)">Verified</span>}</dd></div>)}</dl></div>
-                <div className="px-5 py-5 sm:px-6"><h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">Membership context</h3><dl className="mt-3 divide-y divide-(--border-default)">{[["School or institution", profile.school], [settings.subRegionLabel, profile.district.name], ["Region", profile.district.region.name], [settings.reconciliationSource, profile.report20Matched ? "Matched" : "Needs review"]].map(([label, value]) => <div key={label} className="py-3"><dt className="text-[10.5px] text-(--text-muted)">{label}</dt><dd className="mt-0.5 text-[12.5px] font-semibold text-(--ink)">{value}</dd></div>)}</dl><p className="mt-3 rounded-[9px] bg-(--info-soft) px-3 py-2 text-[10.5px] leading-relaxed text-(--text-muted)">Changes to these records are reviewed before they become active.</p></div>
+                <div className="px-5 py-5 sm:px-6"><h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">Membership context</h3><dl className="mt-3 divide-y divide-(--border-default)">{[["School or institution", profile.school], [settings.subRegionLabel, profile.district?.name ?? "Not yet assigned"], ["Region", profile.district?.region.name ?? "Not yet assigned"], [settings.reconciliationSource, profile.report20Matched ? "Matched" : "Needs review"]].map(([label, value]) => <div key={label} className="py-3"><dt className="text-[10.5px] text-(--text-muted)">{label}</dt><dd className="mt-0.5 text-[12.5px] font-semibold text-(--ink)">{value}</dd></div>)}</dl><p className="mt-3 rounded-[9px] bg-(--info-soft) px-3 py-2 text-[10.5px] leading-relaxed text-(--text-muted)">Changes to these records are reviewed before they become active.</p></div>
               </div>
               {editingProfile && <MemberDetailsForm profile={profile} onClose={() => setEditingProfile(false)} onSubmitted={afterRequestSubmitted} />}
             </section>}

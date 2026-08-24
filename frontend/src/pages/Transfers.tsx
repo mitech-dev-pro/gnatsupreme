@@ -31,8 +31,8 @@ type MemberOption = {
   id: number;
   controllerId: string;
   fullName: string;
-  districtId: number;
-  district: { id: number; name: string; region: { id: number; name: string } };
+  districtId: number | null;
+  district: { id: number; name: string; region: { id: number; name: string } } | null;
 };
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"];
@@ -71,7 +71,9 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
     const timer = setTimeout(async () => {
       try {
         const res = await api.get("/members", { params: { search: memberSearch.trim(), limit: 8 } });
-        if (!cancelled) setMemberOptions(res.data.data);
+        // A member with no district assigned yet can't be transferred (there's nothing to
+        // transfer from) — filtered out here rather than letting staff pick one and hit a 409.
+        if (!cancelled) setMemberOptions(res.data.data.filter((option: MemberOption) => option.district));
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -107,7 +109,7 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
           {member ? (
             <div className="flex items-center justify-between rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-3 py-2 text-[12.5px]">
               <span>
-                <strong>{member.fullName}</strong> · {member.controllerId} · currently {member.district.name}
+                <strong>{member.fullName}</strong> · {member.controllerId} · currently {member.district?.name ?? "no district"}
               </span>
               <button type="button" onClick={() => setMember(null)} className="font-semibold text-[#c23b3b]">
                 Change
@@ -144,7 +146,7 @@ function RequestTransferForm({ onClose, onCreated }: { onClose: () => void; onCr
                         }}
                         className="block w-full px-3 py-2 text-left text-[12.5px] hover:bg-[#fafbfd]"
                       >
-                        <strong>{option.fullName}</strong> · {option.controllerId} · {option.district.name}
+                        <strong>{option.fullName}</strong> · {option.controllerId} · {option.district?.name ?? "no district"}
                       </button>
                     ))
                   )}

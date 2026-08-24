@@ -135,8 +135,8 @@ reportRouter.get("/membership.csv", async (request, response) => {
             row.fullName,
             row.ghanaCardId,
             row.school,
-            row.district.name,
-            row.district.region.name,
+            row.district?.name ?? "Unassigned",
+            row.district?.region.name ?? "",
             row.status,
             row.report20Matched ? "Matched" : "Not matched",
             row.spouse ? "Yes" : "No",
@@ -331,8 +331,8 @@ reportRouter.get("/removals.csv", async (request, response) => {
             row.controllerId,
             row.fullName,
             row.school,
-            row.district.name,
-            row.district.region.name,
+            row.district?.name ?? "Unassigned",
+            row.district?.region.name ?? "",
             row.updatedAt,
           ]);
         total += rows.length;

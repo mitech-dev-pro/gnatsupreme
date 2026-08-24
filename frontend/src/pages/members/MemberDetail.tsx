@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useDistricts } from "@/lib/useDistricts";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -49,7 +50,7 @@ type MemberDetailData = {
   report20Matched: boolean;
   missingFromReport20At: string | null;
   createdAt: string;
-  district: { id: number; name: string; region: { id: number; name: string } };
+  district: { id: number; name: string; region: { id: number; name: string } } | null;
   spouse: Spouse | null;
   beneficiaries: Beneficiary[];
   createdBy: { id: number; fullName: string } | null;
@@ -114,6 +115,12 @@ export default function MemberDetail() {
   const [editGhanaCard, setEditGhanaCard] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editSchool, setEditSchool] = useState("");
+
+  const { districts } = useDistricts();
+  const [assigningDistrict, setAssigningDistrict] = useState(false);
+  const [assignDistrictId, setAssignDistrictId] = useState("");
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignError, setAssignError] = useState("");
 
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
@@ -182,6 +189,23 @@ export default function MemberDetail() {
       setActionError(err?.response?.data?.message || "Unable to save changes.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitAssignDistrict = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!assignDistrictId) return;
+    setAssignBusy(true);
+    setAssignError("");
+    try {
+      await api.patch(`/members/${id}`, { districtId: Number(assignDistrictId) });
+      setAssigningDistrict(false);
+      setAssignDistrictId("");
+      await load();
+    } catch (err: any) {
+      setAssignError(err?.response?.data?.message || "Unable to assign a district.");
+    } finally {
+      setAssignBusy(false);
     }
   };
 
@@ -389,9 +413,60 @@ export default function MemberDetail() {
                   {member.fullName}
                 </h1>
                 <div className="mt-1 text-[12.5px] text-[#5b6472]">
-                  Controller ID {member.controllerId} · {member.district.name},{" "}
-                  {member.district.region.name}
+                  Controller ID {member.controllerId} ·{" "}
+                  {member.district ? (
+                    <>
+                      {member.district.name}, {member.district.region.name}
+                    </>
+                  ) : (
+                    <span className="font-semibold text-[#b9791a]">No district assigned</span>
+                  )}
                 </div>
+                {!member.district && canReview && (
+                  <div className="mt-2">
+                    {assigningDistrict ? (
+                      <form onSubmit={submitAssignDistrict} className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={assignDistrictId}
+                          onChange={(e) => setAssignDistrictId(e.target.value)}
+                          className="rounded-[9px] border border-[#e5e9f0] bg-white px-3 py-1.5 text-[12.5px] text-[#171b26]"
+                        >
+                          <option value="">Select a district…</option>
+                          {districts.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name} · {d.region.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="submit"
+                          disabled={assignBusy || !assignDistrictId}
+                          className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {assignBusy ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssigningDistrict(false)}
+                          className="text-[11.5px] font-semibold text-[#5b6472]"
+                        >
+                          Cancel
+                        </button>
+                        {assignError && (
+                          <p className="w-full text-[11.5px] font-semibold text-[#c23b3b]">{assignError}</p>
+                        )}
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAssigningDistrict(true)}
+                        className="text-[11.5px] font-semibold text-[#1f9c7c] hover:underline"
+                      >
+                        Assign district
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <StatusBadge

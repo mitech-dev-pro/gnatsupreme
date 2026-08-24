@@ -57,6 +57,7 @@ dashboardRouter.get("/", async (_request, response) => {
   const [
     statusGroups,
     report20Matched,
+    missingFromReport20,
     totalSpouses,
     totalBeneficiaries,
     pendingTransfers,
@@ -71,6 +72,7 @@ dashboardRouter.get("/", async (_request, response) => {
       _count: { _all: true },
     }),
     prisma.member.count({ where: { ...scope, report20Matched: true } }),
+    prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
     prisma.spouse.count({ where: { member: { is: scope } } }),
     prisma.beneficiary.count({ where: { member: { is: scope } } }),
     prisma.memberTransfer.count({
@@ -121,11 +123,11 @@ dashboardRouter.get("/", async (_request, response) => {
   );
   const latestImportMatchRate =
     latestImport && latestImport.totalRows
-      ? Number(
-          ((latestImport.matchedRows / latestImport.totalRows) * 100).toFixed(
-            1,
-          ),
-        )
+      ? latestImport.matchedRows === latestImport.totalRows
+        ? 100
+        : Math.floor(
+            (latestImport.matchedRows / latestImport.totalRows) * 1000,
+          ) / 10
       : 0;
   const enrollmentCounts = new Map<string, number>();
   for (const member of enrollments) {
@@ -149,6 +151,7 @@ dashboardRouter.get("/", async (_request, response) => {
         flagged: statusCounts.FLAGGED ?? 0,
         returned: statusCounts.RETURNED ?? 0,
         removed: statusCounts.REMOVED ?? 0,
+        missingFromReport20,
       },
       coverage: { spouses: totalSpouses, beneficiaries: totalBeneficiaries },
       report20: {

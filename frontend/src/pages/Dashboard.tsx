@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import "./Dashboard.css";
 
 type DashboardData = {
-  members: { total: number; active: number; pending: number; flagged: number; returned: number; removed: number };
+  members: { total: number; active: number; pending: number; flagged: number; returned: number; removed: number; missingFromReport20: number };
   coverage: { spouses: number; beneficiaries: number };
   report20: {
     matchedMembers: number;
@@ -88,10 +88,18 @@ export default function Dashboard() {
       <section className="dash-panel dash-panel--chart"><div className="dash-panel__heading"><div><h2>Enrollment</h2><p>Members added during the last 12 months</p></div><Link to="/members">View members</Link></div><EnrollmentChart data={data.enrollmentGrowth} /></section>
 
       <section className="dash-panel dash-health"><div className="dash-panel__heading"><div><h2>Operational health</h2><p>Items requiring review</p></div></div>
-        <div className="dash-health__score"><div style={{ "--score": `${data.report20.matchRate * 3.6}deg` } as CSSProperties}><strong>{data.report20.matchRate}%</strong><span>matched</span></div><p>Report 20 reconciliation</p></div>
+        <div className="dash-health__score"><div style={{ "--score": `${data.report20.matchRate * 3.6}deg` } as CSSProperties}><strong>{data.report20.matchRate}%</strong><span>latest upload</span></div><p>Report 20 reconciliation</p></div>
         <ul>
           <li><span className="amber"/>Pending transfers <strong>{data.transfers.pending}</strong></li>
           <li><span className="red"/>Flagged members <strong>{data.members.flagged}</strong></li>
+          <li>
+            <span className="amber"/>Missing from Report 20{" "}
+            <strong>
+              <Link to="/members?missingFromReport20=1">
+                {data.members.missingFromReport20.toLocaleString()}
+              </Link>
+            </strong>
+          </li>
           <li>
             <span className="navy"/>Unmatched in latest file{" "}
             <strong>

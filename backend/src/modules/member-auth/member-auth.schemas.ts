@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 
 const controllerIdSchema = z
   .string()
@@ -30,4 +31,22 @@ export const setupAccountSchema = z.object({
   districtId: z.coerce.number().int().positive().optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
   password: memberPasswordSchema,
+});
+
+export const memberLookupSchema = z.object({
+  controllerId: controllerIdSchema,
+});
+
+export const onboardingDetailsSchema = z.object({
+  dateOfBirth: z.coerce.date().max(new Date(), "Date cannot be in the future"),
+  ghanaCardId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^GHA-\d{9}-\d$/, "Use the format GHA-000000000-0"),
+  spouse: spouseSchema.nullable().optional(),
+  beneficiaries: z
+    .array(beneficiarySchema)
+    .min(1, "Add at least one beneficiary")
+    .max(10, "Up to 10 beneficiaries can be added"),
 });

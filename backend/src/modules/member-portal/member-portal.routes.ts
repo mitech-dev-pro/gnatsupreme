@@ -1,4 +1,8 @@
-import { Router, type Response } from "express";
+import path from "node:path";
+import { unlink } from "node:fs/promises";
+
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
 import { z } from "zod";
 
 import type { Prisma } from "../../generated/prisma/client.js";
@@ -6,9 +10,11 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
+import { onboardingDetailsSchema } from "../member-auth/member-auth.schemas.js";
 import { notifyMember, notifyStaffForMember } from "../notifications/notification.service.js";
 import { getOrganizationSettings, publicBranding } from "../settings/settings.service.js";
 import { getMemberProfileCompletion } from "./profile-completion.service.js";
+import { hasValidFileSignature, memberFileUpload } from "../files/file.storage.js";
 
 export const memberPortalRouter = Router();
 
@@ -121,6 +127,162 @@ memberPortalRouter.patch("/profile-completion/spouse-declaration", async (reques
     afterData: { spouseDeclarationStatus: "NONE" },
   });
   response.json({ success: true, data: await getMemberProfileCompletion(currentMember.id) });
+});
+
+// Direct-write onboarding, distinct from the change-request flow above: this only ever fills in
+// currently-blank fields on a brand-new profile (right after account setup), so there is nothing
+// to review — an established profile can only be edited afterward via a change request, which is
+// where the approval step actually earns its keep.
+memberPortalRouter.post("/onboarding", async (request, response) => {
+  const parsed = onboardingDetailsSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({
+      success: false,
+      message: "Enter valid details to continue",
+      errors: parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+    });
+    return;
+  }
+  const currentMember = member(response);
+  const { dateOfBirth, ghanaCardId, spouse, beneficiaries } = parsed.data;
+
+  if (spouse?.ghanaCardId && spouse.ghanaCardId === ghanaCardId) {
+    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID." });
+    return;
+  }
+
+  const existing = await prisma.member.findUniqueOrThrow({
+    where: { id: currentMember.id },
+    select: { dateOfBirth: true, ghanaCardId: true, spouse: { select: { id: true } }, _count: { select: { beneficiaries: true } } },
+  });
+  if (existing.dateOfBirth || existing.ghanaCardId) {
+    response.status(409).json({
+      success: false,
+      message: "Your date of birth and Ghana Card are already on record. Submit a change request to update them.",
+    });
+    return;
+  }
+  if (spouse && existing.spouse) {
+    response.status(409).json({ success: false, message: "A spouse is already recorded. Submit a change request to update it." });
+    return;
+  }
+  if (existing._count.beneficiaries + beneficiaries.length > 10) {
+    response.status(409).json({ success: false, message: "Up to 10 beneficiaries can be recorded in total." });
+    return;
+  }
+
+  const duplicateGhanaCard = await prisma.member.findFirst({ where: { ghanaCardId, id: { not: currentMember.id } }, select: { id: true } });
+  if (duplicateGhanaCard) {
+    response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another membership." });
+    return;
+  }
+  if (spouse?.ghanaCardId) {
+    const duplicateSpouseCard = await prisma.spouse.findUnique({ where: { ghanaCardId: spouse.ghanaCardId }, select: { id: true } });
+    if (duplicateSpouseCard) {
+      response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another spouse." });
+      return;
+    }
+  }
+
+  const spouseId = await prisma.$transaction(async (transaction) => {
+    await transaction.member.update({
+      where: { id: currentMember.id },
+      data: {
+        dateOfBirth,
+        ghanaCardId,
+        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "NONE",
+      },
+    });
+    const createdSpouse = spouse
+      ? await transaction.spouse.create({
+          data: {
+            memberId: currentMember.id,
+            fullName: spouse.fullName,
+            dateOfBirth: spouse.dateOfBirth ?? null,
+            ghanaCardId: spouse.ghanaCardId ?? null,
+          },
+        })
+      : null;
+    await transaction.beneficiary.createMany({
+      data: beneficiaries.map((item) => ({
+        memberId: currentMember.id,
+        fullName: item.fullName,
+        relationship: item.relationship,
+        dateOfBirth: item.dateOfBirth ?? null,
+        trusteeName: item.trusteeName ?? null,
+        trusteeGhanaCardId: item.trusteeGhanaCardId ?? null,
+      })),
+    });
+    return createdSpouse?.id ?? null;
+  });
+
+  await recordAudit({
+    request,
+    action: "MEMBER_ONBOARDING_DETAILS_SUBMITTED",
+    entityType: "MEMBER",
+    entityId: currentMember.id,
+    description: `Member ${currentMember.controllerId} recorded their date of birth, Ghana Card, and policy details during account setup`,
+    afterData: { dateOfBirth, ghanaCardId, hasSpouse: Boolean(spouse), beneficiaryCount: beneficiaries.length },
+  });
+  response.status(201).json({ success: true, data: { spouseId } });
+});
+
+function receiveMarriageCertificate(request: Request, response: Response, next: NextFunction) {
+  memberFileUpload.single("file")(request, response, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      return;
+    }
+    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "File upload failed" });
+  });
+}
+
+memberPortalRouter.post("/spouse/marriage-certificate", receiveMarriageCertificate, async (request, response) => {
+  if (!request.file) {
+    response.status(400).json({ success: false, message: "Attach one file using the 'file' field" });
+    return;
+  }
+  if (!(await hasValidFileSignature(request.file.path, request.file.mimetype))) {
+    await unlink(request.file.path).catch(() => undefined);
+    response.status(400).json({ success: false, message: "File content does not match its declared type" });
+    return;
+  }
+
+  const currentMember = member(response);
+  const spouse = await prisma.spouse.findUnique({ where: { memberId: currentMember.id }, select: { id: true } });
+  if (!spouse) {
+    await unlink(request.file.path).catch(() => undefined);
+    response.status(409).json({ success: false, message: "Add your spouse's details before uploading a marriage certificate" });
+    return;
+  }
+
+  const storagePath = path.posix.join("member-files", request.file.filename);
+  const downloadPath = `/api/files/${request.file.filename}`;
+  const file = await prisma.storedFile.create({
+    data: {
+      category: "MARRIAGE_CERTIFICATE",
+      originalName: path.basename(request.file.originalname),
+      storedName: request.file.filename,
+      mimeType: request.file.mimetype,
+      sizeBytes: request.file.size,
+      storagePath,
+      downloadPath,
+      memberId: currentMember.id,
+      spouseId: spouse.id,
+      uploadedByMemberId: currentMember.id,
+    },
+    select: { id: true, category: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+  });
+  await recordAudit({
+    request,
+    action: "MEMBER_FILE_UPLOADED",
+    entityType: "STORED_FILE",
+    entityId: file.id,
+    description: `Member ${currentMember.controllerId} uploaded a marriage certificate`,
+    afterData: { category: file.category, originalName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes },
+  });
+  response.status(201).json({ success: true, data: file });
 });
 
 memberPortalRouter.get("/claims", async (_request, response) => {

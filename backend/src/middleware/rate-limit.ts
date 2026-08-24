@@ -94,6 +94,29 @@ export const memberForgotPasswordRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("member-forgot-password"),
 });
 
+export const memberLookupRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (request) => {
+    const controllerId =
+      String(request.body?.controllerId ?? "invalid")
+        .trim()
+        .replace(/\D/g, "") || "invalid";
+    return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
+  },
+  handler: jsonRateLimitHandler("member-lookup"),
+});
+
+export const memberLookupIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("member-lookup-network"),
+});
+
 export const memberSetupRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 5,

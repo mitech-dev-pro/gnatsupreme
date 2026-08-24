@@ -4,8 +4,29 @@ import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
+import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
-import { isMemberPortalPath } from "@/lib/utils";
+import { isMemberPortalPath, parseISODate, toISODate } from "@/lib/utils";
+
+const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
+const GHANA_CARD = /^GHA-\d{9}-\d$/;
+const normalizeGhanaCard = (value: string) => value.toUpperCase().replace(/\s/g, "").slice(0, 17);
+
+type BeneficiaryDraft = {
+  fullName: string;
+  relationship: string;
+  dateOfBirth: string;
+  trusteeName: string;
+  trusteeGhanaCardId: string;
+};
+
+const emptyBeneficiary = (): BeneficiaryDraft => ({
+  fullName: "",
+  relationship: "CHILD",
+  dateOfBirth: "",
+  trusteeName: "",
+  trusteeGhanaCardId: "",
+});
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -84,6 +105,7 @@ export default function Login() {
     login: memberLogin,
     setupAccount,
     forgotPassword,
+    markProfileComplete,
   } = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -96,6 +118,8 @@ export default function Login() {
     requestedRedirect.startsWith("/")
       ? requestedRedirect
       : "/";
+  const safeMemberRedirect =
+    requestedRedirect && isMemberPortalPath(requestedRedirect) ? requestedRedirect : "/member";
 
   const [mode, setMode] = useState<"staff" | "member">(requestedMode);
 
@@ -105,7 +129,9 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [memberStep, setMemberStep] = useState<"login" | "setup" | "forgot">("login");
+  const [memberStep, setMemberStep] = useState<
+    "login" | "lookup" | "setup" | "policy" | "forgot"
+  >(requestedMode === "member" && searchParams.get("step") === "policy" ? "policy" : "login");
   const [controllerId, setControllerId] = useState("");
   const [memberPassword, setMemberPassword] = useState("");
   const [showMemberPassword, setShowMemberPassword] = useState(false);
@@ -120,8 +146,17 @@ export default function Login() {
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
   const [districts, setDistricts] = useState<{ id: number; name: string; region: { name: string } }[]>([]);
 
+  const [policyDob, setPolicyDob] = useState("");
+  const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
+  const [includeSpouse, setIncludeSpouse] = useState(false);
+  const [spouseName, setSpouseName] = useState("");
+  const [spouseDob, setSpouseDob] = useState("");
+  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
+  const [marriageCertFile, setMarriageCertFile] = useState<File | null>(null);
+  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([emptyBeneficiary()]);
+
   useEffect(() => {
-    if (memberStep !== "setup" || districts.length > 0) return;
+    if ((memberStep !== "setup" && memberStep !== "policy") || districts.length > 0) return;
     api
       .get("/member-auth/districts")
       .then((res) => setDistricts(res.data.data))
@@ -140,17 +175,8 @@ export default function Login() {
     return <Navigate to={safeStaffRedirect} replace />;
   }
 
-  if (member && requestedMode === "member") {
-    return (
-      <Navigate
-        to={
-          requestedRedirect && isMemberPortalPath(requestedRedirect)
-            ? requestedRedirect
-            : "/member"
-        }
-        replace
-      />
-    );
+  if (member && requestedMode === "member" && memberStep !== "policy") {
+    return <Navigate to={safeMemberRedirect} replace />;
   }
 
   const handleStaffSubmit = async (e: FormEvent) => {
@@ -208,7 +234,7 @@ export default function Login() {
     }
   };
 
-  const handleSetupAccount = async (e: FormEvent) => {
+  const handleLookup = async (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
 
@@ -216,10 +242,25 @@ export default function Login() {
       setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
       return;
     }
-    if (!setupFullName.trim()) {
-      setMemberError("Enter your full name as it appears on your membership record.");
-      return;
+
+    setMemberSubmitting(true);
+    try {
+      const res = await api.post("/member-auth/lookup", { controllerId: controllerId.trim() });
+      setSetupFullName(res.data.data.fullName);
+      setMemberStep("setup");
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to look up that Controller ID.",
+      );
+    } finally {
+      setMemberSubmitting(false);
     }
+  };
+
+  const handleSetupAccount = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
     if (!setupEmail.trim()) {
       setMemberError("Enter your email address.");
       return;
@@ -242,10 +283,80 @@ export default function Login() {
         email: setupEmail.trim(),
         password: setupPassword,
       });
-      navigate("/member", { replace: true });
+      setMemberStep("policy");
     } catch (err: any) {
       setMemberError(
         err?.response?.data?.message || "Unable to set up your account.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const updateBeneficiary = (index: number, patch: Partial<BeneficiaryDraft>) =>
+    setBeneficiaries((current) =>
+      current.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    );
+  const removeBeneficiary = (index: number) =>
+    setBeneficiaries((current) => current.filter((_, i) => i !== index));
+
+  const submitPolicyDetails = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!policyDob) {
+      setMemberError("Enter your date of birth.");
+      return;
+    }
+    if (!GHANA_CARD.test(policyGhanaCardId)) {
+      setMemberError("Enter your Ghana Card ID in the format GHA-000000000-0.");
+      return;
+    }
+    if (includeSpouse && spouseName.trim().length < 2) {
+      setMemberError("Enter your spouse's full name.");
+      return;
+    }
+    if (includeSpouse && spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId)) {
+      setMemberError("Enter your spouse's Ghana Card ID in the format GHA-000000000-0.");
+      return;
+    }
+    for (const item of beneficiaries) {
+      if (!item.fullName.trim()) {
+        setMemberError("Enter a full name for every beneficiary.");
+        return;
+      }
+    }
+
+    setMemberSubmitting(true);
+    try {
+      const res = await api.post("/member-portal/onboarding", {
+        dateOfBirth: policyDob,
+        ghanaCardId: policyGhanaCardId,
+        spouse: includeSpouse
+          ? {
+              fullName: spouseName.trim(),
+              dateOfBirth: spouseDob || null,
+              ghanaCardId: spouseGhanaCardId || null,
+            }
+          : null,
+        beneficiaries: beneficiaries.map((item) => ({
+          fullName: item.fullName.trim(),
+          relationship: item.relationship,
+          dateOfBirth: item.dateOfBirth || null,
+          trusteeName: item.trusteeName || null,
+          trusteeGhanaCardId: item.trusteeGhanaCardId || null,
+        })),
+      });
+      if (includeSpouse && res.data.data.spouseId && marriageCertFile) {
+        const formData = new FormData();
+        formData.append("file", marriageCertFile);
+        await api.post("/member-portal/spouse/marriage-certificate", formData).catch(() => undefined);
+      }
+      markProfileComplete();
+      navigate(safeMemberRedirect, { replace: true });
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to save your details.",
       );
     } finally {
       setMemberSubmitting(false);
@@ -288,10 +399,18 @@ export default function Login() {
     setSetupEmail("");
     setSetupPassword("");
     setSetupConfirmPassword("");
+    setPolicyDob("");
+    setPolicyGhanaCardId("");
+    setIncludeSpouse(false);
+    setSpouseName("");
+    setSpouseDob("");
+    setSpouseGhanaCardId("");
+    setMarriageCertFile(null);
+    setBeneficiaries([emptyBeneficiary()]);
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5">
+    <div className="fixed inset-0 flex justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5 [align-items:safe_center]">
       <div className="grid w-full max-w-120 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-1">
         {/* Brand side */}
         {/* <div className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white md:flex">
@@ -594,7 +713,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => {
-                      setMemberStep("setup");
+                      setMemberStep("lookup");
                       setMemberError("");
                     }}
                     className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
@@ -661,24 +780,24 @@ export default function Login() {
                 )}
               </div>
             </>
-          ) : memberStep === "setup" ? (
+          ) : memberStep === "lookup" ? (
             <>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Set up your account
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Confirm your details, then choose a password and email for signing in from now on.
+                Enter your {settings.memberIdLabel} to get started.
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
 
-              <form onSubmit={handleSetupAccount} noValidate>
-                <div className="mb-3.5">
-                  <label htmlFor="setup-controller-id" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+              <form onSubmit={handleLookup} noValidate>
+                <div className="mb-4">
+                  <label htmlFor="lookup-controller-id" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
                     {settings.memberIdLabel}
                   </label>
                   <input
-                    id="setup-controller-id"
+                    id="lookup-controller-id"
                     value={controllerId}
                     onChange={(e) => {
                       setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7));
@@ -686,25 +805,54 @@ export default function Login() {
                     }}
                     placeholder="e.g. 1188204"
                     inputMode="numeric"
+                    autoComplete="username"
                     maxLength={7}
                     className={inputClasses.replace("pl-9", "pl-3")}
                   />
                 </div>
 
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {memberSubmitting ? "Looking up…" : "Register"}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberStep("login");
+                  setMemberError("");
+                }}
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+              >
+                Already set up? Log in
+              </button>
+            </>
+          ) : memberStep === "setup" ? (
+            <>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                Confirm your details
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                Choose a password and email for signing in from now on.
+              </div>
+
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleSetupAccount} noValidate>
                 <div className="mb-3.5">
                   <label htmlFor="setup-full-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
-                    Full name (as on your membership record)
+                    Full name
                   </label>
                   <input
                     id="setup-full-name"
                     value={setupFullName}
-                    onChange={(e) => {
-                      setSetupFullName(e.target.value);
-                      setMemberError("");
-                    }}
-                    placeholder="e.g. Kwasi Tawia"
-                    autoComplete="name"
-                    className={inputClasses.replace("pl-9", "pl-3")}
+                    readOnly
+                    disabled
+                    className={`${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`}
                   />
                 </div>
 
@@ -787,7 +935,7 @@ export default function Login() {
                   disabled={memberSubmitting}
                   className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {memberSubmitting ? "Setting up…" : "Set Up & Sign In"}
+                  {memberSubmitting ? "Continuing…" : "Continue"}
                 </button>
               </form>
 
@@ -799,8 +947,208 @@ export default function Login() {
                 }}
                 className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
               >
-                Back to sign in
+                Already set up? Log in
               </button>
+            </>
+          ) : memberStep === "policy" ? (
+            <>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                Your policy details
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                A few more details to finish setting up your membership.
+              </div>
+
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={submitPolicyDetails} noValidate>
+                <div className="mb-3.5">
+                  <DatePicker
+                    label="Date of birth"
+                    maxDate={new Date()}
+                    value={parseISODate(policyDob)}
+                    onChange={(date) => {
+                      setPolicyDob(date ? toISODate(date) : "");
+                      setMemberError("");
+                    }}
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="policy-ghana-card" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    Ghana Card ID
+                  </label>
+                  <input
+                    id="policy-ghana-card"
+                    value={policyGhanaCardId}
+                    onChange={(e) => {
+                      setPolicyGhanaCardId(normalizeGhanaCard(e.target.value));
+                      setMemberError("");
+                    }}
+                    placeholder="GHA-000000000-0"
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                </div>
+
+                <div className="mb-1.5 flex items-center justify-between rounded-[9px] bg-[#f6f7fb] px-3 py-2.5">
+                  <span className="text-[11.5px] font-bold text-[#1e2761]">Add a spouse?</span>
+                  <div className="flex gap-1 rounded-[9px] bg-[#eef0fa] p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setIncludeSpouse(false)}
+                      className={`rounded-[7px] px-2.5 py-1 text-[11px] font-bold transition ${!includeSpouse ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]" : "text-[#5b6472]"}`}
+                    >
+                      No
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeSpouse(true)}
+                      className={`rounded-[7px] px-2.5 py-1 text-[11px] font-bold transition ${includeSpouse ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]" : "text-[#5b6472]"}`}
+                    >
+                      Yes
+                    </button>
+                  </div>
+                </div>
+
+                {includeSpouse && (
+                  <div className="mt-3.5 rounded-[9px] border border-[#e5e9f0] p-3">
+                    <div className="mb-3">
+                      <label htmlFor="spouse-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                        Spouse full name
+                      </label>
+                      <input
+                        id="spouse-name"
+                        value={spouseName}
+                        onChange={(e) => {
+                          setSpouseName(e.target.value);
+                          setMemberError("");
+                        }}
+                        className={inputClasses.replace("pl-9", "pl-3")}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <DatePicker
+                        label="Spouse date of birth (optional)"
+                        maxDate={new Date()}
+                        value={parseISODate(spouseDob)}
+                        onChange={(date) => setSpouseDob(date ? toISODate(date) : "")}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label htmlFor="spouse-ghana-card" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                        Spouse Ghana Card (optional)
+                      </label>
+                      <input
+                        id="spouse-ghana-card"
+                        value={spouseGhanaCardId}
+                        onChange={(e) => {
+                          setSpouseGhanaCardId(normalizeGhanaCard(e.target.value));
+                          setMemberError("");
+                        }}
+                        placeholder="GHA-000000000-0"
+                        className={inputClasses.replace("pl-9", "pl-3")}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="marriage-cert" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                        Marriage certificate (optional)
+                      </label>
+                      <input
+                        id="marriage-cert"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        onChange={(e) => setMarriageCertFile(e.target.files?.[0] ?? null)}
+                        className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-2 pl-3 pr-3 text-[12px]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 mb-2 flex items-center justify-between">
+                  <h3 className="text-[11.5px] font-bold text-[#1e2761]">Beneficiaries</h3>
+                  <button
+                    type="button"
+                    disabled={beneficiaries.length >= 10}
+                    onClick={() => setBeneficiaries((current) => [...current, emptyBeneficiary()])}
+                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    + Add beneficiary
+                  </button>
+                </div>
+
+                {beneficiaries.map((item, index) => (
+                  <div key={index} className="mb-3 rounded-[9px] border border-[#e5e9f0] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#1e2761]">Beneficiary {index + 1}</span>
+                      {beneficiaries.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBeneficiary(index)}
+                          className="text-[11px] font-semibold text-[#c23b3b] hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="mb-2.5">
+                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Full name</label>
+                      <input
+                        value={item.fullName}
+                        onChange={(e) => updateBeneficiary(index, { fullName: e.target.value })}
+                        className={inputClasses.replace("pl-9", "pl-3")}
+                      />
+                    </div>
+                    <div className="mb-2.5">
+                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Relationship</label>
+                      <Dropdown
+                        value={item.relationship}
+                        onChange={(value) => updateBeneficiary(index, { relationship: value })}
+                        options={RELATIONSHIPS.map((relationship) => ({
+                          value: relationship,
+                          label: relationship.charAt(0) + relationship.slice(1).toLowerCase(),
+                        }))}
+                      />
+                    </div>
+                    <div className="mb-2.5">
+                      <DatePicker
+                        label="Date of birth (optional)"
+                        maxDate={new Date()}
+                        value={parseISODate(item.dateOfBirth)}
+                        onChange={(date) => updateBeneficiary(index, { dateOfBirth: date ? toISODate(date) : "" })}
+                      />
+                    </div>
+                    {item.relationship === "CHILD" && (
+                      <>
+                        <div className="mb-2.5">
+                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Trustee name (optional)</label>
+                          <input
+                            value={item.trusteeName}
+                            onChange={(e) => updateBeneficiary(index, { trusteeName: e.target.value })}
+                            className={inputClasses.replace("pl-9", "pl-3")}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Trustee Ghana Card (optional)</label>
+                          <input
+                            value={item.trusteeGhanaCardId}
+                            onChange={(e) => updateBeneficiary(index, { trusteeGhanaCardId: normalizeGhanaCard(e.target.value) })}
+                            placeholder="GHA-000000000-0"
+                            className={inputClasses.replace("pl-9", "pl-3")}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-2 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {memberSubmitting ? "Saving…" : "Finish Setup"}
+                </button>
+              </form>
             </>
           ) : (
             <>

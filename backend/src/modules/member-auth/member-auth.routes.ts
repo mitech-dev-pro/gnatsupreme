@@ -8,6 +8,8 @@ import {
   memberForgotPasswordRateLimiter,
   memberLoginIpRateLimiter,
   memberLoginRateLimiter,
+  memberLookupIpRateLimiter,
+  memberLookupRateLimiter,
   memberSetupRateLimiter,
   refreshRateLimiter,
 } from "../../middleware/rate-limit.js";
@@ -15,6 +17,7 @@ import { recordAudit } from "../audit/audit.service.js";
 import {
   forgotPasswordSchema,
   loginSchema,
+  memberLookupSchema,
   resetPasswordSchema,
   setupAccountSchema,
 } from "./member-auth.schemas.js";
@@ -179,6 +182,50 @@ memberAuthRouter.post(
       accessToken: await createMemberAccessToken(member.id),
       member: publicMember(member),
     });
+  },
+);
+
+memberAuthRouter.post(
+  "/lookup",
+  memberLookupIpRateLimiter,
+  memberLookupRateLimiter,
+  async (request, response) => {
+    const parsed = memberLookupSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response.status(400).json({ success: false, message: "Enter a valid Controller ID" });
+      return;
+    }
+    const genericFailure = () =>
+      response.status(404).json({
+        success: false,
+        message:
+          "We couldn't find a membership with that Controller ID to set up. Please check the number, or contact your local district office for help.",
+      });
+
+    const member = await prisma.member.findFirst({
+      where: { controllerId: parsed.data.controllerId },
+      select: { id: true, controllerId: true, fullName: true, status: true, passwordHash: true },
+    });
+    if (!member || !["ACTIVE", "FLAGGED"].includes(member.status)) {
+      genericFailure();
+      return;
+    }
+    if (member.passwordHash) {
+      response.status(409).json({
+        success: false,
+        message: "This membership already has a password set. Sign in, or use \"Forgot password?\" instead.",
+      });
+      return;
+    }
+
+    await recordAudit({
+      request,
+      action: "MEMBER_SETUP_LOOKUP",
+      entityType: "MEMBER",
+      entityId: member.id,
+      description: `Controller ID ${member.controllerId} was resolved for first-time account setup`,
+    });
+    response.json({ success: true, data: { fullName: member.fullName } });
   },
 );
 

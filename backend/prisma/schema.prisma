@@ -285,6 +285,7 @@ model Member {
   spouse           Spouse?
   beneficiaries    Beneficiary[]
   files            StoredFile[]
+  uploadedFiles    StoredFile[]              @relation("StoredFileUploadedByMember")
   transfers        MemberTransfer[]
   claimSubmissions ExternalClaimSubmission[]
   importRows       Report20Row[]
@@ -472,16 +473,22 @@ model StoredFile {
   downloadPath String       @unique @map("download_path")
   memberId     Int?         @map("member_id")
   spouseId     Int?         @map("spouse_id")
-  uploadedById Int          @map("uploaded_by_id")
+  // Exactly one of these is set: uploadedById for a staff upload, uploadedByMemberId for a
+  // member's own self-service upload (e.g. their marriage certificate) — enforced in app code,
+  // since Prisma has no "exactly one of" constraint.
+  uploadedById       Int?    @map("uploaded_by_id")
+  uploadedByMemberId Int?    @map("uploaded_by_member_id")
   member       Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
   spouse       Spouse?      @relation(fields: [spouseId], references: [id], onDelete: SetNull)
-  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedByMember Member?  @relation("StoredFileUploadedByMember", fields: [uploadedByMemberId], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now()) @map("created_at")
   importJob    ImportJob?
 
   @@index([memberId])
   @@index([spouseId])
   @@index([uploadedById])
+  @@index([uploadedByMemberId])
   @@index([category])
   @@map("stored_files")
 }

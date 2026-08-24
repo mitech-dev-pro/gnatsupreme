@@ -20,6 +20,9 @@ export type MemberUser = {
 type MemberAuthContextType = {
   member: MemberUser | null;
   isLoading: boolean;
+  // null while unknown/loading. Drives the profile-completion gate in MemberProtectedRoute.
+  profileComplete: boolean | null;
+  markProfileComplete: () => void;
   login: (controllerId: string, password: string) => Promise<MemberUser>;
   setupAccount: (input: {
     controllerId: string;
@@ -40,7 +43,23 @@ const MemberAuthContext = createContext<MemberAuthContextType | undefined>(
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
   const refreshStarted = useRef(false);
+
+  // Runs once per new member session (login, setup, or a page-load refresh) — not on every
+  // render — so a stale re-check can't undo the optimistic markProfileComplete() below.
+  useEffect(() => {
+    if (!member) {
+      setProfileComplete(null);
+      return;
+    }
+    api
+      .get("/member-portal/profile")
+      .then((res) => setProfileComplete(Boolean(res.data.data.profileCompletion?.complete)))
+      .catch(() => setProfileComplete(null));
+  }, [member?.id]);
+
+  const markProfileComplete = useCallback(() => setProfileComplete(true), []);
 
   useEffect(() => {
     if (refreshStarted.current) return;
@@ -109,7 +128,17 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <MemberAuthContext.Provider
-      value={{ member, isLoading, login, setupAccount, forgotPassword, resetPassword, logout }}
+      value={{
+        member,
+        isLoading,
+        profileComplete,
+        markProfileComplete,
+        login,
+        setupAccount,
+        forgotPassword,
+        resetPassword,
+        logout,
+      }}
     >
       {children}
     </MemberAuthContext.Provider>

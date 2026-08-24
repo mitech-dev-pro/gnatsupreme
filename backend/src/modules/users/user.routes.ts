@@ -30,7 +30,6 @@ const publicUserSelect = {
   region: { select: { id: true, name: true } },
   district: { select: { id: true, name: true } },
   createdAt: true,
-  updatedAt: true,
 } as const;
 
 class UserInputError extends Error {}

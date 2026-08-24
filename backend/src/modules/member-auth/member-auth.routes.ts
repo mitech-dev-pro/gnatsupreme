@@ -144,7 +144,9 @@ memberAuthRouter.post(
       response.status(403).json({
         success: false,
         message:
-          "This membership is not active yet. Please contact your local district office for help.",
+          member.status === "INACTIVE"
+            ? "This membership is currently inactive because it wasn't found in the latest payroll file. Please contact your local district office if this is incorrect."
+            : "This membership is not active yet. Please contact your local district office for help.",
       });
       return;
     }

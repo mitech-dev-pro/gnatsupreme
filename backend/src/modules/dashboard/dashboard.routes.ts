@@ -151,6 +151,7 @@ dashboardRouter.get("/", async (_request, response) => {
         flagged: statusCounts.FLAGGED ?? 0,
         returned: statusCounts.RETURNED ?? 0,
         removed: statusCounts.REMOVED ?? 0,
+        inactive: statusCounts.INACTIVE ?? 0,
         missingFromReport20,
       },
       coverage: { spouses: totalSpouses, beneficiaries: totalBeneficiaries },

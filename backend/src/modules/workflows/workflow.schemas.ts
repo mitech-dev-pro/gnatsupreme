@@ -20,6 +20,10 @@ export const removalSchema = z
     path: ["note"],
   });
 
+export const reactivateSchema = z.object({
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
 export const memberDetailsChangeSchema = z
   .object({
     fullName: z.string().trim().min(2).max(120).optional(),

@@ -10,11 +10,11 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import "./MembersList.css";
 
 type MemberRow = { id: number; controllerId: string; fullName: string; school: string; status: string; createdAt: string; missingFromReport20At: string | null; spouse: { fullName: string } | null; district: { id: number; name: string; region: { id: number; name: string } } | null };
-const STATUSES = ["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"];
+const STATUSES = ["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"];
 const PAGE_TITLES: Record<string, string> = { PENDING: "Pending approvals", REMOVED: "Removed members" };
 
 function Status({ value }: { value: string }) {
-  const tone = value === "ACTIVE" ? "success" : value === "PENDING" || value === "RETURNED" ? "warning" : value === "FLAGGED" || value === "REMOVED" ? "danger" : "neutral";
+  const tone = value === "ACTIVE" ? "success" : value === "PENDING" || value === "RETURNED" ? "warning" : value === "FLAGGED" || value === "REMOVED" || value === "INACTIVE" ? "danger" : "neutral";
   return <StatusBadge tone={tone}>{value.charAt(0) + value.slice(1).toLowerCase()}</StatusBadge>;
 }
 

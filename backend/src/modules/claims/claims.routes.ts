@@ -46,7 +46,15 @@ claimsRouter.get("/submissions", async (request, response) => {
   const [submissions, total] = await prisma.$transaction([
     prisma.externalClaimSubmission.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        externalClaimId: true,
+        provider: true,
+        status: true,
+        errorMessage: true,
+        submittedAt: true,
+        lastSyncedAt: true,
+        createdAt: true,
         member: { select: { id: true, controllerId: true, fullName: true } },
         submittedBy: { select: { id: true, fullName: true } },
       },
@@ -72,7 +80,15 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
   const user = response.locals.user as AuthenticatedUser;
   const submission = await prisma.externalClaimSubmission.findFirst({
     where: { id: params.data.id, member: { is: memberScope(user) } },
-    include: {
+    select: {
+      id: true,
+      externalClaimId: true,
+      provider: true,
+      status: true,
+      errorMessage: true,
+      submittedAt: true,
+      lastSyncedAt: true,
+      createdAt: true,
       member: { select: { id: true, controllerId: true, fullName: true } },
       submittedBy: { select: { id: true, fullName: true } },
     },

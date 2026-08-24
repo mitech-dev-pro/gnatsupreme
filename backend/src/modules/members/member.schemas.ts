@@ -49,7 +49,7 @@ export const updateMemberSchema = z
   .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update");
 
 export const memberStatusSchema = z.object({
-  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"]),
+  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"]),
 });
 
 export const memberIdParamsSchema = z.object({ id: z.coerce.number().int().positive() });
@@ -62,7 +62,7 @@ export const memberQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().trim().max(120).optional(),
-  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED"]).optional(),
+  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"]).optional(),
   regionId: z.coerce.number().int().positive().optional(),
   districtId: z.coerce.number().int().positive().optional(),
   missingFromReport20: z.coerce.boolean().optional(),

@@ -33,6 +33,8 @@ type AuditLog = {
   createdAt: string;
   actor: { id: number; fullName: string; email: string; role: string } | null;
   actorEmail: string | null;
+  beforeData: unknown;
+  afterData: unknown;
 };
 
 const ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"];
@@ -426,6 +428,7 @@ function AuditLogTab() {
   const [action, setAction] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -488,16 +491,52 @@ function AuditLogTab() {
                   <td colSpan={4}><EmptyState title="No audit entries found" description="No recorded activity matches the current description and action filters." /></td>
                 </tr>
               ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-b border-[#e5e9f0] last:border-0">
-                    <td className="px-4 py-2.5 text-[#5b6472]">{formatDateTime(row.createdAt)}</td>
-                    <td className="px-4 py-2.5">{row.actor?.fullName ?? row.actorEmail ?? "System"}</td>
-                    <td className="px-4 py-2.5">
-                      <code className="rounded bg-[#eef0fa] px-1.5 py-0.5 text-[11px] text-[#1e2761]">{row.action}</code>
-                    </td>
-                    <td className="px-4 py-2.5 text-[#171b26]">{row.description}</td>
-                  </tr>
-                ))
+                rows.map((row) => {
+                  const hasDiff = row.beforeData !== null || row.afterData !== null;
+                  const expanded = expandedId === row.id;
+                  return (
+                    <Fragment key={row.id}>
+                      <tr
+                        onClick={() => hasDiff && setExpandedId(expanded ? null : row.id)}
+                        className={`border-b border-[#e5e9f0] last:border-0 ${hasDiff ? "cursor-pointer hover:bg-[#fafbfd]" : ""}`}
+                      >
+                        <td className="px-4 py-2.5 text-[#5b6472]">{formatDateTime(row.createdAt)}</td>
+                        <td className="px-4 py-2.5">{row.actor?.fullName ?? row.actorEmail ?? "System"}</td>
+                        <td className="px-4 py-2.5">
+                          <code className="rounded bg-[#eef0fa] px-1.5 py-0.5 text-[11px] text-[#1e2761]">{row.action}</code>
+                        </td>
+                        <td className="px-4 py-2.5 text-[#171b26]">
+                          {row.description}
+                          {hasDiff && (
+                            <span className="ml-2 text-[10.5px] font-semibold text-[#1f9c7c]">
+                              {expanded ? "Hide details" : "View details"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {expanded && hasDiff && (
+                        <tr className="border-b border-[#e5e9f0] bg-[#fbfcfe] last:border-0">
+                          <td colSpan={4} className="px-4 py-3">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <div>
+                                <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-[#5b6472]">Before</div>
+                                <pre className="max-h-64 overflow-auto rounded-[8px] border border-[#e5e9f0] bg-white p-2.5 text-[11px] text-[#171b26]">
+                                  {row.beforeData ? JSON.stringify(row.beforeData, null, 2) : "—"}
+                                </pre>
+                              </div>
+                              <div>
+                                <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-[#5b6472]">After</div>
+                                <pre className="max-h-64 overflow-auto rounded-[8px] border border-[#e5e9f0] bg-white p-2.5 text-[11px] text-[#171b26]">
+                                  {row.afterData ? JSON.stringify(row.afterData, null, 2) : "—"}
+                                </pre>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
       </TableFrame>

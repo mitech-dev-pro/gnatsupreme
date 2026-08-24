@@ -29,7 +29,13 @@ notificationRouter.get("/", async (request, response) => {
   const { page, limit, unreadOnly } = query.data;
   const where = { userId: user(response).id, channel: "IN_APP" as const, ...(unreadOnly ? { readAt: null } : {}) };
   const [items, total] = await prisma.$transaction([
-    prisma.notification.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true },
+    }),
     prisma.notification.count({ where }),
   ]);
   response.json({ success: true, data: items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });

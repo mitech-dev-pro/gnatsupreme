@@ -24,10 +24,20 @@ import {
 export const memberRouter = Router();
 
 const memberInclude = {
-  district: { include: { region: { select: { id: true, name: true } } } },
-  spouse: true,
-  beneficiaries: { orderBy: { id: "asc" as const } },
+  district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
+  spouse: { select: { id: true, fullName: true, dateOfBirth: true, ghanaCardId: true } },
+  beneficiaries: {
+    orderBy: { id: "asc" as const },
+    select: { id: true, fullName: true, relationship: true, dateOfBirth: true, trusteeName: true, trusteeGhanaCardId: true },
+  },
   createdBy: { select: { id: true, fullName: true } },
+} as const;
+
+const memberListInclude = {
+  district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
+  spouse: { select: { fullName: true } },
+  createdBy: { select: { id: true, fullName: true } },
+  _count: { select: { beneficiaries: true } },
 } as const;
 
 function currentUser(response: Response) {
@@ -102,7 +112,7 @@ memberRouter.get("/", async (request, response) => {
   const [members, total] = await prisma.$transaction([
     prisma.member.findMany({
       where,
-      include: memberInclude,
+      include: memberListInclude,
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
       skip: (page - 1) * limit,
       take: limit,

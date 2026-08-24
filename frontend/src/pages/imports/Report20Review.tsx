@@ -67,7 +67,8 @@ export default function Report20Review() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [rowStatus, setRowStatus] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [rerunning, setRerunning] = useState(false);
   const [confirmingRerun, setConfirmingRerun] = useState(false);
@@ -97,7 +98,7 @@ export default function Report20Review() {
       await api.post(`/imports/${id}/rows/${row.id}/resolve`, { districtId: Number(actionDistrictId) });
       setActionMessage(`Row ${row.rowNumber} was enrolled and marked resolved.`);
       setActionRowId(null);
-      await Promise.all([loadJob(), loadRows()]);
+      await Promise.all([loadJob(), loadRows(true)]);
     } catch (err: any) {
       setActionError(err?.response?.data?.message || "Unable to resolve this row.");
     } finally {
@@ -129,8 +130,12 @@ export default function Report20Review() {
     }
   };
 
-  const loadRows = async () => {
-    setLoading(true);
+  const loadRows = async (isBackgroundRefresh = false) => {
+    if (isBackgroundRefresh) {
+      setRefreshing(true);
+    } else {
+      setInitialLoading(true);
+    }
     try {
       const res = await api.get(`/imports/${id}/issues`, {
         params: { page, limit, status: rowStatus || undefined },
@@ -140,7 +145,11 @@ export default function Report20Review() {
     } catch {
       setError("Unable to load rows.");
     } finally {
-      setLoading(false);
+      if (isBackgroundRefresh) {
+        setRefreshing(false);
+      } else {
+        setInitialLoading(false);
+      }
     }
   };
 
@@ -163,7 +172,7 @@ export default function Report20Review() {
       return;
     }
     const jobTimer = setInterval(loadJob, 1500);
-    const rowsTimer = setInterval(loadRows, 5000);
+    const rowsTimer = setInterval(() => loadRows(true), 5000);
     return () => {
       clearInterval(jobTimer);
       clearInterval(rowsTimer);
@@ -321,7 +330,7 @@ export default function Report20Review() {
         ))}
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2.5">
         <select
           value={rowStatus}
           onChange={(e) => {
@@ -337,6 +346,12 @@ export default function Report20Review() {
             </option>
           ))}
         </select>
+        {(refreshing || job.status === "PENDING" || job.status === "PROCESSING") && (
+          <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#5b6472]">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#e5e9f0] border-t-[#1f9c7c]" />
+            Updating…
+          </span>
+        )}
       </div>
 
       {actionMessage && (
@@ -360,7 +375,7 @@ export default function Report20Review() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {initialLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-center text-[#5b6472]">
                     Loading…

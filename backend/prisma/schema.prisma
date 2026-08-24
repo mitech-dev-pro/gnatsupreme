@@ -27,6 +27,7 @@ enum MemberStatus {
   FLAGGED
   RETURNED
   REMOVED
+  INACTIVE
 
   @@map("member_status")
 }
@@ -123,6 +124,8 @@ enum MemberWorkflowAction {
   APPROVED
   RETURNED
   REMOVED
+  INACTIVATED
+  REACTIVATED
 
   @@map("member_workflow_action")
 }
@@ -580,8 +583,8 @@ model MemberWorkflowEvent {
   toStatus      MemberStatus         @map("to_status")
   reason        RemovalReason?
   note          String?
-  performedById Int                  @map("performed_by_id")
-  performedBy   User                 @relation(fields: [performedById], references: [id], onDelete: Restrict)
+  performedById Int?                 @map("performed_by_id")
+  performedBy   User?                @relation(fields: [performedById], references: [id], onDelete: SetNull)
   createdAt     DateTime             @default(now()) @map("created_at")
 
   @@index([memberId, createdAt])

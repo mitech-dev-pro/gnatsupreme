@@ -403,6 +403,21 @@ export default function MemberDetail() {
     }
   };
 
+  const submitReactivate = async () => {
+    setBusy(true);
+    setActionError("");
+    try {
+      await api.post(`/members/${id}/reactivate`, {});
+      await load();
+    } catch (err: any) {
+      setActionError(
+        err?.response?.data?.message || "Unable to reactivate member.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="member-record">
       <Link to="/members" className="member-record__back">
@@ -1026,13 +1041,35 @@ export default function MemberDetail() {
               </div>
 
               {member.missingFromReport20At && (
-                <div className="mb-4 rounded-[9px] border border-[#f0c96b] bg-[#fdf6e3] px-3.5 py-2.5 text-[12.5px] text-[#7a5c00]">
-                  This member was not found in the most recently reconciled
-                  Report 20 file (as of{" "}
-                  {formatDate(member.missingFromReport20At)}). Confirm whether
-                  they should be removed using the action below, or leave as-is
-                  if this is expected to be temporary — the flag clears
-                  automatically once they reappear in a future Report 20 upload.
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[9px] border border-[#f0c96b] bg-[#fdf6e3] px-3.5 py-2.5 text-[12.5px] text-[#7a5c00]">
+                  <span>
+                    Inactive since {formatDate(member.missingFromReport20At)} —
+                    not found in the most recently reconciled Report 20 file.
+                    Portal sign-in is blocked while inactive. This clears
+                    automatically and sign-in is restored if they reappear in a
+                    future upload — otherwise, review whether to remove them.
+                  </span>
+                  {canReview && member.status !== "REMOVED" && (
+                    <div className="flex shrink-0 gap-2">
+                      {member.status === "INACTIVE" && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={submitReactivate}
+                          className="rounded-[9px] border border-[#f0c96b] bg-white px-3 py-1.5 text-[11.5px] font-bold text-[#7a5c00] hover:bg-[#fdf6e3] disabled:opacity-60"
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowRemoveForm(true)}
+                        className="rounded-[9px] border border-[#f0c96b] bg-white px-3 py-1.5 text-[11.5px] font-bold text-[#7a5c00] hover:bg-[#fdf6e3]"
+                      >
+                        Review for removal
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

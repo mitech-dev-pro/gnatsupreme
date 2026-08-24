@@ -9,6 +9,7 @@ import {
   normalizeDistrictName,
   resolveDistrict,
 } from "../geography/district-match.js";
+import { notifyMember } from "../notifications/notification.service.js";
 
 const MAX_ROWS = 300_000;
 
@@ -161,12 +162,22 @@ export async function reconcileReport20(
         select: { alias: true, districtId: true },
       }),
       // Report 20 is treated as the full national payroll file, so any currently-recognized
-      // member (ACTIVE or already-FLAGGED) not seen in this run is presumed missing from payroll.
+      // member (ACTIVE, FLAGGED, or already INACTIVE) not seen in this run is presumed missing
+      // from payroll. INACTIVE has to stay in this query too, not just ACTIVE/FLAGGED — otherwise
+      // an inactive member could never be detected as reappeared and reactivated automatically.
       // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
       // are already off the books.
       prisma.member.findMany({
-        where: { status: { in: ["ACTIVE", "FLAGGED"] } },
-        select: { id: true, controllerId: true, missingFromReport20At: true },
+        where: { status: { in: ["ACTIVE", "FLAGGED", "INACTIVE"] } },
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          missingFromReport20At: true,
+          status: true,
+          report20Matched: true,
+          district: { select: { regionId: true } },
+        },
       }),
     ]);
   const membersByControllerId = new Map(
@@ -347,8 +358,18 @@ export async function reconcileReport20(
   }
 
   const seenControllerIds = seen;
+  const activeMembersById = new Map(activeMembers.map((member) => [member.id, member]));
+  // A FLAGGED member who has never once been matched (report20Matched still false) hasn't had a
+  // real chance to appear in any file yet — absent-from-this-file isn't evidence they left, it's
+  // just "hasn't had their first match." Only a member who was previously established (ACTIVE, or
+  // FLAGGED-but-already-matched-once) counts as newly missing.
   const missingMemberIds = activeMembers
-    .filter((member) => !seenControllerIds.has(member.controllerId))
+    .filter(
+      (member) =>
+        !seenControllerIds.has(member.controllerId) &&
+        member.status !== "INACTIVE" &&
+        !(member.status === "FLAGGED" && !member.report20Matched),
+    )
     .map((member) => member.id);
   const reappearedMemberIds = activeMembers
     .filter(
@@ -383,13 +404,33 @@ export async function reconcileReport20(
       if (missingMemberIds.length) {
         await tx.member.updateMany({
           where: { id: { in: missingMemberIds } },
-          data: { missingFromReport20At: new Date() },
+          data: { missingFromReport20At: new Date(), status: "INACTIVE" },
+        });
+        await tx.memberWorkflowEvent.createMany({
+          data: missingMemberIds.map((id) => ({
+            memberId: id,
+            action: "INACTIVATED" as const,
+            fromStatus: activeMembersById.get(id)!.status,
+            toStatus: "INACTIVE" as const,
+            note: "Not found in this Report 20 file",
+            performedById: null,
+          })),
         });
       }
       if (reappearedMemberIds.length) {
         await tx.member.updateMany({
           where: { id: { in: reappearedMemberIds } },
-          data: { missingFromReport20At: null },
+          data: { missingFromReport20At: null, status: "ACTIVE" },
+        });
+        await tx.memberWorkflowEvent.createMany({
+          data: reappearedMemberIds.map((id) => ({
+            memberId: id,
+            action: "REACTIVATED" as const,
+            fromStatus: "INACTIVE" as const,
+            toStatus: "ACTIVE" as const,
+            note: "Reappeared in this Report 20 file",
+            performedById: null,
+          })),
         });
       }
       await tx.importJob.update({
@@ -413,4 +454,29 @@ export async function reconcileReport20(
     // off the HTTP request path (see import.routes.ts), so there's no user-facing timeout pressure.
     { timeout: 600_000 },
   );
+
+  // Best-effort, run after the transaction commits — notifyMember does its own reads/writes
+  // outside this transaction, and a failed notification shouldn't roll back the status change.
+  for (const id of missingMemberIds) {
+    const member = activeMembersById.get(id);
+    if (!member) continue;
+    await notifyMember({
+      memberId: id,
+      type: "MEMBER_INACTIVATED",
+      title: "Membership marked inactive",
+      message: `Your GNAT Supreme Care membership (${member.controllerId}) was not found in the latest Report 20 file and has been marked inactive. Contact your local district office if this is incorrect.`,
+      idempotencyKey: `report20-inactive:${importJobId}:${id}`,
+    }).catch(() => undefined);
+  }
+  for (const id of reappearedMemberIds) {
+    const member = activeMembersById.get(id);
+    if (!member) continue;
+    await notifyMember({
+      memberId: id,
+      type: "MEMBER_REACTIVATED",
+      title: "Membership reactivated",
+      message: `Your GNAT Supreme Care membership (${member.controllerId}) has been reactivated after reappearing in the latest Report 20 file.`,
+      idempotencyKey: `report20-reactivated:${importJobId}:${id}`,
+    }).catch(() => undefined);
+  }
 }

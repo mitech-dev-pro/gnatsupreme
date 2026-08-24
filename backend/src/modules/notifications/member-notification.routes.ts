@@ -14,7 +14,12 @@ function member(response: Response) {
 memberNotificationRouter.use(authenticateMember);
 
 memberNotificationRouter.get("/notifications", async (_request, response) => {
-  const items = await prisma.notification.findMany({ where: { memberId: member(response).id, channel: "IN_APP" }, orderBy: { createdAt: "desc" }, take: 100 });
+  const items = await prisma.notification.findMany({
+    where: { memberId: member(response).id, channel: "IN_APP" },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true },
+  });
   const unreadCount = items.filter((item) => !item.readAt).length;
   response.json({ success: true, data: items, unreadCount });
 });

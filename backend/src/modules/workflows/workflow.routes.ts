@@ -15,6 +15,7 @@ import {
   changeRequestQuerySchema,
   createChangeRequestSchema,
   memberDetailsChangeSchema,
+  reactivateSchema,
   removalSchema,
   reviewChangeRequestSchema,
   workflowMemberParamsSchema,
@@ -289,6 +290,33 @@ memberWorkflowRouter.post("/:id/remove", authorizeRoles("SUPER_ADMIN", "NATIONAL
   });
   await recordAudit({ request, actor, action: "MEMBER_REMOVED", entityType: "MEMBER", entityId: result.member.id, description: `Removed ${result.member.fullName}: ${body.data.reason}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, reason: body.data.reason, workflowEventId: result.event.id, claimSubmissionId: result.claim?.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: result.member.id, type: "MEMBER_REMOVED", title: "Membership status changed", message: `Your GNAT Supreme Care membership has been removed. Reason: ${body.data.reason}.`, idempotencyKey: `member-workflow:${result.event.id}` });
+  response.json({ success: true, data: result });
+});
+
+memberWorkflowRouter.post("/:id/reactivate", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"), async (request, response) => {
+  const params = workflowMemberParamsSchema.safeParse(request.params);
+  const body = reactivateSchema.safeParse(request.body);
+  if (!params.success || !body.success) {
+    response.status(400).json({ success: false, message: "Invalid reactivation request" });
+    return;
+  }
+  const actor = user(response);
+  const existing = await accessibleMember(params.data.id, actor);
+  if (!existing) {
+    response.status(404).json({ success: false, message: "Member not found" });
+    return;
+  }
+  if (existing.status !== "INACTIVE") {
+    response.status(409).json({ success: false, message: "Member is not inactive" });
+    return;
+  }
+  const result = await prisma.$transaction(async (transaction) => {
+    const member = await transaction.member.update({ where: { id: existing.id }, data: { status: "ACTIVE", missingFromReport20At: null } });
+    const event = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "REACTIVATED", fromStatus: "INACTIVE", toStatus: "ACTIVE", note: body.data.note, performedById: actor.id } });
+    return { member, event };
+  });
+  await recordAudit({ request, actor, action: "MEMBER_REACTIVATED", entityType: "MEMBER", entityId: result.member.id, description: `Reactivated ${result.member.fullName}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, workflowEventId: result.event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
+  await notifyMember({ memberId: result.member.id, type: "MEMBER_REACTIVATED", title: "Membership reactivated", message: "Your GNAT Supreme Care membership has been reactivated by a staff member.", idempotencyKey: `member-workflow:${result.event.id}` });
   response.json({ success: true, data: result });
 });
 

@@ -1,0 +1,1 @@
+ALTER TYPE "member_status" ADD VALUE 'INACTIVE';

@@ -2,25 +2,32 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import type { Request, Response } from "express";
 import { logger } from "../lib/logger.js";
 
-const jsonRateLimitHandler = (limiter: string) => (request: Request, response: Response) => {
-  const resetTime = (request as Request & { rateLimit?: { resetTime?: Date } })
-    .rateLimit?.resetTime?.getTime();
-  const retryAfterSeconds = Math.max(
-    1,
-    resetTime ? Math.ceil((resetTime - Date.now()) / 1_000) : 60,
-  );
+const jsonRateLimitHandler =
+  (limiter: string) => (request: Request, response: Response) => {
+    const resetTime = (
+      request as Request & { rateLimit?: { resetTime?: Date } }
+    ).rateLimit?.resetTime?.getTime();
+    const retryAfterSeconds = Math.max(
+      1,
+      resetTime ? Math.ceil((resetTime - Date.now()) / 1_000) : 60,
+    );
 
-  response.set("Retry-After", String(retryAfterSeconds));
-  logger.warn(
-    { limiter, ipAddress: request.ip, path: request.originalUrl, retryAfterSeconds },
-    "Request rate limit exceeded",
-  );
-  response.status(429).json({
-    success: false,
-    message: `Too many requests. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minute${retryAfterSeconds > 60 ? "s" : ""}.`,
-    retryAfterSeconds,
-  });
-};
+    response.set("Retry-After", String(retryAfterSeconds));
+    logger.warn(
+      {
+        limiter,
+        ipAddress: request.ip,
+        path: request.originalUrl,
+        retryAfterSeconds,
+      },
+      "Request rate limit exceeded",
+    );
+    response.status(429).json({
+      success: false,
+      message: `Too many requests. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minute${retryAfterSeconds > 60 ? "s" : ""}.`,
+      retryAfterSeconds,
+    });
+  };
 
 export const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
@@ -47,8 +54,6 @@ export const refreshRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("session-refresh"),
 });
 
-// Isolate the small allowance by member ID and client IP. Members sharing a school or
-// office network therefore do not consume one another's attempts.
 export const memberLoginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 8,
@@ -56,9 +61,10 @@ export const memberLoginRateLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   keyGenerator: (request) => {
-    const controllerId = String(request.body?.controllerId ?? "invalid")
-      .trim()
-      .replace(/\D/g, "") || "invalid";
+    const controllerId =
+      String(request.body?.controllerId ?? "invalid")
+        .trim()
+        .replace(/\D/g, "") || "invalid";
     return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
   },
   handler: jsonRateLimitHandler("member-login-member"),
@@ -79,9 +85,10 @@ export const memberForgotPasswordRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (request) => {
-    const controllerId = String(request.body?.controllerId ?? "invalid")
-      .trim()
-      .replace(/\D/g, "") || "invalid";
+    const controllerId =
+      String(request.body?.controllerId ?? "invalid")
+        .trim()
+        .replace(/\D/g, "") || "invalid";
     return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
   },
   handler: jsonRateLimitHandler("member-forgot-password"),
@@ -93,9 +100,10 @@ export const memberSetupRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (request) => {
-    const controllerId = String(request.body?.controllerId ?? "invalid")
-      .trim()
-      .replace(/\D/g, "") || "invalid";
+    const controllerId =
+      String(request.body?.controllerId ?? "invalid")
+        .trim()
+        .replace(/\D/g, "") || "invalid";
     return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
   },
   handler: jsonRateLimitHandler("member-setup"),

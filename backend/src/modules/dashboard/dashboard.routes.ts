@@ -1,7 +1,10 @@
 import { Router, type Response } from "express";
 
 import { prisma } from "../../lib/prisma.js";
-import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
+import {
+  authenticate,
+  type AuthenticatedUser,
+} from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
 
 export const dashboardRouter = Router();
@@ -32,7 +35,8 @@ function transferScope(user: AuthenticatedUser) {
 
 function auditScope(user: AuthenticatedUser) {
   if (user.role === "REGIONAL_ADMIN") return { regionId: user.regionId ?? -1 };
-  if (user.role === "DISTRICT_ADMIN") return { districtId: user.districtId ?? -1 };
+  if (user.role === "DISTRICT_ADMIN")
+    return { districtId: user.districtId ?? -1 };
   return {};
 }
 
@@ -45,7 +49,8 @@ dashboardRouter.use(authenticate);
 dashboardRouter.get("/", async (_request, response) => {
   const user = currentUser(response);
   const scope = memberScope(user);
-  const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
+  const elevated =
+    user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
   const firstMonth = monthStart(new Date());
   firstMonth.setUTCMonth(firstMonth.getUTCMonth() - 11);
 
@@ -60,11 +65,17 @@ dashboardRouter.get("/", async (_request, response) => {
     latestImport,
     claimStatusGroups,
   ] = await Promise.all([
-    prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
+    prisma.member.groupBy({
+      by: ["status"],
+      where: scope,
+      _count: { _all: true },
+    }),
     prisma.member.count({ where: { ...scope, report20Matched: true } }),
     prisma.spouse.count({ where: { member: { is: scope } } }),
     prisma.beneficiary.count({ where: { member: { is: scope } } }),
-    prisma.memberTransfer.count({ where: { ...transferScope(user), status: "PENDING" } }),
+    prisma.memberTransfer.count({
+      where: { ...transferScope(user), status: "PENDING" },
+    }),
     prisma.auditLog.findMany({
       where: auditScope(user),
       include: { actor: { select: { id: true, fullName: true } } },
@@ -101,15 +112,21 @@ dashboardRouter.get("/", async (_request, response) => {
     }),
   ]);
 
-  const statusCounts = Object.fromEntries(statusGroups.map((group) => [group.status, group._count._all]));
-  const totalMembers = statusGroups.reduce((total, group) => total + group._count._all, 0);
-  // Operational health is measured from Report 20's own POV — the latest file's row-level
-  // results — not from the members table's cumulative report20Matched flag, which only reflects
-  // whichever run last touched each member and can't represent "how does the current roster
-  // compare to the most recent file" on its own.
-  const latestImportMatchRate = latestImport && latestImport.totalRows
-    ? Number(((latestImport.matchedRows / latestImport.totalRows) * 100).toFixed(1))
-    : 0;
+  const statusCounts = Object.fromEntries(
+    statusGroups.map((group) => [group.status, group._count._all]),
+  );
+  const totalMembers = statusGroups.reduce(
+    (total, group) => total + group._count._all,
+    0,
+  );
+  const latestImportMatchRate =
+    latestImport && latestImport.totalRows
+      ? Number(
+          ((latestImport.matchedRows / latestImport.totalRows) * 100).toFixed(
+            1,
+          ),
+        )
+      : 0;
   const enrollmentCounts = new Map<string, number>();
   for (const member of enrollments) {
     const key = monthStart(member.createdAt).toISOString().slice(0, 7);
@@ -135,8 +152,6 @@ dashboardRouter.get("/", async (_request, response) => {
       },
       coverage: { spouses: totalSpouses, beneficiaries: totalBeneficiaries },
       report20: {
-        // Member-table facts: how many currently-known members carry a clean report20Matched
-        // flag right now (a roster-side view — can include matches from before the latest file).
         matchedMembers: report20Matched,
         unmatchedMembers: Math.max(totalMembers - report20Matched, 0),
         // Report 20's own POV: the latest file's row-level reconciliation result. This is what
@@ -146,7 +161,9 @@ dashboardRouter.get("/", async (_request, response) => {
         latestImport,
       },
       transfers: { pending: pendingTransfers },
-      claims: Object.fromEntries(claimStatusGroups.map((group) => [group.status, group._count._all])),
+      claims: Object.fromEntries(
+        claimStatusGroups.map((group) => [group.status, group._count._all]),
+      ),
       enrollmentGrowth,
       recentActivity,
     },

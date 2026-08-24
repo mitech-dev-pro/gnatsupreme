@@ -5,6 +5,7 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
 import Dropdown from "@/components/ui/Dropdown";
+import { isMemberPortalPath } from "@/lib/utils";
 
 const FEATURES = [
   "Scoped access — see only your district, region, or the whole scheme",
@@ -91,7 +92,7 @@ export default function Login() {
   const requestedRedirect = searchParams.get("redirect");
   const safeStaffRedirect =
     requestedRedirect &&
-    !requestedRedirect.startsWith("/member") &&
+    !isMemberPortalPath(requestedRedirect) &&
     requestedRedirect.startsWith("/")
       ? requestedRedirect
       : "/";
@@ -143,7 +144,7 @@ export default function Login() {
     return (
       <Navigate
         to={
-          requestedRedirect?.startsWith("/member")
+          requestedRedirect && isMemberPortalPath(requestedRedirect)
             ? requestedRedirect
             : "/member"
         }

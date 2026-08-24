@@ -951,6 +951,43 @@ export default function MemberDetail() {
                   No beneficiaries on record.
                 </div>
               ) : (
+                <>
+                <div className="member-beneficiary-cards">
+                  {member.beneficiaries.map((b) => (
+                    <div key={b.id} className="member-beneficiary-card">
+                      <div>
+                        <strong>{b.fullName}</strong>
+                        <span>
+                          {b.relationship} · {formatDate(b.dateOfBirth)}
+                        </span>
+                        {b.trusteeName ? (
+                          <span>
+                            Trustee: {b.trusteeName}
+                            {b.trusteeGhanaCardId ? ` (${b.trusteeGhanaCardId})` : ""}
+                          </span>
+                        ) : (
+                          <span>No trustee required</span>
+                        )}
+                      </div>
+                      {member.beneficiaries.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmation({
+                              type: "beneficiary",
+                              id: b.id,
+                              name: b.fullName,
+                            })
+                          }
+                          disabled={busy}
+                          className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
                 <table className="member-beneficiary-table">
                   <thead>
                     <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
@@ -1010,6 +1047,7 @@ export default function MemberDetail() {
                     ))}
                   </tbody>
                 </table>
+                </>
               )}
             </div>
 

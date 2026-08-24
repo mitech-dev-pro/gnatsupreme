@@ -220,6 +220,10 @@
     font: inherit
 }
 
+.member-beneficiary-cards {
+    display: none
+}
+
 .member-beneficiary-table {
     width: 100%;
     border-collapse: collapse;
@@ -381,12 +385,46 @@
         padding: 18px 15px
     }
 
-    .member-panel--beneficiaries {
-        overflow-x: auto
+    .member-beneficiary-table {
+        display: none
     }
 
-    .member-beneficiary-table {
-        min-width: 650px
+    .member-beneficiary-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px
+    }
+
+    .member-beneficiary-card {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid oklch(.93 .009 273);
+        border-radius: 10px
+    }
+
+    .member-beneficiary-card>div {
+        min-width: 0
+    }
+
+    .member-beneficiary-card strong {
+        display: block;
+        color: oklch(.29 .025 273);
+        font-size: 12px
+    }
+
+    .member-beneficiary-card span {
+        display: block;
+        margin-top: 3px;
+        color: oklch(.55 .02 273);
+        font-size: 10.5px
+    }
+
+    .member-beneficiary-card button {
+        flex: 0 0 auto;
+        white-space: nowrap
     }
 
     .member-workflow-heading {

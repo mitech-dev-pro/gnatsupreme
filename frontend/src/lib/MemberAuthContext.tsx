@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import api, { setMemberAccessToken } from "@/lib/api";
+import { isMemberPortalPath } from "@/lib/utils";
 
 export type MemberUser = {
   id: number;
@@ -45,7 +46,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     if (refreshStarted.current) return;
     refreshStarted.current = true;
 
-    if (window.location.pathname !== "/login" && !window.location.pathname.startsWith("/member")) {
+    if (window.location.pathname !== "/login" && !isMemberPortalPath(window.location.pathname)) {
       setIsLoading(false);
       return;
     }

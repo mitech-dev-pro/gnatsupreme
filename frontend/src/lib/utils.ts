@@ -2,6 +2,15 @@ export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+/**
+ * True only for the member-portal routes ("/member", "/member/..."). A plain
+ * `pathname.startsWith("/member")` also matches staff routes like "/members/123",
+ * which broke auth refresh on those pages — this enforces the "/member" segment boundary.
+ */
+export function isMemberPortalPath(pathname: string): boolean {
+  return pathname === "/member" || pathname.startsWith("/member/");
+}
+
 /** Local-date "YYYY-MM-DD" for a Date, matching what <input type="date"> and the API expect. */
 export function toISODate(date: Date): string {
   const year = date.getFullYear();

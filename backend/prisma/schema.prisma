@@ -46,6 +46,7 @@ enum FileCategory {
   MARRIAGE_CERTIFICATE
   REPORT_20
   MEMBER_IMPORT
+  MEMBER_CREDENTIALS
   OTHER
 
   @@map("file_category")
@@ -202,7 +203,6 @@ model District {
   outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
   incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
   aliases           DistrictAlias[]
-  spellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
@@ -254,7 +254,6 @@ model User {
   organizationSettingsUpdates OrganizationSettings[]
   organizationSettingVersions OrganizationSettingsVersion[]
   districtAliasesCreated      DistrictAlias[]
-  districtSpellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt                   DateTime                      @default(now()) @map("created_at")
   updatedAt                   DateTime                      @updatedAt @map("updated_at")
 
@@ -271,6 +270,8 @@ model Member {
   ghanaCardId      String?                   @unique @map("ghana_card_id")
   phone            String?                   @unique
   phoneVerifiedAt  DateTime?                 @map("phone_verified_at")
+  email            String?                   @unique
+  passwordHash     String?                   @map("password_hash")
   school           String
   status           MemberStatus              @default(PENDING)
   report20Matched  Boolean                   @default(false) @map("report20_matched")
@@ -290,10 +291,9 @@ model Member {
   bulkImportRows   MemberBulkImportRow[]
   workflowEvents   MemberWorkflowEvent[]
   changeRequests   MemberChangeRequest[]
-  otpChallenges    MemberOtpChallenge[]
   memberSessions   MemberSession[]
+  passwordResetTokens MemberPasswordResetToken[]
   notifications    Notification[]
-  districtSpellingConfirmations MemberDistrictSpellingConfirmation[]
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")
 
@@ -301,29 +301,6 @@ model Member {
   @@index([status])
   @@index([fullName])
   @@map("members")
-}
-
-// A raw Report 20 district spelling that's genuinely ambiguous nationally (e.g. "Pru" — could mean
-// Pru East or Pru West) can never become a global DistrictAlias without risking misassigning some
-// other member who happens to share that spelling. Instead, staff resolve it per member (see
-// import.routes.ts's /resolve endpoint), and that decision is recorded here as an immutable
-// snapshot of (spelling, districtId) at confirmation time. Reconciliation only honors a confirmation
-// while districtId still matches the member's *current* district — if the member is later
-// transferred, the snapshot's districtId falls out of sync with the live one and the confirmation
-// silently stops applying on its own, with no separate cleanup step required.
-model MemberDistrictSpellingConfirmation {
-  id            Int      @id @default(autoincrement())
-  memberId      Int      @map("member_id")
-  member        Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  rawSpelling   String   @map("raw_spelling")
-  districtId    Int      @map("district_id")
-  district      District @relation(fields: [districtId], references: [id], onDelete: Cascade)
-  confirmedById Int?     @map("confirmed_by_id")
-  confirmedBy   User?    @relation(fields: [confirmedById], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  @@index([memberId])
-  @@map("member_district_spelling_confirmations")
 }
 
 model Spouse {
@@ -372,22 +349,23 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-model MemberOtpChallenge {
-  id          Int       @id @default(autoincrement())
-  publicToken String    @unique @map("public_token")
-  memberId    Int       @map("member_id")
-  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  otpHash     String    @map("otp_hash")
-  expiresAt   DateTime  @map("expires_at")
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(5) @map("max_attempts")
-  consumedAt  DateTime? @map("consumed_at")
-  ipAddress   String?   @map("ip_address")
-  createdAt   DateTime  @default(now()) @map("created_at")
+// Self-service password reset, used only when the member has an email on file (see
+// member-auth.routes.ts /forgot-password). A member without an email can't use this path at all —
+// a system user resets their password directly instead (Member.passwordHash, set via
+// PATCH /members/:id/password), which needs no token.
+model MemberPasswordResetToken {
+  id         Int       @id @default(autoincrement())
+  memberId   Int       @map("member_id")
+  member     Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  ipAddress  String?   @map("ip_address")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([memberId, createdAt])
   @@index([expiresAt])
-  @@map("member_otp_challenges")
+  @@map("member_password_reset_tokens")
 }
 
 model MemberSession {

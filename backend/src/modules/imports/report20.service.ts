@@ -179,22 +179,6 @@ export async function reconcileReport20(
     ]),
   );
 
-  // Genuinely ambiguous raw spellings (e.g. "Pru" — resolved per member via the /resolve endpoint,
-  // see MemberDistrictSpellingConfirmation in schema.prisma) can't become a global alias without
-  // risking misassigning someone else who shares that spelling. A confirmation only counts while its
-  // snapshotted districtId still matches the member's *current* districtId — a later transfer makes
-  // it stop applying on its own, no separate cleanup needed.
-  const spellingConfirmations =
-    await prisma.memberDistrictSpellingConfirmation.findMany({
-      where: { memberId: { in: members.map((member) => member.id) } },
-      select: { memberId: true, rawSpelling: true, districtId: true },
-    });
-  const confirmationMap = new Map(
-    spellingConfirmations.map((entry) => [
-      `${entry.memberId}:${normalizeDistrictName(entry.rawSpelling)}`,
-      entry.districtId,
-    ]),
-  );
   const seen = new Set<string>();
   const matchedMemberIds = new Set<number>();
   const changedMemberIds = new Set<number>();
@@ -266,26 +250,10 @@ export async function reconcileReport20(
         normalizeValue(row.school) !== normalizeValue(member.school)
       )
         issues.push("School differs");
-      // Resolved through the same alias/suffix matching as new-member enrollment, not a raw string
-      // compare — otherwise a district that only differs by an aliased spelling (e.g. "Sagnerigu" vs
-      // the member's actual "Sagnarigu") would wrongly flag as CHANGED every single run, even though
-      // it refers to the same district. Falls back to this member's own per-member spelling
-      // confirmation (see above) for raw spellings too ambiguous to alias globally.
-      if (row.districtName) {
-        const { district: resolvedDistrict } = resolveDistrict(
-          row.districtName,
-          row.regionName,
-          districts,
-          aliasMap,
-        );
-        const confirmedDistrictId = confirmationMap.get(
-          `${member.id}:${normalizeDistrictName(row.districtName)}`,
-        );
-        const districtMatches =
-          resolvedDistrict?.id === member.districtId ||
-          confirmedDistrictId === member.districtId;
-        if (!districtMatches) issues.push("District differs");
-      }
+      // Not compared against the file's district column for an existing member — Report 20's
+      // district data is unreliable enough that it would keep flagging real members as CHANGED
+      // indefinitely. The member's district in this system (set via self-service, staff, or
+      // transfer) is treated as authoritative once they already exist here.
       if (
         row.ghanaCardId &&
         normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)

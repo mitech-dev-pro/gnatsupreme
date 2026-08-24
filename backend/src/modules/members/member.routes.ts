@@ -7,6 +7,10 @@ import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { canAccessDistrict, memberScope } from "./member.access.js";
 import {
+  generateTempPassword,
+  hashMemberPassword,
+} from "../member-auth/member-auth.tokens.js";
+import {
   beneficiaryIdParamsSchema,
   beneficiarySchema,
   createMemberSchema,
@@ -226,6 +230,13 @@ memberRouter.patch("/:id", async (request, response) => {
       return;
     }
   }
+  if (body.data.email && body.data.email !== existing.email) {
+    const duplicateEmail = await prisma.member.findUnique({ where: { email: body.data.email } });
+    if (duplicateEmail) {
+      response.status(409).json({ success: false, message: "This email is already in use by another membership" });
+      return;
+    }
+  }
   if (await ghanaCardIsUsed(body.data.ghanaCardId, { memberId: existing.id })) {
     response.status(409).json({ success: false, message: "This Ghana Card ID is already in use" });
     return;
@@ -267,6 +278,54 @@ memberRouter.patch("/:id", async (request, response) => {
   });
   response.json({ success: true, data: member });
 });
+
+// Members log in with Controller ID + password, not staff-facing credentials — this is the "system
+// user initiates the reset" path (see member-auth.routes.ts for the self-service email-based one).
+// The password is generated here rather than typed by staff, since staff can't reasonably invent a
+// secure password on a member's behalf; it's returned in the response exactly once for the caller
+// to relay to the member, and never stored or logged in plaintext anywhere.
+memberRouter.post(
+  "/:id/password",
+  authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"),
+  async (request, response) => {
+    const params = memberIdParamsSchema.safeParse(request.params);
+    if (!params.success) return validationFailure(response, params.error);
+
+    const user = currentUser(response);
+    const existing = await findAccessibleMember(params.data.id, user);
+    if (!existing) {
+      response.status(404).json({ success: false, message: "Member not found" });
+      return;
+    }
+
+    const password = generateTempPassword();
+    await prisma.$transaction([
+      prisma.member.update({
+        where: { id: existing.id },
+        data: { passwordHash: await hashMemberPassword(password) },
+      }),
+      prisma.memberSession.updateMany({
+        where: { memberId: existing.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+    await recordAudit({
+      request,
+      actor: user,
+      action: "MEMBER_PASSWORD_RESET",
+      entityType: "MEMBER",
+      entityId: existing.id,
+      description: `Generated a new password for ${existing.fullName} (${existing.controllerId})`,
+      regionId: existing.district?.regionId,
+      districtId: existing.districtId,
+    });
+    response.json({
+      success: true,
+      password,
+      message: "Password generated. Share it with the member through a secure channel — it will not be shown again.",
+    });
+  },
+);
 
 memberRouter.patch(
   "/:id/status",

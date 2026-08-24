@@ -31,6 +31,7 @@ const memberFields = {
   dateOfBirth: optionalDate,
   ghanaCardId: ghanaCard,
   phone: z.string().trim().min(7).max(30).nullable().optional(),
+  email: z.string().trim().toLowerCase().email("Enter a valid email address").nullable().optional(),
   school: z.string().trim().min(2).max(160),
   districtId: z.coerce.number().int().positive(),
   report20Matched: z.boolean().optional(),

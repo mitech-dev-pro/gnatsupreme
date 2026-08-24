@@ -19,7 +19,7 @@ const environmentSchema = z.object({
   MEMBER_REFRESH_COOKIE_NAME: z.string().min(1).default("gnat_member_refresh_token"),
   MEMBER_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(10),
   MEMBER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
-  MEMBER_OTP_TTL_MINUTES: z.coerce.number().int().min(2).max(10).default(5),
+  MEMBER_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
   API_DOCS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).optional(),

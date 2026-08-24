@@ -1,17 +1,33 @@
 import { z } from "zod";
 
-export const requestOtpSchema = z.object({
-  controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
+const controllerIdSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits");
+
+export const memberPasswordSchema = z
+  .string()
+  .min(8, "Password must contain at least 8 characters")
+  .max(128);
+
+export const loginSchema = z.object({
+  controllerId: controllerIdSchema,
+  password: z.string().min(1, "Enter your password"),
 });
 
-export const verifyOtpSchema = z.object({
-  challengeToken: z.string().regex(/^[a-f0-9]{64}$/),
-  otp: z.string().regex(/^\d{6}$/, "Enter the six-digit verification code"),
+export const forgotPasswordSchema = z.object({
+  controllerId: controllerIdSchema,
 });
 
-export const registerPhoneSchema = z.object({
-  controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
+export const resetPasswordSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/),
+  password: memberPasswordSchema,
+});
+
+export const setupAccountSchema = z.object({
+  controllerId: controllerIdSchema,
   fullName: z.string().trim().min(2).max(200),
-  districtId: z.coerce.number().int().positive(),
-  phone: z.string().trim().regex(/^0\d{9}$/, "Enter a valid 10-digit phone number starting with 0"),
+  districtId: z.coerce.number().int().positive().optional(),
+  email: z.string().trim().toLowerCase().email("Enter a valid email address"),
+  password: memberPasswordSchema,
 });

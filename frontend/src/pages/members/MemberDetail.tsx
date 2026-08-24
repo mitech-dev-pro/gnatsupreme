@@ -45,6 +45,7 @@ type MemberDetailData = {
   ghanaCardId: string | null;
   phone: string | null;
   phoneVerifiedAt: string | null;
+  email: string | null;
   school: string;
   status: string;
   report20Matched: boolean;
@@ -114,7 +115,13 @@ export default function MemberDetail() {
   const [editDob, setEditDob] = useState("");
   const [editGhanaCard, setEditGhanaCard] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editSchool, setEditSchool] = useState("");
+
+  const [passwordResult, setPasswordResult] = useState<string | null>(null);
+  const [confirmingPasswordReset, setConfirmingPasswordReset] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
 
   const { districts } = useDistricts();
   const [assigningDistrict, setAssigningDistrict] = useState(false);
@@ -167,6 +174,7 @@ export default function MemberDetail() {
     setEditDob(toDateInput(member.dateOfBirth));
     setEditGhanaCard(member.ghanaCardId ?? "");
     setEditPhone(member.phone ?? "");
+    setEditEmail(member.email ?? "");
     setEditSchool(member.school);
     setEditing(true);
   };
@@ -181,6 +189,7 @@ export default function MemberDetail() {
         dateOfBirth: editDob || null,
         ghanaCardId: editGhanaCard.trim() || null,
         phone: editPhone.trim() || null,
+        email: editEmail.trim() || null,
         school: editSchool.trim(),
       });
       setEditing(false);
@@ -189,6 +198,20 @@ export default function MemberDetail() {
       setActionError(err?.response?.data?.message || "Unable to save changes.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const generatePassword = async () => {
+    setPasswordBusy(true);
+    setPasswordError("");
+    try {
+      const res = await api.post(`/members/${id}/password`);
+      setPasswordResult(res.data.password);
+      setConfirmingPasswordReset(false);
+    } catch (err: any) {
+      setPasswordError(err?.response?.data?.message || "Unable to generate a password.");
+    } finally {
+      setPasswordBusy(false);
     }
   };
 
@@ -624,6 +647,16 @@ export default function MemberDetail() {
                         className={inputClasses}
                       />
                     </div>
+                    <div>
+                      <label className={labelClasses}>Email</label>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        placeholder="Needed for self-service password reset"
+                        className={inputClasses}
+                      />
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -653,6 +686,7 @@ export default function MemberDetail() {
                     value={member.ghanaCardId ?? "—"}
                   />
                   <Field label="Phone" value={member.phone ?? "—"} />
+                  <Field label="Email" value={member.email ?? "—"} />
                   <Field
                     label="Phone Verified"
                     value={
@@ -677,6 +711,59 @@ export default function MemberDetail() {
                 </dl>
               )}
             </div>
+
+            {canReview && (
+              <div className="member-panel">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-[15px] font-bold text-[#1e2761]">Login &amp; Password</h2>
+                </div>
+                <p className="mb-3 text-[12px] leading-relaxed text-[#5b6472]">
+                  Members sign in with their Controller ID and a password. Generate one here and
+                  share it with the member through a secure channel — it can't be shown again after
+                  this.
+                </p>
+                {passwordError && (
+                  <p className="mb-2 text-[11.5px] font-semibold text-[#c23b3b]">{passwordError}</p>
+                )}
+                {passwordResult ? (
+                  <div className="rounded-[9px] border border-[#a9dfcf] bg-[#dff7ee] px-3 py-2.5">
+                    <div className="mb-1 text-[11px] font-semibold text-[#17805f]">
+                      New password (shown once)
+                    </div>
+                    <code className="text-[14px] font-bold tracking-wide text-[#171b26]">
+                      {passwordResult}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordResult(null)}
+                      className="mt-2 block text-[11.5px] font-semibold text-[#17805f] hover:underline"
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : confirmingPasswordReset ? (
+                  <ConfirmationPanel
+                    title="Generate a new password?"
+                    description="This immediately replaces the member's current password (if any) and signs them out everywhere."
+                    confirmLabel="Generate password"
+                    busyLabel="Generating…"
+                    tone="warning"
+                    confirmVariant="primary"
+                    busy={passwordBusy}
+                    onConfirm={() => void generatePassword()}
+                    onCancel={() => setConfirmingPasswordReset(false)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingPasswordReset(true)}
+                    className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] hover:border-[#1f9c7c]"
+                  >
+                    Generate / Reset Password
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="member-panel member-panel--spouse">
               <div className="mb-4 flex items-center justify-between">

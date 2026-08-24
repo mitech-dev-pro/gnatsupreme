@@ -48,8 +48,32 @@ export const refreshRateLimiter = rateLimit({
 });
 
 // Isolate the small allowance by member ID and client IP. Members sharing a school or
-// office network therefore do not consume one another's five requests.
-export const memberOtpRequestRateLimiter = rateLimit({
+// office network therefore do not consume one another's attempts.
+export const memberLoginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (request) => {
+    const controllerId = String(request.body?.controllerId ?? "invalid")
+      .trim()
+      .replace(/\D/g, "") || "invalid";
+    return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
+  },
+  handler: jsonRateLimitHandler("member-login-member"),
+});
+
+// A higher IP-wide ceiling still stops one network from cycling through many member IDs.
+export const memberLoginIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("member-login-network"),
+});
+
+export const memberForgotPasswordRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 5,
   standardHeaders: true,
@@ -60,29 +84,19 @@ export const memberOtpRequestRateLimiter = rateLimit({
       .replace(/\D/g, "") || "invalid";
     return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
   },
-  handler: jsonRateLimitHandler("member-otp-member"),
+  handler: jsonRateLimitHandler("member-forgot-password"),
 });
 
-// A higher IP-wide ceiling still stops one network from cycling through many member IDs.
-export const memberOtpIpRateLimiter = rateLimit({
+export const memberSetupRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 30,
+  limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: jsonRateLimitHandler("member-otp-network"),
-});
-
-export const memberOtpVerifyRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1_000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: jsonRateLimitHandler("member-otp-verify"),
-});
-export const memberPhoneRegisterRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1_000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: jsonRateLimitHandler("member-phone-register"),
+  keyGenerator: (request) => {
+    const controllerId = String(request.body?.controllerId ?? "invalid")
+      .trim()
+      .replace(/\D/g, "") || "invalid";
+    return `${ipKeyGenerator(request.ip ?? "unknown")}:${controllerId}`;
+  },
+  handler: jsonRateLimitHandler("member-setup"),
 });

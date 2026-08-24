@@ -19,16 +19,16 @@ export type MemberUser = {
 type MemberAuthContextType = {
   member: MemberUser | null;
   isLoading: boolean;
-  requestOtp: (
-    controllerId: string,
-  ) => Promise<{ challengeToken: string; message: string }>;
-  registerPhone: (input: {
+  login: (controllerId: string, password: string) => Promise<MemberUser>;
+  setupAccount: (input: {
     controllerId: string;
     fullName: string;
-    districtId: number;
-    phone: string;
-  }) => Promise<{ challengeToken: string; message: string }>;
-  verifyOtp: (challengeToken: string, otp: string) => Promise<MemberUser>;
+    districtId?: number;
+    email: string;
+    password: string;
+  }) => Promise<MemberUser>;
+  forgotPassword: (controllerId: string) => Promise<{ message: string }>;
+  resetPassword: (token: string, password: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
 };
 
@@ -64,32 +64,37 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const requestOtp = useCallback(async (controllerId: string) => {
-    const res = await api.post("/member-auth/request-otp", { controllerId });
-    return res.data as { challengeToken: string; message: string };
+  const login = useCallback(async (controllerId: string, password: string) => {
+    const res = await api.post("/member-auth/login", { controllerId, password });
+    setMemberAccessToken(res.data.accessToken);
+    setMember(res.data.member);
+    return res.data.member as MemberUser;
   }, []);
 
-  const registerPhone = useCallback(
+  const setupAccount = useCallback(
     async (input: {
       controllerId: string;
       fullName: string;
-      districtId: number;
-      phone: string;
+      districtId?: number;
+      email: string;
+      password: string;
     }) => {
-      const res = await api.post("/member-auth/register-phone", input);
-      return res.data as { challengeToken: string; message: string };
+      const res = await api.post("/member-auth/setup-account", input);
+      setMemberAccessToken(res.data.accessToken);
+      setMember(res.data.member);
+      return res.data.member as MemberUser;
     },
     [],
   );
 
-  const verifyOtp = useCallback(async (challengeToken: string, otp: string) => {
-    const res = await api.post("/member-auth/verify-otp", {
-      challengeToken,
-      otp,
-    });
-    setMemberAccessToken(res.data.accessToken);
-    setMember(res.data.member);
-    return res.data.member as MemberUser;
+  const forgotPassword = useCallback(async (controllerId: string) => {
+    const res = await api.post("/member-auth/forgot-password", { controllerId });
+    return res.data as { message: string };
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, password: string) => {
+    const res = await api.post("/member-auth/reset-password", { token, password });
+    return res.data as { message: string };
   }, []);
 
   const logout = useCallback(async () => {
@@ -103,7 +108,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <MemberAuthContext.Provider
-      value={{ member, isLoading, requestOtp, registerPhone, verifyOtp, logout }}
+      value={{ member, isLoading, login, setupAccount, forgotPassword, resetPassword, logout }}
     >
       {children}
     </MemberAuthContext.Provider>

@@ -63,7 +63,10 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email },
+      omit: { passwordHash: false },
+    });
     const passwordMatches = user
       ? await argon2.verify(user.passwordHash, parsed.data.password)
       : false;

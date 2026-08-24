@@ -9,6 +9,7 @@ import AppLoading from "@/components/ui/AppLoading";
 import RoleProtectedRoute from "@/components/RoleProtectedRoute";
 
 const Login = lazy(() => import("@/pages/auth/Login"));
+const ResetPassword = lazy(() => import("@/pages/auth/ResetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MembersList = lazy(() => import("@/pages/members/MembersList"));
 const MemberDetail = lazy(() => import("@/pages/members/MemberDetail"));
@@ -22,7 +23,7 @@ const MemberPortalLayout = lazy(() => import("@/components/member/MemberPortalLa
 const ChangeRequests = lazy(() => import("@/pages/members/ChangeRequests"));
 const PendingApprovals = lazy(() => import("@/pages/members/PendingApprovals"));
 const Settings = lazy(() => import("@/pages/Settings"));
-const Transfers = lazy(() => import("@/pages/Transfers"));
+// const Transfers = lazy(() => import("@/pages/Transfers"));
 const Claims = lazy(() => import("@/pages/Claims"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Setup = lazy(() => import("@/pages/Setup"));
@@ -40,6 +41,7 @@ export default function App() {
         <Suspense fallback={<AppLoading label="Loading page" />}>
           <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
@@ -56,7 +58,7 @@ export default function App() {
                 path="/imports/report20/:id"
                 element={<RoleProtectedRoute roles={NATIONAL_ROLES}><Report20Review /></RoleProtectedRoute>}
               />
-              <Route path="/transfers" element={<Transfers />} />
+              {/* <Route path="/transfers" element={<Transfers />} /> */}
               <Route path="/claims" element={<Claims />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/setup" element={<RoleProtectedRoute roles={REGIONAL_ROLES}><Setup /></RoleProtectedRoute>} />

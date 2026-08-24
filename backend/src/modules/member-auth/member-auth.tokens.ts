@@ -1,5 +1,6 @@
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
+import argon2 from "argon2";
 import { jwtVerify, SignJWT } from "jose";
 
 import { env } from "../../config/env.js";
@@ -8,22 +9,33 @@ const memberAccessSecret = createHash("sha256")
   .update(`${env.JWT_ACCESS_SECRET}:gnat-member-access:v1`)
   .digest();
 
-export function createOtp() {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+// Same argon2id parameters used for staff account passwords (user.routes.ts) — kept identical so
+// there's one password-hashing policy to reason about across the app, not two.
+export async function hashMemberPassword(password: string) {
+  return argon2.hash(password, {
+    type: argon2.argon2id,
+    memoryCost: 19_456,
+    timeCost: 2,
+    parallelism: 1,
+  });
 }
 
-export function createChallengeToken() {
-  return randomBytes(32).toString("hex");
+export async function verifyMemberPassword(hash: string, password: string) {
+  return argon2.verify(hash, password);
 }
 
-export function hashOtp(challengeToken: string, otp: string) {
-  return createHmac("sha256", memberAccessSecret).update(`${challengeToken}:${otp}`).digest("hex");
-}
+// Unambiguous character set (no 0/O/1/I/l) since this is read aloud or copied off a screen by staff
+// distributing it to a member — visual confusion here means a member gets locked out on their first
+// try.
+const TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
-export function otpMatches(challengeToken: string, otp: string, expectedHash: string) {
-  const actual = Buffer.from(hashOtp(challengeToken, otp), "hex");
-  const expected = Buffer.from(expectedHash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+export function generateTempPassword(length = 12) {
+  const bytes = randomBytes(length);
+  let password = "";
+  for (let i = 0; i < length; i += 1) {
+    password += TEMP_PASSWORD_ALPHABET[bytes[i]! % TEMP_PASSWORD_ALPHABET.length];
+  }
+  return password;
 }
 
 export async function createMemberAccessToken(memberId: number) {
@@ -62,9 +74,18 @@ export function memberSessionExpiresAt() {
   return date;
 }
 
-// Report 20 imports carry titles ("Mr. ", "Miss ", "Mrs. ", "Ms. ", "Dr. ", "Rev. ") and inconsistent
-// double-spacing in fullName, so an exact-match identity check would fail for real members. Strips
-// both before comparing.
+export function createPasswordResetToken() {
+  return randomBytes(32).toString("hex");
+}
+
+export function hashPasswordResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function passwordResetTokenExpiresAt() {
+  return new Date(Date.now() + env.MEMBER_PASSWORD_RESET_TTL_MINUTES * 60_000);
+}
+
 export function normalizeMemberName(name: string) {
   return name
     .replace(/^(mr|mrs|miss|ms|dr|rev)\.?\s+/i, "")
@@ -73,10 +94,6 @@ export function normalizeMemberName(name: string) {
     .toLowerCase();
 }
 
-// Report 20 names sometimes carry an extra/missing middle name or initial next to the record a
-// member types from memory, so an exact match is too strict. Equivalent to a two-way SQL
-// `... ILIKE '%' || :other || '%'` — either name containing the other (after stripping titles) counts
-// as a match, e.g. "George Asamoah" matches stored "Mr. George Asiedu Asamoah".
 export function memberNameMatches(storedName: string, enteredName: string) {
   const stored = normalizeMemberName(storedName);
   const entered = normalizeMemberName(enteredName);

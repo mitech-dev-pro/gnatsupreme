@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
@@ -22,15 +22,66 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
+function EyeToggle({
+  shown,
+  onToggle,
+}: {
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={shown ? "Hide password" : "Show password"}
+      aria-pressed={shown}
+      onClick={onToggle}
+      className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-[7px] text-[#5b6472] transition hover:bg-[#eef0fa] hover:text-[#1e2761] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]"
+    >
+      {shown ? (
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="size-4"
+        >
+          <path d="m3 3 18 18" />
+          <path
+            d="M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c6 0 9.5 8 9.5 8a17 17 0 0 1-2.1 3.3M6.6 6.6C4 8.4 2.5 12 2.5 12S6 20 12 20c1.3 0 2.5-.4 3.6-1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="size-4"
+        >
+          <path
+            d="M2.5 12S6 4 12 4s9.5 8 9.5 8S18 20 12 20 2.5 12 2.5 12Z"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function Login() {
   const { settings } = useOrganizationSettings();
   const { user, isLoading, login } = useAuth();
   const {
     member,
     isLoading: memberLoading,
-    requestOtp,
-    registerPhone,
-    verifyOtp,
+    login: memberLogin,
+    setupAccount,
+    forgotPassword,
   } = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -52,57 +103,28 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [memberStep, setMemberStep] = useState<"id" | "register" | "otp">("id");
+  const [memberStep, setMemberStep] = useState<"login" | "setup" | "forgot">("login");
   const [controllerId, setControllerId] = useState("");
-  const [otp, setOtp] = useState("");
-  const [challengeToken, setChallengeToken] = useState("");
+  const [memberPassword, setMemberPassword] = useState("");
+  const [showMemberPassword, setShowMemberPassword] = useState(false);
   const [memberError, setMemberError] = useState("");
   const [memberSubmitting, setMemberSubmitting] = useState(false);
-  const [requestRetrySeconds, setRequestRetrySeconds] = useState(0);
-  const [resendSeconds, setResendSeconds] = useState(0);
-  const [resendMessage, setResendMessage] = useState("");
-  const otpFormRef = useRef<HTMLFormElement>(null);
+  const [forgotMessage, setForgotMessage] = useState("");
 
-  const [regFullName, setRegFullName] = useState("");
-  const [regDistrictId, setRegDistrictId] = useState("");
-  const [regPhone, setRegPhone] = useState("");
-  const [districts, setDistricts] = useState<
-    { id: number; name: string; region: { name: string } }[]
-  >([]);
-  const [districtsLoading, setDistrictsLoading] = useState(false);
+  const [setupFullName, setSetupFullName] = useState("");
+  const [setupDistrictId, setSetupDistrictId] = useState("");
+  const [setupEmail, setSetupEmail] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
+  const [districts, setDistricts] = useState<{ id: number; name: string; region: { name: string } }[]>([]);
 
   useEffect(() => {
-    if (resendSeconds <= 0) return;
-    const timer = window.setInterval(
-      () => setResendSeconds((seconds) => Math.max(0, seconds - 1)),
-      1000,
-    );
-    return () => window.clearInterval(timer);
-  }, [resendSeconds]);
-
-  useEffect(() => {
-    if (requestRetrySeconds <= 0) return;
-    const timer = window.setInterval(
-      () => setRequestRetrySeconds((seconds) => Math.max(0, seconds - 1)),
-      1000,
-    );
-    return () => window.clearInterval(timer);
-  }, [requestRetrySeconds]);
-
-  useEffect(() => {
-    if (otp.length === 6 && memberStep === "otp" && !memberSubmitting) otpFormRef.current?.requestSubmit();
-  }, [otp, memberStep, memberSubmitting]);
-
-  useEffect(() => {
-    if (memberStep !== "register" || districts.length > 0 || districtsLoading)
-      return;
-    setDistrictsLoading(true);
+    if (memberStep !== "setup" || districts.length > 0) return;
     api
       .get("/member-auth/districts")
       .then((res) => setDistricts(res.data.data))
-      .catch(() => setDistricts([]))
-      .finally(() => setDistrictsLoading(false));
-  }, [memberStep, districts.length, districtsLoading]);
+      .catch(() => setDistricts([]));
+  }, [memberStep, districts.length]);
 
   if (isLoading || memberLoading) {
     return (
@@ -151,9 +173,87 @@ export default function Login() {
     }
   };
 
-  const handleRequestOtp = async (e: FormEvent) => {
+  const handleMemberLogin = async (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
+
+    if (!/^\d{4,7}$/.test(controllerId.trim())) {
+      setMemberError(
+        `Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`,
+      );
+      return;
+    }
+    if (!memberPassword) {
+      setMemberError("Enter your password.");
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      await memberLogin(controllerId.trim(), memberPassword);
+      navigate("/member", { replace: true });
+    } catch (err: any) {
+      if (err?.response?.data?.code === "SETUP_REQUIRED") {
+        setMemberStep("setup");
+        setMemberError("");
+        return;
+      }
+      setMemberError(
+        err?.response?.data?.message || "Unable to sign in. Please try again.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleSetupAccount = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!/^\d{4,7}$/.test(controllerId.trim())) {
+      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+      return;
+    }
+    if (!setupFullName.trim()) {
+      setMemberError("Enter your full name as it appears on your membership record.");
+      return;
+    }
+    if (!setupEmail.trim()) {
+      setMemberError("Enter your email address.");
+      return;
+    }
+    if (setupPassword.length < 8) {
+      setMemberError("Password must be at least 8 characters.");
+      return;
+    }
+    if (setupPassword !== setupConfirmPassword) {
+      setMemberError("Passwords do not match.");
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      await setupAccount({
+        controllerId: controllerId.trim(),
+        fullName: setupFullName.trim(),
+        districtId: setupDistrictId ? Number(setupDistrictId) : undefined,
+        email: setupEmail.trim(),
+        password: setupPassword,
+      });
+      navigate("/member", { replace: true });
+    } catch (err: any) {
+      setMemberError(
+        err?.response?.data?.message || "Unable to set up your account.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+    setForgotMessage("");
 
     if (!/^\d{4,7}$/.test(controllerId.trim())) {
       setMemberError(
@@ -164,113 +264,12 @@ export default function Login() {
 
     setMemberSubmitting(true);
     try {
-      const res = await requestOtp(controllerId.trim());
-      setChallengeToken(res.challengeToken);
-      setMemberStep("otp");
-      setResendSeconds(60);
-      setResendMessage("");
-    } catch (err: any) {
-      const retryAfter = Number(
-        err?.response?.data?.retryAfterSeconds ?? err?.response?.headers?.["retry-after"],
-      );
-      if (err?.response?.status === 429 && Number.isFinite(retryAfter)) {
-        setRequestRetrySeconds(Math.max(1, Math.ceil(retryAfter)));
-      }
-      if (err?.response?.data?.code === "PHONE_NOT_ON_FILE") {
-        setMemberStep("register");
-        setMemberError("");
-        return;
-      }
-      setMemberError(
-        err?.response?.data?.message || "Unable to send a verification code.",
-      );
-    } finally {
-      setMemberSubmitting(false);
-    }
-  };
-
-  const handleRegisterPhone = async (e: FormEvent) => {
-    e.preventDefault();
-    setMemberError("");
-
-    if (!regFullName.trim()) {
-      setMemberError(
-        "Enter your full name as it appears on your membership record.",
-      );
-      return;
-    }
-    if (!regDistrictId) {
-      setMemberError("Select your district.");
-      return;
-    }
-    if (!/^0\d{9}$/.test(regPhone.trim())) {
-      setMemberError("Enter a valid 10-digit phone number starting with 0.");
-      return;
-    }
-
-    setMemberSubmitting(true);
-    try {
-      const res = await registerPhone({
-        controllerId: controllerId.trim(),
-        fullName: regFullName.trim(),
-        districtId: Number(regDistrictId),
-        phone: regPhone.trim(),
-      });
-      setChallengeToken(res.challengeToken);
-      setMemberStep("otp");
-      setResendSeconds(60);
-      setResendMessage("");
+      const res = await forgotPassword(controllerId.trim());
+      setForgotMessage(res.message);
     } catch (err: any) {
       setMemberError(
-        err?.response?.data?.message || "Unable to register your phone number.",
+        err?.response?.data?.message || "Unable to process this request.",
       );
-    } finally {
-      setMemberSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: FormEvent) => {
-    e.preventDefault();
-    setMemberError("");
-
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setMemberError("Enter the six-digit verification code.");
-      return;
-    }
-
-    setMemberSubmitting(true);
-    try {
-      await verifyOtp(challengeToken, otp.trim());
-      navigate("/member", { replace: true });
-    } catch (err: any) {
-      setMemberError(
-        err?.response?.data?.message ||
-          "The verification code is invalid or expired.",
-      );
-    } finally {
-      setMemberSubmitting(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    if (resendSeconds > 0 || memberSubmitting) return;
-    setMemberSubmitting(true);
-    setMemberError("");
-    setResendMessage("");
-    try {
-      const response = await requestOtp(controllerId.trim());
-      setChallengeToken(response.challengeToken);
-      setOtp("");
-      setResendSeconds(60);
-      setResendMessage("A new verification code has been sent.");
-    } catch (err: any) {
-      const retryAfter = Number(
-        err?.response?.data?.retryAfterSeconds ?? err?.response?.headers?.["retry-after"],
-      );
-      if (err?.response?.status === 429 && Number.isFinite(retryAfter)) {
-        setResendSeconds(Math.max(1, Math.ceil(retryAfter)));
-      }
-      setMemberError(err?.response?.data?.message || "Unable to resend the verification code.");
     } finally {
       setMemberSubmitting(false);
     }
@@ -278,23 +277,22 @@ export default function Login() {
 
   const handleMemberModeChange = (nextMode: "staff" | "member") => {
     setMode(nextMode);
-    setMemberStep("id");
-    setOtp("");
-    setChallengeToken("");
+    setMemberStep("login");
+    setMemberPassword("");
     setMemberError("");
-    setResendMessage("");
-    setResendSeconds(0);
-    setRequestRetrySeconds(0);
-    setRegFullName("");
-    setRegDistrictId("");
-    setRegPhone("");
+    setForgotMessage("");
+    setSetupFullName("");
+    setSetupDistrictId("");
+    setSetupEmail("");
+    setSetupPassword("");
+    setSetupConfirmPassword("");
   };
 
   return (
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5">
-      <div className="grid w-full max-w-240 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-2">
+      <div className="grid w-full max-w-120 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-1">
         {/* Brand side */}
-        <div className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white md:flex">
+        {/* <div className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white md:flex">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-15 -top-15 h-55 w-55 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_70%)]"
@@ -365,10 +363,14 @@ export default function Login() {
             Sign in with the staff account issued to you by{" "}
             {settings.portalName}.
           </div>
-        </div>
+        </div> */}
 
         {/* Form side */}
         <div className="flex flex-col px-9 py-10">
+          <h1 className="relative z-10 mb-2.5 text-[22px] font-extrabold tracking-tight">
+            {settings.portalName}
+          </h1>
+          <br />
           <div className="mb-5.5 flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
             <button
               type="button"
@@ -483,48 +485,10 @@ export default function Login() {
                       autoComplete="current-password"
                       className={`${inputClasses} pr-10`}
                     />
-                    <button
-                      type="button"
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                      aria-pressed={showPassword}
-                      onClick={() => setShowPassword((visible) => !visible)}
-                      className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-[7px] text-[#5b6472] transition hover:bg-[#eef0fa] hover:text-[#1e2761] focus:outline-none focus-visible:shadow-[0_0_0_3px_#dff7ee]"
-                    >
-                      {showPassword ? (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          className="size-4"
-                        >
-                          <path d="m3 3 18 18" />
-                          <path
-                            d="M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c6 0 9.5 8 9.5 8a17 17 0 0 1-2.1 3.3M6.6 6.6C4 8.4 2.5 12 2.5 12S6 20 12 20c1.3 0 2.5-.4 3.6-1"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          className="size-4"
-                        >
-                          <path
-                            d="M2.5 12S6 4 12 4s9.5 8 9.5 8S18 20 12 20 2.5 12 2.5 12Z"
-                            strokeLinejoin="round"
-                          />
-                          <circle cx="12" cy="12" r="2.5" />
-                        </svg>
-                      )}
-                    </button>
+                    <EyeToggle
+                      shown={showPassword}
+                      onToggle={() => setShowPassword((v) => !v)}
+                    />
                   </div>
                 </div>
 
@@ -537,31 +501,19 @@ export default function Login() {
                 </button>
               </form>
             </>
-          ) : memberStep === "id" ? (
+          ) : memberStep === "login" ? (
             <>
-              <div
-                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
-                aria-label="Step 1 of 2, verify membership"
-              >
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
-                  1
-                </span>
-                <span className="text-[#1e2761]">Verify membership</span>
-                <span className="h-px flex-1 bg-[#dfe4ec]" />
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">
-                  2
-                </span>
-                <span className="text-[#7b8492]">Enter SMS code</span>
-              </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Member access
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your {settings.memberIdLabel} and we'll text a
-                verification code to your registered phone
+                Enter your {settings.memberIdLabel} and password to access your
+                membership.
               </div>
 
-              <form onSubmit={handleRequestOtp} noValidate>
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleMemberLogin} noValidate>
                 <div className="mb-3.5">
                   <label
                     htmlFor="controller-id"
@@ -594,54 +546,85 @@ export default function Login() {
                       inputMode="numeric"
                       autoComplete="username"
                       maxLength={7}
-                      aria-invalid={Boolean(memberError)}
-                      aria-describedby={
-                        memberError ? "member-id-error" : "member-id-help"
-                      }
                       className={inputClasses}
                     />
                   </div>
-                  {memberError ? (
-                    <p
-                      id="member-id-error"
-                      role="alert"
-                      className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]"
+                </div>
+
+                <div className="mb-1.5">
+                  <label
+                    htmlFor="member-password"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    Password
+                  </label>
+                  <div className="relative">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
                     >
-                      {memberError}
-                    </p>
-                  ) : (
-                    <p
-                      id="member-id-help"
-                      className="mt-1.5 text-[11px] text-[#5b6472]"
-                    >
-                      Use the ID shown on your membership record or payslip.
-                    </p>
-                  )}
+                      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+                      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+                    </svg>
+                    <input
+                      id="member-password"
+                      type={showMemberPassword ? "text" : "password"}
+                      value={memberPassword}
+                      onChange={(e) => {
+                        setMemberPassword(e.target.value);
+                        setMemberError("");
+                      }}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      className={`${inputClasses} pr-10`}
+                    />
+                    <EyeToggle
+                      shown={showMemberPassword}
+                      onToggle={() => setShowMemberPassword((v) => !v)}
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3.5 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMemberStep("setup");
+                      setMemberError("");
+                    }}
+                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
+                  >
+                    First time signing in?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMemberStep("forgot");
+                      setMemberError("");
+                      setForgotMessage("");
+                    }}
+                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={memberSubmitting || requestRetrySeconds > 0}
+                  disabled={memberSubmitting}
                   className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {memberSubmitting
-                    ? "Sending code…"
-                    : requestRetrySeconds > 0
-                      ? `Try again in ${Math.ceil(requestRetrySeconds / 60)} min`
-                      : "Send Verification Code"}
+                  {memberSubmitting ? "Signing in…" : "Sign In"}
                 </button>
-                {requestRetrySeconds > 0 && (
-                  <p className="mt-2 text-center text-[11px] leading-relaxed text-[#5b6472]" aria-live="polite">
-                    Requests are temporarily paused for this membership on this network. The button will become available automatically.
-                  </p>
-                )}
               </form>
               <div className="mt-5 border-t border-[#edf0f5] pt-4 text-[11px] leading-relaxed text-[#5b6472]">
-                We use the SMS code only to verify access to your membership
-                record.
+                Can't sign in?
                 {(settings.organizationPhone || settings.organizationEmail) && (
                   <p className="mt-2">
-                    Need help?{" "}
+                    Contact{" "}
                     {settings.organizationPhone && (
                       <a
                         className="font-semibold text-[#1e2761]"
@@ -660,7 +643,8 @@ export default function Login() {
                       >
                         {settings.organizationEmail}
                       </a>
-                    )}
+                    )}{" "}
+                    for help.
                   </p>
                 )}
                 {settings.privacyNotice && (
@@ -675,46 +659,45 @@ export default function Login() {
                 )}
               </div>
             </>
-          ) : memberStep === "register" ? (
+          ) : memberStep === "setup" ? (
             <>
-              <div
-                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
-                aria-label="Step 1 of 2, register your phone number"
-              >
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
-                  1
-                </span>
-                <span className="text-[#1e2761]">Register your phone</span>
-                <span className="h-px flex-1 bg-[#dfe4ec]" />
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#eef0fa] text-[#5b6472]">
-                  2
-                </span>
-                <span className="text-[#7b8492]">Enter SMS code</span>
-              </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                No phone on file yet
+                Set up your account
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                We couldn't find a phone number for {settings.memberIdLabel}{" "}
-                {controllerId}. Confirm your details below to register one and
-                continue signing in.
+                Confirm your details, then choose a password and email for signing in from now on.
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
 
-              <form onSubmit={handleRegisterPhone} noValidate>
+              <form onSubmit={handleSetupAccount} noValidate>
                 <div className="mb-3.5">
-                  <label
-                    htmlFor="reg-full-name"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
+                  <label htmlFor="setup-controller-id" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    {settings.memberIdLabel}
+                  </label>
+                  <input
+                    id="setup-controller-id"
+                    value={controllerId}
+                    onChange={(e) => {
+                      setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7));
+                      setMemberError("");
+                    }}
+                    placeholder="e.g. 1188204"
+                    inputMode="numeric"
+                    maxLength={7}
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                </div>
+
+                <div className="mb-3.5">
+                  <label htmlFor="setup-full-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
                     Full name (as on your membership record)
                   </label>
                   <input
-                    id="reg-full-name"
-                    value={regFullName}
+                    id="setup-full-name"
+                    value={setupFullName}
                     onChange={(e) => {
-                      setRegFullName(e.target.value);
+                      setSetupFullName(e.target.value);
                       setMemberError("");
                     }}
                     placeholder="e.g. Kwasi Tawia"
@@ -724,59 +707,83 @@ export default function Login() {
                 </div>
 
                 <div className="mb-3.5">
-                  <label
-                    htmlFor="reg-district"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
-                    District
+                  <label htmlFor="setup-district" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    District (optional)
                   </label>
                   <select
-                    id="reg-district"
-                    value={regDistrictId}
+                    id="setup-district"
+                    value={setupDistrictId}
                     onChange={(e) => {
-                      setRegDistrictId(e.target.value);
+                      setSetupDistrictId(e.target.value);
                       setMemberError("");
                     }}
                     className={inputClasses.replace("pl-9", "pl-3")}
                   >
-                    <option value="">
-                      {districtsLoading
-                        ? "Loading districts…"
-                        : "Select your district"}
-                    </option>
+                    <option value="">Select your district if known</option>
                     {districts.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name} — {d.region.name}
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1.5 text-[11px] text-[#5b6472]">
+                    Not required to continue — only used to fill in your district if it's missing from your record.
+                  </p>
                 </div>
 
                 <div className="mb-3.5">
-                  <label
-                    htmlFor="reg-phone"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
-                    Phone number
+                  <label htmlFor="setup-email" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    Email
                   </label>
                   <input
-                    id="reg-phone"
-                    value={regPhone}
+                    id="setup-email"
+                    type="email"
+                    value={setupEmail}
                     onChange={(e) => {
-                      setRegPhone(
-                        e.target.value.replace(/\D/g, "").slice(0, 10),
-                      );
+                      setSetupEmail(e.target.value);
                       setMemberError("");
                     }}
-                    placeholder="e.g. 0241234567"
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    maxLength={10}
+                    placeholder="e.g. kwasi.tawia@example.com"
+                    autoComplete="email"
                     className={inputClasses.replace("pl-9", "pl-3")}
                   />
-                  <p className="mt-1.5 text-[11px] text-[#5b6472]">
-                    We'll text a verification code to this number.
-                  </p>
+                  <p className="mt-1.5 text-[11px] text-[#5b6472]">Used only to reset your password if you forget it.</p>
+                </div>
+
+                <div className="mb-3.5">
+                  <label htmlFor="setup-password" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    New password
+                  </label>
+                  <input
+                    id="setup-password"
+                    type="password"
+                    value={setupPassword}
+                    onChange={(e) => {
+                      setSetupPassword(e.target.value);
+                      setMemberError("");
+                    }}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="setup-confirm-password" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                    Confirm new password
+                  </label>
+                  <input
+                    id="setup-confirm-password"
+                    type="password"
+                    value={setupConfirmPassword}
+                    onChange={(e) => {
+                      setSetupConfirmPassword(e.target.value);
+                      setMemberError("");
+                    }}
+                    placeholder="Re-enter your new password"
+                    autoComplete="new-password"
+                    className={inputClasses.replace("pl-9", "pl-3")}
+                  />
                 </div>
 
                 <button
@@ -784,137 +791,84 @@ export default function Login() {
                   disabled={memberSubmitting}
                   className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {memberSubmitting ? "Registering…" : "Register & Send Code"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMemberStep("id");
-                    setMemberError("");
-                  }}
-                  className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
-                >
-                  Use a different {settings.memberIdLabel}
+                  {memberSubmitting ? "Setting up…" : "Set Up & Sign In"}
                 </button>
               </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberStep("login");
+                  setMemberError("");
+                }}
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+              >
+                Back to sign in
+              </button>
             </>
           ) : (
             <>
-              <div
-                className="mb-5 flex items-center gap-2 text-[10.5px] font-bold"
-                aria-label="Step 2 of 2, enter SMS code"
-              >
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#dff7ee] text-[#17805f]">
-                  ✓
-                </span>
-                <span className="text-[#5b6472]">Membership found</span>
-                <span className="h-px flex-1 bg-[#1f9c7c]" />
-                <span className="flex size-6 items-center justify-center rounded-full bg-[#1f9c7c] text-white">
-                  2
-                </span>
-                <span className="text-[#1e2761]">Enter SMS code</span>
-              </div>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Enter verification code
+                Reset your password
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                We've sent a 6-digit code by SMS to the phone on file for
-                {settings.memberIdLabel} {controllerId}
+                Enter your {settings.memberIdLabel} — if there's an email on
+                file for your membership, we'll send reset instructions to it.
               </div>
 
-              <form ref={otpFormRef} onSubmit={handleVerifyOtp} noValidate>
-                <div className="mb-3.5">
-                  <label
-                    htmlFor="member-otp"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
-                    Verification code
-                  </label>
-                  <div className="relative">
+              {memberError && <ErrorBanner message={memberError} />}
+              {forgotMessage && (
+                <div className="mb-3 rounded-lg bg-[#dff7ee] px-2.5 py-2 text-[12px] font-semibold text-[#17805f]">
+                  {forgotMessage}
+                </div>
+              )}
+
+              {!forgotMessage && (
+                <form onSubmit={handleForgotPassword} noValidate>
+                  <div className="mb-3.5">
+                    <label
+                      htmlFor="forgot-controller-id"
+                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                    >
+                      {settings.memberIdLabel}
+                    </label>
                     <input
-                      id="member-otp"
-                      value={otp}
+                      id="forgot-controller-id"
+                      value={controllerId}
                       onChange={(e) => {
-                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+                        setControllerId(
+                          e.target.value.replace(/\D/g, "").slice(0, 7),
+                        );
                         setMemberError("");
                       }}
-                      placeholder="000000"
-                      maxLength={6}
+                      placeholder="e.g. 1188204"
                       inputMode="numeric"
-                      autoComplete="one-time-code"
-                      enterKeyHint="done"
-                      aria-invalid={Boolean(memberError)}
-                      aria-describedby={
-                        memberError ? "member-otp-error" : "member-otp-help"
-                      }
-                      className={`${inputClasses} py-3 text-center font-mono text-[20px] font-bold tracking-[0.45em] text-[#1e2761]`}
+                      maxLength={7}
+                      className={inputClasses.replace("pl-9", "pl-3")}
                     />
                   </div>
-                  {memberError ? (
-                    <p
-                      id="member-otp-error"
-                      role="alert"
-                      className="mt-1.5 text-[11.5px] font-semibold text-[#c23b3b]"
-                    >
-                      {memberError}
-                    </p>
-                  ) : (
-                    <p
-                      id="member-otp-help"
-                      className="mt-1.5 text-[11px] text-[#5b6472]"
-                    >
-                      Enter or paste the complete six-digit code.
-                    </p>
-                  )}
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={memberSubmitting || otp.length !== 6}
-                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {memberSubmitting ? "Verifying…" : "Verify & Sign In"}
-                </button>
-
-                <div
-                  className="mt-3 text-center text-[11.5px] text-[#5b6472]"
-                  aria-live="polite"
-                >
-                  {resendMessage ||
-                    (resendSeconds > 0
-                      ? `You can request another code in ${resendSeconds}s`
-                      : "Didn't receive the code?")}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleResendOtp()}
-                  disabled={memberSubmitting || resendSeconds > 0}
-                  className="mt-1.5 w-full text-center text-[11.5px] font-semibold text-[#1e2761] disabled:cursor-not-allowed disabled:text-[#9aa3b2]"
-                >
-                  Resend code
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMemberStep("id");
-                    setOtp("");
-                    setMemberError("");
-                    setResendMessage("");
-                    setResendSeconds(0);
-                  }}
-                  className="mt-3 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
-                >
-                  Use a different {settings.memberIdLabel}
-                </button>
-              </form>
-              {(settings.organizationPhone || settings.organizationEmail) && (
-                <p className="mt-4 text-center text-[11px] text-[#5b6472]">
-                  Phone number outdated? Contact{" "}
-                  {settings.organizationPhone || settings.organizationEmail}.
-                </p>
+                  <button
+                    type="submit"
+                    disabled={memberSubmitting}
+                    className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {memberSubmitting ? "Sending…" : "Send Reset Instructions"}
+                  </button>
+                </form>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberStep("login");
+                  setMemberError("");
+                  setForgotMessage("");
+                }}
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+              >
+                Back to sign in
+              </button>
             </>
           )}
         </div>

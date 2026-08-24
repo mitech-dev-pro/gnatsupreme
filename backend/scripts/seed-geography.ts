@@ -296,12 +296,6 @@ const geography: Record<string, string[]> = {
   ],
 };
 
-// Spelling/naming variants seen in real Report 20 / bulk-import files that don't match any district
-// after suffix-stripping (see district-match.ts) but unambiguously refer to one — confirmed against
-// the live DB and, where uncertain, an authoritative source (see conversation history for the
-// Assin Central / East Akim research). Each key is stored as its own DistrictAlias row; the matcher
-// normalizes both the alias and the incoming raw name the same way, so hyphens/spacing/suffix don't
-// need to match exactly, only the seeded spelling variant does.
 const districtAliases: Record<string, string> = {
   "Akwapim North": "Akuapem North",
   "Akwapim South": "Akuapem South",

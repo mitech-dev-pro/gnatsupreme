@@ -946,7 +946,7 @@ export default function Setup() {
 
   return (
     <div>
-      <PageHeader title="Setup" description="Configure regions, districts, and the benefit plan. Regional Admins can review configuration; National Admins and Super Admins can publish changes." />
+      <PageHeader title="Scheme Configuration" description="Configure regions, districts, and the benefit plan. Regional Admins can review configuration; National Admins and Super Admins can publish changes." />
 
       <div className="mb-5 flex gap-2" role="tablist" aria-label="Setup sections">
         <button type="button" role="tab" aria-selected={tab === "geography"} onClick={() => setTab("geography")} className={tabButton(tab === "geography")}>

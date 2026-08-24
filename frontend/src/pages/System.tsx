@@ -525,7 +525,7 @@ export default function System() {
 
   return (
     <div>
-      <PageHeader title="System" description="Manage staff accounts and review the full activity audit trail." />
+      <PageHeader title="Staff & Audit" description="Manage staff accounts and review the full activity audit trail." />
 
       <div className="mb-5 flex gap-2" role="tablist" aria-label="System sections">
         <button type="button" role="tab" aria-selected={tab === "users"} onClick={() => setTab("users")} className={tabButton(tab === "users")}>

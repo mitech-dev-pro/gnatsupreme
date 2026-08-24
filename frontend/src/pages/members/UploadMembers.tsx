@@ -168,7 +168,7 @@ export default function UploadMembers() {
         &larr; All Members
       </Link>
 
-      <PageHeader eyebrow="Member administration" title="Upload members" description="Validate every row before enrolling new member records." actions={<Button variant="secondary" size="sm" onClick={downloadTemplate}>
+      <PageHeader eyebrow="Member administration" title="Bulk Import" description="Validate every row before enrolling new member records." actions={<Button variant="secondary" size="sm" onClick={downloadTemplate}>
           <svg
             viewBox="0 0 24 24"
             fill="none"

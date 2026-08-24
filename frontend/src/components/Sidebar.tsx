@@ -18,21 +18,27 @@ const membersGroupIcon = (
   </svg>
 );
 
-const baseMembersItems: NavSubItem[] = [
+const importsGroupIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 15V4M7.5 9 12 4l4.5 5" />
+    <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+  </svg>
+);
+
+const membersItems: NavSubItem[] = [
   { label: "All Members", target: "all", to: "/members" },
   { label: "Add Member", target: "add", to: "/members/new" },
-  { label: "Upload Members", target: "upload", to: "/members/upload" },
   { label: "Pending Approvals", target: "pending", to: "/approvals" },
   { label: "Change Requests", target: "changes", to: "/change-requests" },
-  {
-    label: "Removed / Exits",
-    target: "removed",
-    to: "/members?status=REMOVED",
-  },
+  { label: "Removed Members", target: "removed", to: "/members?status=REMOVED" },
+];
+
+const baseImportsItems: NavSubItem[] = [
+  { label: "Bulk Import", target: "bulk", to: "/members/upload" },
 ];
 
 const report20Item: NavSubItem = {
-  label: "Report 20 Import",
+  label: "Report 20 Reconciliation",
   target: "report20",
   to: "/imports/report20",
 };
@@ -85,13 +91,23 @@ const mainNavItems: { label: string; to: string; icon: ReactNode }[] = [
 
 const settingsIcon = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9Z" />
   </svg>
 );
 
+const ALL_STAFF_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"];
+
 const adminItems: { label: string; to: string; lock: string; roles: string[]; icon: ReactNode }[] = [
   {
-    label: "Setup",
+    label: "Global Settings",
+    to: "/settings",
+    lock: "",
+    roles: ALL_STAFF_ROLES,
+    icon: settingsIcon,
+  },
+  {
+    label: "Scheme Configuration",
     to: "/setup",
     lock: "Regional+",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"],
@@ -108,7 +124,7 @@ const adminItems: { label: string; to: string; lock: string; roles: string[]; ic
     ),
   },
   {
-    label: "System",
+    label: "Staff & Audit",
     to: "/system",
     lock: "National",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN"],
@@ -132,6 +148,88 @@ const navItemActive = "bg-(--brand-accent) text-white hover:bg-(--brand-accent)"
 const navSoonBadge =
   "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
 
+function NavGroup({
+  id,
+  label,
+  icon,
+  items,
+  expanded,
+  onToggle,
+  location,
+  onNavigate,
+}: {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  items: NavSubItem[];
+  expanded: boolean;
+  onToggle: () => void;
+  location: ReturnType<typeof useLocation>;
+  onNavigate: () => void;
+}) {
+  return (
+    <div className="mb-0.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={id}
+        className={`w-full ${navItemBase}`}
+      >
+        <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">{icon}</span>
+        {label}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.6"
+          className={`ml-auto h-3.25 w-3.25 shrink-0 opacity-70 transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div
+        id={id}
+        className={`overflow-hidden transition-[max-height] duration-200 ${
+          expanded ? "max-h-70" : "max-h-0"
+        }`}
+      >
+        {items.map((item) =>
+          item.to ? (
+            <NavLink
+              key={item.target}
+              to={item.to}
+              onClick={onNavigate}
+              className={() => {
+                const isActive = location.pathname + location.search === item.to;
+                return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
+                  isActive
+                    ? "bg-white/8 font-semibold text-white"
+                    : "text-[#9aa2c4] hover:bg-white/6 hover:text-white"
+                }`;
+              }}
+            >
+              <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
+              {item.label}
+            </NavLink>
+          ) : (
+            <span
+              key={item.target}
+              className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
+            >
+              <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
+              {item.label}
+              <span className={navSoonBadge}>Soon</span>
+            </span>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
 type SidebarProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -144,15 +242,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const canImportReport20 = user
     ? ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role)
     : false;
-  const membersItems = canImportReport20
-    ? [...baseMembersItems, report20Item]
-    : baseMembersItems;
+  const importsItems = canImportReport20
+    ? [...baseImportsItems, report20Item]
+    : baseImportsItems;
   const [membersExpanded, setMembersExpanded] = useState(
     () =>
-      location.pathname.startsWith("/members") ||
-      location.pathname.startsWith("/imports/report20") ||
+      (location.pathname.startsWith("/members") && !location.pathname.startsWith("/members/upload")) ||
       location.pathname.startsWith("/change-requests") ||
       location.pathname.startsWith("/approvals"),
+  );
+  const [importsExpanded, setImportsExpanded] = useState(
+    () =>
+      location.pathname.startsWith("/members/upload") ||
+      location.pathname.startsWith("/imports/report20"),
   );
 
   return (
@@ -215,68 +317,27 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             Dashboard
           </NavLink>
 
-          <div className="mb-0.5">
-            <button
-              type="button"
-              onClick={() => setMembersExpanded((v) => !v)}
-              aria-expanded={membersExpanded}
-              aria-controls="members-navigation"
-              className={`w-full ${navItemBase}`}
-            >
-              <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-                {membersGroupIcon}
-              </span>
-              Members
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.6"
-                className={`ml-auto h-3.25 w-3.25 shrink-0 opacity-70 transition-transform ${
-                  membersExpanded ? "rotate-180" : ""
-                }`}
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-            <div
-              id="members-navigation"
-              className={`overflow-hidden transition-[max-height] duration-200 ${
-                membersExpanded ? "max-h-70" : "max-h-0"
-              }`}
-            >
-              {membersItems.map((item) =>
-                item.to ? (
-                  <NavLink
-                    key={item.target}
-                    to={item.to}
-                    onClick={onClose}
-                    className={() => {
-                      const isActive =
-                        location.pathname + location.search === item.to;
-                      return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
-                        isActive
-                          ? "bg-white/8 font-semibold text-white"
-                          : "text-[#9aa2c4] hover:bg-white/6 hover:text-white"
-                      }`;
-                    }}
-                  >
-                    <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
-                    {item.label}
-                  </NavLink>
-                ) : (
-                  <span
-                    key={item.target}
-                    className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
-                  >
-                    <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
-                    {item.label}
-                    <span className={navSoonBadge}>Soon</span>
-                  </span>
-                ),
-              )}
-            </div>
-          </div>
+          <NavGroup
+            id="members-navigation"
+            label="Members"
+            icon={membersGroupIcon}
+            items={membersItems}
+            expanded={membersExpanded}
+            onToggle={() => setMembersExpanded((v) => !v)}
+            location={location}
+            onNavigate={onClose}
+          />
+
+          <NavGroup
+            id="imports-navigation"
+            label="Imports"
+            icon={importsGroupIcon}
+            items={importsItems}
+            expanded={importsExpanded}
+            onToggle={() => setImportsExpanded((v) => !v)}
+            location={location}
+            onNavigate={onClose}
+          />
 
           {mainNavItems.map((item) => (
             <NavLink
@@ -293,19 +354,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               {item.label}
             </NavLink>
           ))}
-
-          <NavLink
-            to="/settings"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
-            }
-          >
-            <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-              {settingsIcon}
-            </span>
-            Global Settings
-          </NavLink>
 
           <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-[#7a81a8]">
             ADMINISTRATION

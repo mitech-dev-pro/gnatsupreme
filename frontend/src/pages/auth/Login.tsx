@@ -10,7 +10,8 @@ import { isMemberPortalPath, parseISODate, toISODate } from "@/lib/utils";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
-const normalizeGhanaCard = (value: string) => value.toUpperCase().replace(/\s/g, "").slice(0, 17);
+const normalizeGhanaCard = (value: string) =>
+  value.toUpperCase().replace(/\s/g, "").slice(0, 17);
 
 type BeneficiaryDraft = {
   fullName: string;
@@ -28,11 +29,11 @@ const emptyBeneficiary = (): BeneficiaryDraft => ({
   trusteeGhanaCardId: "",
 });
 
-const FEATURES = [
-  "Scoped access — see only your district, region, or the whole scheme",
-  "Every action is logged to the audit trail",
-  "Changes are saved automatically as you work",
-];
+// const FEATURES = [
+//   "Scoped access — see only your district, region, or the whole scheme",
+//   "Every action is logged to the audit trail",
+//   "Changes are saved automatically as you work",
+// ];
 
 const inputClasses =
   "w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-[11px] pl-9 pr-3 text-[13px] transition-[border-color,box-shadow] duration-150 ease-out focus:border-[#1f9c7c] focus:shadow-[0_0_0_3px_#dff7ee] focus:outline-none";
@@ -119,7 +120,9 @@ export default function Login() {
       ? requestedRedirect
       : "/";
   const safeMemberRedirect =
-    requestedRedirect && isMemberPortalPath(requestedRedirect) ? requestedRedirect : "/member";
+    requestedRedirect && isMemberPortalPath(requestedRedirect)
+      ? requestedRedirect
+      : "/member";
 
   const [mode, setMode] = useState<"staff" | "member">(requestedMode);
 
@@ -131,7 +134,11 @@ export default function Login() {
 
   const [memberStep, setMemberStep] = useState<
     "login" | "lookup" | "setup" | "policy" | "forgot"
-  >(requestedMode === "member" && searchParams.get("step") === "policy" ? "policy" : "login");
+  >(
+    requestedMode === "member" && searchParams.get("step") === "policy"
+      ? "policy"
+      : "login",
+  );
   const [controllerId, setControllerId] = useState("");
   const [memberPassword, setMemberPassword] = useState("");
   const [showMemberPassword, setShowMemberPassword] = useState(false);
@@ -144,7 +151,9 @@ export default function Login() {
   const [setupEmail, setSetupEmail] = useState("");
   const [setupPassword, setSetupPassword] = useState("");
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
-  const [districts, setDistricts] = useState<{ id: number; name: string; region: { name: string } }[]>([]);
+  const [districts, setDistricts] = useState<
+    { id: number; name: string; region: { name: string } }[]
+  >([]);
 
   const [policyDob, setPolicyDob] = useState("");
   const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
@@ -153,10 +162,16 @@ export default function Login() {
   const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
   const [marriageCertFile, setMarriageCertFile] = useState<File | null>(null);
-  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([emptyBeneficiary()]);
+  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([
+    emptyBeneficiary(),
+  ]);
 
   useEffect(() => {
-    if ((memberStep !== "setup" && memberStep !== "policy") || districts.length > 0) return;
+    if (
+      (memberStep !== "setup" && memberStep !== "policy") ||
+      districts.length > 0
+    )
+      return;
     api
       .get("/member-auth/districts")
       .then((res) => setDistricts(res.data.data))
@@ -239,13 +254,17 @@ export default function Login() {
     setMemberError("");
 
     if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+      setMemberError(
+        `Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`,
+      );
       return;
     }
 
     setMemberSubmitting(true);
     try {
-      const res = await api.post("/member-auth/lookup", { controllerId: controllerId.trim() });
+      const res = await api.post("/member-auth/lookup", {
+        controllerId: controllerId.trim(),
+      });
       setSetupFullName(res.data.data.fullName);
       setMemberStep("setup");
     } catch (err: any) {
@@ -316,8 +335,14 @@ export default function Login() {
       setMemberError("Enter your spouse's full name.");
       return;
     }
-    if (includeSpouse && spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId)) {
-      setMemberError("Enter your spouse's Ghana Card ID in the format GHA-000000000-0.");
+    if (
+      includeSpouse &&
+      spouseGhanaCardId &&
+      !GHANA_CARD.test(spouseGhanaCardId)
+    ) {
+      setMemberError(
+        "Enter your spouse's Ghana Card ID in the format GHA-000000000-0.",
+      );
       return;
     }
     for (const item of beneficiaries) {
@@ -350,7 +375,9 @@ export default function Login() {
       if (includeSpouse && res.data.data.spouseId && marriageCertFile) {
         const formData = new FormData();
         formData.append("file", marriageCertFile);
-        await api.post("/member-portal/spouse/marriage-certificate", formData).catch(() => undefined);
+        await api
+          .post("/member-portal/spouse/marriage-certificate", formData)
+          .catch(() => undefined);
       }
       markProfileComplete();
       navigate(safeMemberRedirect, { replace: true });
@@ -793,14 +820,19 @@ export default function Login() {
 
               <form onSubmit={handleLookup} noValidate>
                 <div className="mb-4">
-                  <label htmlFor="lookup-controller-id" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="lookup-controller-id"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     {settings.memberIdLabel}
                   </label>
                   <input
                     id="lookup-controller-id"
                     value={controllerId}
                     onChange={(e) => {
-                      setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7));
+                      setControllerId(
+                        e.target.value.replace(/\D/g, "").slice(0, 7),
+                      );
                       setMemberError("");
                     }}
                     placeholder="e.g. 1188204"
@@ -844,7 +876,10 @@ export default function Login() {
 
               <form onSubmit={handleSetupAccount} noValidate>
                 <div className="mb-3.5">
-                  <label htmlFor="setup-full-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="setup-full-name"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     Full name
                   </label>
                   <input
@@ -857,7 +892,10 @@ export default function Login() {
                 </div>
 
                 <div className="mb-3.5">
-                  <label htmlFor="setup-district" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="setup-district"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     District (optional)
                   </label>
                   <Dropdown
@@ -868,15 +906,22 @@ export default function Login() {
                       setMemberError("");
                     }}
                     placeholder="Select your district if known"
-                    options={districts.map((d) => ({ value: String(d.id), label: `${d.name} — ${d.region.name}` }))}
+                    options={districts.map((d) => ({
+                      value: String(d.id),
+                      label: `${d.name} — ${d.region.name}`,
+                    }))}
                   />
                   <p className="mt-1.5 text-[11px] text-[#5b6472]">
-                    Not required to continue — only used to fill in your district if it's missing from your record.
+                    Not required to continue — only used to fill in your
+                    district if it's missing from your record.
                   </p>
                 </div>
 
                 <div className="mb-3.5">
-                  <label htmlFor="setup-email" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="setup-email"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     Email
                   </label>
                   <input
@@ -891,11 +936,16 @@ export default function Login() {
                     autoComplete="email"
                     className={inputClasses.replace("pl-9", "pl-3")}
                   />
-                  <p className="mt-1.5 text-[11px] text-[#5b6472]">Used only to reset your password if you forget it.</p>
+                  <p className="mt-1.5 text-[11px] text-[#5b6472]">
+                    Used only to reset your password if you forget it.
+                  </p>
                 </div>
 
                 <div className="mb-3.5">
-                  <label htmlFor="setup-password" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="setup-password"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     New password
                   </label>
                   <input
@@ -913,7 +963,10 @@ export default function Login() {
                 </div>
 
                 <div className="mb-4">
-                  <label htmlFor="setup-confirm-password" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="setup-confirm-password"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     Confirm new password
                   </label>
                   <input
@@ -975,7 +1028,10 @@ export default function Login() {
                 </div>
 
                 <div className="mb-4">
-                  <label htmlFor="policy-ghana-card" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                  <label
+                    htmlFor="policy-ghana-card"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
                     Ghana Card ID
                   </label>
                   <input
@@ -991,7 +1047,9 @@ export default function Login() {
                 </div>
 
                 <div className="mb-1.5 flex items-center justify-between rounded-[9px] bg-[#f6f7fb] px-3 py-2.5">
-                  <span className="text-[11.5px] font-bold text-[#1e2761]">Add a spouse?</span>
+                  <span className="text-[11.5px] font-bold text-[#1e2761]">
+                    Add a spouse?
+                  </span>
                   <div className="flex gap-1 rounded-[9px] bg-[#eef0fa] p-0.5">
                     <button
                       type="button"
@@ -1013,7 +1071,10 @@ export default function Login() {
                 {includeSpouse && (
                   <div className="mt-3.5 rounded-[9px] border border-[#e5e9f0] p-3">
                     <div className="mb-3">
-                      <label htmlFor="spouse-name" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                      <label
+                        htmlFor="spouse-name"
+                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                      >
                         Spouse full name
                       </label>
                       <input
@@ -1031,18 +1092,25 @@ export default function Login() {
                         label="Spouse date of birth (optional)"
                         maxDate={new Date()}
                         value={parseISODate(spouseDob)}
-                        onChange={(date) => setSpouseDob(date ? toISODate(date) : "")}
+                        onChange={(date) =>
+                          setSpouseDob(date ? toISODate(date) : "")
+                        }
                       />
                     </div>
                     <div className="mb-3">
-                      <label htmlFor="spouse-ghana-card" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                      <label
+                        htmlFor="spouse-ghana-card"
+                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                      >
                         Spouse Ghana Card (optional)
                       </label>
                       <input
                         id="spouse-ghana-card"
                         value={spouseGhanaCardId}
                         onChange={(e) => {
-                          setSpouseGhanaCardId(normalizeGhanaCard(e.target.value));
+                          setSpouseGhanaCardId(
+                            normalizeGhanaCard(e.target.value),
+                          );
                           setMemberError("");
                         }}
                         placeholder="GHA-000000000-0"
@@ -1050,14 +1118,19 @@ export default function Login() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="marriage-cert" className="mb-1 block text-[11.5px] font-bold text-[#1e2761]">
+                      <label
+                        htmlFor="marriage-cert"
+                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                      >
                         Marriage certificate (optional)
                       </label>
                       <input
                         id="marriage-cert"
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        onChange={(e) => setMarriageCertFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) =>
+                          setMarriageCertFile(e.target.files?.[0] ?? null)
+                        }
                         className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-2 pl-3 pr-3 text-[12px]"
                       />
                     </div>
@@ -1065,11 +1138,18 @@ export default function Login() {
                 )}
 
                 <div className="mt-4 mb-2 flex items-center justify-between">
-                  <h3 className="text-[11.5px] font-bold text-[#1e2761]">Beneficiaries</h3>
+                  <h3 className="text-[11.5px] font-bold text-[#1e2761]">
+                    Beneficiaries
+                  </h3>
                   <button
                     type="button"
                     disabled={beneficiaries.length >= 10}
-                    onClick={() => setBeneficiaries((current) => [...current, emptyBeneficiary()])}
+                    onClick={() =>
+                      setBeneficiaries((current) => [
+                        ...current,
+                        emptyBeneficiary(),
+                      ])
+                    }
                     className="text-[11.5px] font-semibold text-[#1e2761] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     + Add beneficiary
@@ -1077,9 +1157,14 @@ export default function Login() {
                 </div>
 
                 {beneficiaries.map((item, index) => (
-                  <div key={index} className="mb-3 rounded-[9px] border border-[#e5e9f0] p-3">
+                  <div
+                    key={index}
+                    className="mb-3 rounded-[9px] border border-[#e5e9f0] p-3"
+                  >
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-[#1e2761]">Beneficiary {index + 1}</span>
+                      <span className="text-[11px] font-bold text-[#1e2761]">
+                        Beneficiary {index + 1}
+                      </span>
                       {beneficiaries.length > 1 && (
                         <button
                           type="button"
@@ -1091,21 +1176,31 @@ export default function Login() {
                       )}
                     </div>
                     <div className="mb-2.5">
-                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Full name</label>
+                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
+                        Full name
+                      </label>
                       <input
                         value={item.fullName}
-                        onChange={(e) => updateBeneficiary(index, { fullName: e.target.value })}
+                        onChange={(e) =>
+                          updateBeneficiary(index, { fullName: e.target.value })
+                        }
                         className={inputClasses.replace("pl-9", "pl-3")}
                       />
                     </div>
                     <div className="mb-2.5">
-                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Relationship</label>
+                      <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
+                        Relationship
+                      </label>
                       <Dropdown
                         value={item.relationship}
-                        onChange={(value) => updateBeneficiary(index, { relationship: value })}
+                        onChange={(value) =>
+                          updateBeneficiary(index, { relationship: value })
+                        }
                         options={RELATIONSHIPS.map((relationship) => ({
                           value: relationship,
-                          label: relationship.charAt(0) + relationship.slice(1).toLowerCase(),
+                          label:
+                            relationship.charAt(0) +
+                            relationship.slice(1).toLowerCase(),
                         }))}
                       />
                     </div>
@@ -1114,24 +1209,42 @@ export default function Login() {
                         label="Date of birth (optional)"
                         maxDate={new Date()}
                         value={parseISODate(item.dateOfBirth)}
-                        onChange={(date) => updateBeneficiary(index, { dateOfBirth: date ? toISODate(date) : "" })}
+                        onChange={(date) =>
+                          updateBeneficiary(index, {
+                            dateOfBirth: date ? toISODate(date) : "",
+                          })
+                        }
                       />
                     </div>
                     {item.relationship === "CHILD" && (
                       <>
                         <div className="mb-2.5">
-                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Trustee name (optional)</label>
+                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
+                            Trustee name (optional)
+                          </label>
                           <input
                             value={item.trusteeName}
-                            onChange={(e) => updateBeneficiary(index, { trusteeName: e.target.value })}
+                            onChange={(e) =>
+                              updateBeneficiary(index, {
+                                trusteeName: e.target.value,
+                              })
+                            }
                             className={inputClasses.replace("pl-9", "pl-3")}
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">Trustee Ghana Card (optional)</label>
+                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
+                            Trustee Ghana Card (optional)
+                          </label>
                           <input
                             value={item.trusteeGhanaCardId}
-                            onChange={(e) => updateBeneficiary(index, { trusteeGhanaCardId: normalizeGhanaCard(e.target.value) })}
+                            onChange={(e) =>
+                              updateBeneficiary(index, {
+                                trusteeGhanaCardId: normalizeGhanaCard(
+                                  e.target.value,
+                                ),
+                              })
+                            }
                             placeholder="GHA-000000000-0"
                             className={inputClasses.replace("pl-9", "pl-3")}
                           />

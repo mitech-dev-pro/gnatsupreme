@@ -288,6 +288,29 @@ Also back up `/var/lib/gnatsupreme/uploads` (member documents, marriage certific
 
 ## 8. Deploying an update
 
+Both apps ship a `deploy-update` npm script (`backend/scripts/deploy-update.sh`, `frontend/scripts/deploy-update.sh`) that wraps the full pull → build → publish sequence:
+
+```bash
+cd /opt/gnatsupreme/src/backend
+sudo -u gnatsupreme npm run deploy-update
+
+cd /opt/gnatsupreme/src/frontend
+sudo -u gnatsupreme npm run deploy-update
+```
+
+The backend script's last step restarts `gnatsupreme-backend`, which needs root — `gnatsupreme` gets a narrowly-scoped passwordless sudo rule for exactly that one command (nothing else), set up once:
+
+```bash
+command -v systemctl   # confirm the path, usually /usr/bin/systemctl
+echo 'gnatsupreme ALL=(root) NOPASSWD: /usr/bin/systemctl restart gnatsupreme-backend' | sudo tee /etc/sudoers.d/gnatsupreme-deploy
+sudo chmod 440 /etc/sudoers.d/gnatsupreme-deploy
+sudo visudo -c   # validates syntax across all sudoers files
+```
+
+Everything else in both scripts (`git pull`, `rsync`, `npm ci`/`build`, `prisma migrate deploy`, the health-check `curl`) runs as `gnatsupreme` against paths it already owns, so no further sudo rules are needed.
+
+Equivalent manual steps, if you'd rather run them by hand or the scripts don't fit your setup:
+
 ```bash
 # Pull the latest source into the working checkout
 cd /opt/gnatsupreme/src

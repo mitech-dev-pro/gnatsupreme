@@ -10,6 +10,7 @@
     "start:production": "node dist/server.js",
     "migrate:deploy": "prisma migrate deploy",
     "deploy:check": "npm run typecheck && npm run build && prisma migrate status",
+    "deploy-update": "bash scripts/deploy-update.sh",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "admin:create": "tsx scripts/create-admin.ts",

@@ -6,13 +6,13 @@ This is the full-stack version of `backend/DEPLOYMENT.md` (backend-only, more de
 
 ## 0. Topology
 
-- One VPS, one Nginx instance terminating TLS for two hostnames:
-  - `portal.example.com` — serves the built frontend (static files)
-  - `api.example.com` — reverse-proxies to the Node backend on `127.0.0.1:4000`
+- One VPS, one Nginx instance, **one hostname** (`fapem.milifeghana.com` in the examples below — swap in your own):
+  - `/` serves the built frontend (static files)
+  - `/api/` reverse-proxies to the Node backend on `127.0.0.1:4000`, which already mounts every route under `/api/*` (see `backend/src/app.ts`) — same-origin, so no CORS is needed and cookies work without any `SameSite=none` complication.
 - PostgreSQL and Redis run on the same host, bound to `127.0.0.1` only (not exposed publicly).
 - Redis is not yet wired into the application code. It's provisioned here because it's the intended backing store for the background-job queue (BullMQ) that import processing is expected to move to — see the comment in `backend/src/modules/imports/import.routes.ts`. Provisioning it now means the app can adopt it without a follow-up infra change. If your deployment doesn't need it yet, you can skip section 3 and add it later.
 
-Adjust hostnames, paths, and the `gnatsupreme` service account name to match your environment.
+Adjust the hostname, paths, and the `gnatsupreme` service account name to match your environment. (An earlier version of this doc assumed two separate hostnames, `portal.example.com`/`api.example.com` — if you deliberately want that split instead, put the API on its own `server_name` block rather than the `/api/` location in section 6, and set `CORS_ORIGIN`/`VITE_API_BASE_URL` to the API's own origin.)
 
 ## 1. Base server setup
 
@@ -159,7 +159,7 @@ sudo -u gnatsupreme npm ci
 sudo -u gnatsupreme npm run build
 ```
 
-Copy `backend/.env.production.example` to `/etc/gnatsupreme/backend.env`, fill in every placeholder (`DATABASE_URL`, `JWT_ACCESS_SECRET`, `FRONTEND_ORIGIN=https://portal.example.com`, SMS provider credentials, `REDIS_URL` once adopted, etc.), then lock it down. Run this as `root` (plain `sudo`, not `sudo -u gnatsupreme`) — `/etc/gnatsupreme` is `750` owned by `root:gnatsupreme`, so `gnatsupreme` can read inside it but not create files there:
+Copy `backend/.env.production.example` to `/etc/gnatsupreme/backend.env`, fill in every placeholder (`DATABASE_URL`, `JWT_ACCESS_SECRET`, `FRONTEND_ORIGIN=https://fapem.milifeghana.com`, `REDIS_URL` once adopted, etc.), then lock it down. Run this as `root` (plain `sudo`, not `sudo -u gnatsupreme`) — `/etc/gnatsupreme` is `750` owned by `root:gnatsupreme`, so `gnatsupreme` can read inside it but not create files there:
 
 ```bash
 sudo cp /opt/gnatsupreme/backend/.env.production.example /etc/gnatsupreme/backend.env
@@ -167,8 +167,6 @@ sudo chown root:gnatsupreme /etc/gnatsupreme/backend.env
 sudo chmod 640 /etc/gnatsupreme/backend.env
 sudo nano /etc/gnatsupreme/backend.env
 ```
-
-`SMS_PROVIDER=CONSOLE` is rejected in production — configure a real provider (Hubtel) before starting the service.
 
 Run migrations, then install and start the systemd unit. `npm run migrate:deploy` reads `DATABASE_URL` via `prisma.config.ts`'s `dotenv/config`, which loads a `.env` from the current directory — not `/etc/gnatsupreme/backend.env` (only systemd's `EnvironmentFile=` loads that automatically), so source it into the shell manually here:
 
@@ -200,12 +198,21 @@ Build from the same checkout used for the backend (or in CI), with the API origi
 ```bash
 cd /opt/gnatsupreme/src/frontend
 npm ci
-VITE_API_BASE_URL=https://api.example.com/api npm run build
+VITE_API_BASE_URL=https://fapem.milifeghana.com/api npm run build
 ```
 
 Check `frontend/src/lib/api.ts` / `.env` handling for the exact env var name your build expects before relying on the one above — set whatever it reads.
 
-Ship the output (`frontend/dist/`) to a static path the `portal.example.com` Nginx site serves from, owned by an unprivileged account:
+If the build fails with `Cannot find module '../lightningcss.linux-x64-gnu.node'` (or a similar native-binary error from `esbuild`/`rolldown`): `package-lock.json` was generated on a non-Linux machine, and `npm ci` sometimes fails to resolve the correct platform-specific optional dependency binary — a known npm bug, not a code issue. Fix by re-resolving instead of trusting the lockfile as-is:
+
+```bash
+rm -rf node_modules
+npm install
+```
+
+(`node_modules` isn't committed, so this is safe.) Then retry the build.
+
+Ship the output (`frontend/dist/`) to a static path the Nginx site serves from, owned by an unprivileged account:
 
 ```bash
 sudo install -d -o gnatsupreme -g gnatsupreme /var/www/gnatsupreme-portal
@@ -214,24 +221,37 @@ sudo rsync -a --delete frontend/dist/ /var/www/gnatsupreme-portal/
 
 ## 6. Nginx and TLS
 
-Backend site — copy `backend/deploy/nginx.conf`, replace `api.example.com`, install it:
+Single site, single `server_name` — static frontend at `/`, API reverse-proxied at `/api/`. This supersedes `backend/deploy/nginx.conf` (which assumes the separate-hostname layout) — don't install that file as-is here.
 
-```bash
-sudo cp backend/deploy/nginx.conf /etc/nginx/sites-available/api.example.com
-sudo ln -s /etc/nginx/sites-available/api.example.com /etc/nginx/sites-enabled/
-```
-
-Frontend site — a static SPA server with client-side routing fallback:
+`/etc/nginx/sites-available/fapem.milifeghana.com`:
 
 ```nginx
 server {
     listen 80;
     listen [::]:80;
-    server_name portal.example.com;
+    server_name fapem.milifeghana.com;
+
+    client_max_body_size 10m;
 
     root /var/www/gnatsupreme-portal;
     index index.html;
 
+    # API — every backend route is already mounted under /api/* (see backend/src/app.ts), so the
+    # full incoming path must be forwarded unchanged. NOTE: no trailing slash after the port on
+    # proxy_pass — a trailing slash tells Nginx to strip the matched /api/ prefix before forwarding,
+    # which would 404 every request unless the client double-prefixed it (e.g. /api/api/members).
+    location /api/ {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+    }
+
+    # Frontend — static SPA with client-side routing fallback
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -239,11 +259,21 @@ server {
 ```
 
 ```bash
+sudo ln -s /etc/nginx/sites-available/fapem.milifeghana.com /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Obtain TLS certificates for both hostnames (certbot or your organization's approved process), then redirect HTTP to HTTPS on both sites. Set `FRONTEND_ORIGIN` in the backend env file to the exact HTTPS frontend origin — the app uses credentialed cookies, so this cannot be `*`.
+Obtain a TLS certificate for the hostname via Let's Encrypt (or your organization's approved process):
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d fapem.milifeghana.com
+```
+
+Certbot rewrites the Nginx config to add the 443 server block and redirect HTTP → HTTPS, and installs a renewal timer (`systemctl status certbot.timer`).
+
+Set `FRONTEND_ORIGIN` in the backend env file to the exact HTTPS origin (`https://fapem.milifeghana.com`) — the app uses credentialed cookies, so this cannot be `*`.
 
 ## 7. Backups
 
@@ -269,12 +299,12 @@ sudo -u gnatsupreme npm ci
 sudo -u gnatsupreme npm run build
 sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run migrate:deploy'
 sudo systemctl restart gnatsupreme-backend
-curl --fail https://api.example.com/api/health
+curl --fail https://fapem.milifeghana.com/api/health
 
 # Frontend
 cd /opt/gnatsupreme/src/frontend
 npm ci
-VITE_API_BASE_URL=https://api.example.com/api npm run build
+VITE_API_BASE_URL=https://fapem.milifeghana.com/api npm run build
 sudo rsync -a --delete dist/ /var/www/gnatsupreme-portal/
 ```
 

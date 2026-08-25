@@ -20,8 +20,6 @@ sudo install -d -o gnatsupreme -g gnatsupreme /var/log/gnatsupreme
 sudo chmod 750 /etc/gnatsupreme/backend.env
 ```
 
-A real SMS provider adapter is mandatory in production. The application refuses to start with `SMS_PROVIDER=CONSOLE`.
-
 ## 2. Install the systemd service
 
 Update paths in `deploy/gnatsupreme-backend.service` if the application is not installed in `/opt/gnatsupreme/backend`.

@@ -58,12 +58,4 @@ if (result.success && result.data.MANKRADO_ENABLED && !result.data.MANKRADO_BASE
   throw new Error("MANKRADO_BASE_URL is required when the Mankrado integration is enabled");
 }
 
-if (
-  result.success &&
-  result.data.NODE_ENV === "production" &&
-  result.data.SMS_PROVIDER === "CONSOLE"
-) {
-  throw new Error("The console SMS provider cannot be used in production");
-}
-
 export const env = result.data;

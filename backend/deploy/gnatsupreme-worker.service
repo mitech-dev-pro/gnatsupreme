@@ -1,0 +1,24 @@
+[Unit]
+Description=GNAT Supreme Care background worker (BullMQ)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gnatsupreme
+Group=gnatsupreme
+WorkingDirectory=/opt/gnatsupreme/backend
+EnvironmentFile=/etc/gnatsupreme/backend.env
+ExecStart=/usr/bin/node dist/worker.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gnatsupreme/uploads /var/log/gnatsupreme
+
+[Install]
+WantedBy=multi-user.target

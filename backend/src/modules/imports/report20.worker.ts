@@ -1,4 +1,3 @@
-import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { parseReport20, reconcileReport20 } from "./report20.service.js";
@@ -13,12 +12,11 @@ export type Report20WorkerData = {
   auditContext: { ip?: string; userAgent?: string };
 };
 
-// Runs as its own child process (see spawn-worker.ts) so the CPU-bound Excel/CSV parsing for large
-// files doesn't block the main API server's event loop — it stays responsive to every other
-// request while this runs. Has its own PrismaClient and writes audit entries directly since
-// there's no Express Request here (the process only has what was passed via WORKER_PAYLOAD).
-async function run() {
-  const data = JSON.parse(process.env.WORKER_PAYLOAD ?? "{}") as Report20WorkerData;
+// Runs inside the dedicated worker process (see ../../worker.ts), consumed off the BullMQ
+// "report20" queue — so the CPU-bound Excel/CSV parsing for large files never blocks the API
+// server's event loop, which stays responsive to every other request while this runs. Writes audit
+// entries directly (rather than via an Express Request) since a queued job has no live request.
+export async function processReport20Job(data: Report20WorkerData) {
   try {
     const rows = await parseReport20(data.filePath, data.mimeType);
     await reconcileReport20(data.importJobId, rows);
@@ -66,11 +64,3 @@ async function run() {
       : undefined,
   });
 }
-
-run()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    const data = JSON.parse(process.env.WORKER_PAYLOAD ?? "{}") as Report20WorkerData;
-    logger.error({ err: error, importJobId: data.importJobId }, "Unhandled error in Report 20 worker");
-    process.exit(1);
-  });

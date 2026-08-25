@@ -1,4 +1,3 @@
-import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -13,11 +12,11 @@ export type MemberImportWorkerData = {
   auditContext: { ip?: string; userAgent?: string };
 };
 
-// Runs as its own child process (see spawn-worker.ts) for the same reason report20.worker.ts does
-// — the Excel/CSV parsing here is CPU-bound and would otherwise block the main API server for the
-// whole time a large file is being staged.
-async function run() {
-  const data = JSON.parse(process.env.WORKER_PAYLOAD ?? "{}") as MemberImportWorkerData;
+// Runs inside the dedicated worker process (see ../../worker.ts), consumed off the BullMQ
+// "member-import" queue, for the same reason report20.worker.ts does — the Excel/CSV parsing here
+// is CPU-bound and would otherwise block the main API server for the whole time a large file is
+// being staged.
+export async function processMemberImportJob(data: MemberImportWorkerData) {
   try {
     await stageMemberImport(data.importJobId, data.filePath, data.mimeType, data.actorUser);
   } catch (error) {
@@ -42,11 +41,3 @@ async function run() {
       : undefined,
   });
 }
-
-run()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    const data = JSON.parse(process.env.WORKER_PAYLOAD ?? "{}") as MemberImportWorkerData;
-    logger.error({ err: error, importJobId: data.importJobId }, "Unhandled error in member import worker");
-    process.exit(1);
-  });

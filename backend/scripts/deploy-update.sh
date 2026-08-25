@@ -4,13 +4,12 @@ set -euo pipefail
 SRC=/opt/gnatsupreme/src
 DEPLOY=/opt/gnatsupreme/backend
 ENV_FILE=/etc/gnatsupreme/backend.env
-SERVICE=gnatsupreme-backend
 
 echo "==> Pulling latest source"
 git -C "$SRC" pull
 
 echo "==> Syncing backend/ into $DEPLOY"
-rsync -a --delete --exclude node_modules --exclude dist "$SRC/backend/" "$DEPLOY/"
+rsync -a --delete --exclude node_modules --exclude dist --exclude .env "$SRC/backend/" "$DEPLOY/"
 
 cd "$DEPLOY"
 
@@ -26,8 +25,8 @@ source "$ENV_FILE"
 set +a
 npm run migrate:deploy
 
-echo "==> Restarting $SERVICE"
-sudo systemctl restart "$SERVICE"
+echo "==> Restarting API and worker"
+pm2 restart gnatsupreme-backend gnatsupreme-worker
 
 echo "==> Health check"
 sleep 2

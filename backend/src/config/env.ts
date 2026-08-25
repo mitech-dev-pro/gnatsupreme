@@ -27,6 +27,8 @@ const environmentSchema = z.object({
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
+  REDIS_URL: z.string().url().refine((value) => value.startsWith("redis://") || value.startsWith("rediss://"), "REDIS_URL must be a redis:// or rediss:// connection URL"),
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
   MANKRADO_ENABLED: z
     .enum(["true", "false"])
     .default("false")

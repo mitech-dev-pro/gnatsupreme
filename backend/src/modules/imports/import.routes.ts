@@ -5,11 +5,10 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { z } from "zod";
 
-import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
-import { spawnWorker } from "../../lib/spawn-worker.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { enqueueReport20Job } from "../../queues/import.queue.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
   hasValidReport20Signature,
@@ -65,12 +64,10 @@ async function removeFile(filePath: string) {
   await unlink(filePath).catch(() => undefined);
 }
 
-// Runs parsing + reconciliation on a worker_thread so large files (up to MAX_ROWS = 300,000)
-// don't hold an HTTP connection open, and — critically — don't block the main thread's event loop
-// while parsing. Without this, the CPU-bound Excel/CSV parse for a large file freezes the entire
-// API server (every request, for every user) for as long as parsing takes. Stepping stone toward a
-// real queue (Redis + BullMQ) later, once one is needed.
-function startReport20Worker(
+// Queues parsing + reconciliation onto the BullMQ "report20" queue, processed by the dedicated
+// worker process (see ../../worker.ts) so large files (up to MAX_ROWS = 300,000) don't hold an HTTP
+// connection open, and — critically — don't block the API server's event loop while parsing.
+function queueReport20Job(
   request: Request,
   currentUser: AuthenticatedUser,
   job: { id: number },
@@ -88,9 +85,7 @@ function startReport20Worker(
     actor: { id: currentUser.id, email: currentUser.email, regionId: currentUser.regionId, districtId: currentUser.districtId },
     auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
   };
-  spawnWorker(import.meta.url, "report20.worker", workerData, (error) =>
-    logger.error({ err: error, importJobId: job.id }, "Unhandled error while processing Report 20 job"),
-  );
+  return enqueueReport20Job(workerData);
 }
 
 const jobInclude = {
@@ -171,9 +166,18 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
       throw error;
     });
 
-  // Kick off parsing + reconciliation in the background; respond immediately with the
+  // Queue parsing + reconciliation to run in the background; respond immediately with the
   // PENDING job so the client isn't stuck holding a connection open for a large file.
-  startReport20Worker(request, currentUser, job, request.file.path, request.file.mimetype, storedFile.originalName, "REPORT20_IMPORTED");
+  try {
+    await queueReport20Job(request, currentUser, job, request.file.path, request.file.mimetype, storedFile.originalName, "REPORT20_IMPORTED");
+  } catch (error) {
+    await prisma.importJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMessage: "Could not queue this import for processing", completedAt: new Date() },
+    });
+    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    return;
+  }
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
   response.status(202).json({ success: true, data: pendingJob });
@@ -248,15 +252,24 @@ importRouter.post("/:id/rerun", async (request, response) => {
     data: { status: "PENDING", errorMessage: null, completedAt: null, totalRows: 0, processedRows: 0 },
   });
 
-  startReport20Worker(
-    request,
-    currentUser,
-    job,
-    path.join(uploadRoot, job.file.storagePath),
-    job.file.mimeType,
-    job.file.originalName,
-    "REPORT20_RECONCILE_RERUN",
-  );
+  try {
+    await queueReport20Job(
+      request,
+      currentUser,
+      job,
+      path.join(uploadRoot, job.file.storagePath),
+      job.file.mimeType,
+      job.file.originalName,
+      "REPORT20_RECONCILE_RERUN",
+    );
+  } catch (error) {
+    await prisma.importJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMessage: "Could not queue this rerun for processing", completedAt: new Date() },
+    });
+    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    return;
+  }
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
   response.status(202).json({ success: true, data: pendingJob });

@@ -7,8 +7,8 @@ import { z } from "zod";
 
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
-import { spawnWorker } from "../../lib/spawn-worker.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
+import { enqueueMemberImportJob } from "../../queues/import.queue.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { hasValidReport20Signature, memberImportFileUpload, uploadRoot } from "../files/file.storage.js";
 import { bulkRawFields } from "./member-import.service.js";
@@ -137,9 +137,10 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
 
   const jobId = job.id;
   const originalName = path.basename(request.file.originalname);
-  // Staging can involve up to MAX_ROWS = 300,000 rows; run it on a worker_thread so the CPU-bound
-  // parse doesn't block the main thread's event loop for the whole server (see report20.worker.ts
-  // for the full rationale — this is the same fix applied to the same class of problem).
+  // Staging can involve up to MAX_ROWS = 300,000 rows; queue it onto the BullMQ "member-import"
+  // queue, processed by the dedicated worker process (see ../../worker.ts) so the CPU-bound parse
+  // never blocks the API server's event loop (see report20.worker.ts for the full rationale — this
+  // is the same fix applied to the same class of problem).
   const memberImportWorkerData: MemberImportWorkerData = {
     importJobId: jobId,
     filePath: request.file.path,
@@ -148,9 +149,17 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
     actorUser: currentUser,
     auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
   };
-  spawnWorker(import.meta.url, "member-import.worker", memberImportWorkerData, (error) =>
-    logger.error({ err: error, importJobId: jobId }, "Unhandled error while staging member import job"),
-  );
+  try {
+    await enqueueMemberImportJob(memberImportWorkerData);
+  } catch (error) {
+    logger.error({ err: error, importJobId: jobId }, "Could not queue member import job");
+    await prisma.importJob.update({
+      where: { id: jobId },
+      data: { status: "FAILED", errorMessage: "Could not queue this import for processing", completedAt: new Date() },
+    });
+    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    return;
+  }
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId }, include: { file: { select: { originalName: true, downloadPath: true } } } });
   response.status(202).json({ success: true, data: pendingJob });

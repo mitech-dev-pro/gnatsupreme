@@ -1,8 +1,8 @@
 # GNAT Supreme Care — VPS Deployment
 
-End-to-end guide for deploying the full stack (Express/Prisma/PostgreSQL backend, React/Vite frontend, Redis) to a single Ubuntu/Debian VPS behind Nginx. No Docker.
+End-to-end guide for deploying the full stack (Express/Prisma/PostgreSQL backend, React/Vite frontend, Redis, BullMQ) to a single Ubuntu/Debian VPS behind Nginx. No Docker.
 
-This is the full-stack version of `backend/DEPLOYMENT.md` (backend-only, more detail on systemd/logrotate). Where the two overlap, this document and that one should stay consistent.
+This is the full-stack version of `backend/DEPLOYMENT.md` (backend-only). Where the two overlap, this document and that one should stay consistent — `backend/DEPLOYMENT.md` still documents the single-process systemd path; this document leads with PM2, which is what actually gets you cluster concurrency and the separate BullMQ worker process.
 
 ## 0. Topology
 
@@ -10,7 +10,10 @@ This is the full-stack version of `backend/DEPLOYMENT.md` (backend-only, more de
   - `/` serves the built frontend (static files)
   - `/api/` reverse-proxies to the Node backend on `127.0.0.1:4000`, which already mounts every route under `/api/*` (see `backend/src/app.ts`) — same-origin, so no CORS is needed and cookies work without any `SameSite=none` complication.
 - PostgreSQL and Redis run on the same host, bound to `127.0.0.1` only (not exposed publicly).
-- Redis is not yet wired into the application code. It's provisioned here because it's the intended backing store for the background-job queue (BullMQ) that import processing is expected to move to — see the comment in `backend/src/modules/imports/import.routes.ts`. Provisioning it now means the app can adopt it without a follow-up infra change. If your deployment doesn't need it yet, you can skip section 3 and add it later.
+- PM2 runs two apps as the `gnatsupreme` user (see `backend/ecosystem.config.cjs`):
+  - `gnatsupreme-backend` — the HTTP API, cluster mode (one process per CPU core by default)
+  - `gnatsupreme-worker` — a BullMQ worker (fork mode, one process) that consumes the `report20` and `member-import` queues off Redis, so large Excel/CSV parsing never blocks the API's event loop. Concurrency *within* that one process is controlled by `WORKER_CONCURRENCY`, not by adding more PM2 instances — see the comment in `ecosystem.config.cjs`.
+- Redis is required — the app won't start without a valid `REDIS_URL` (`backend/src/config/env.ts`).
 
 Adjust the hostname, paths, and the `gnatsupreme` service account name to match your environment. (An earlier version of this doc assumed two separate hostnames, `portal.example.com`/`api.example.com` — if you deliberately want that split instead, put the API on its own `server_name` block rather than the `/api/` location in section 6, and set `CORS_ORIGIN`/`VITE_API_URL` to the API's own origin.)
 
@@ -85,6 +88,9 @@ sudo apt install -y curl git nginx build-essential
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
+# PM2 (process manager, global install — runs both the API cluster and the BullMQ worker)
+sudo npm install -g pm2
+
 # Dedicated, unprivileged service account
 sudo useradd --system --create-home --shell /usr/sbin/nologin gnatsupreme
 ```
@@ -124,7 +130,7 @@ sudo systemctl restart redis-server
 redis-cli -a 'replace-with-a-strong-redis-password' ping   # expect PONG
 ```
 
-Do not expose port 6379 outside localhost — leave it off any firewall allow-list. When the backend adopts Redis (BullMQ, or moving rate-limit state out of process memory), add a `REDIS_URL` to `backend/.env.production.example` and to `/etc/gnatsupreme/backend.env`, e.g.:
+Do not expose port 6379 outside localhost — leave it off any firewall allow-list. The backend requires `REDIS_URL` to start (it backs the BullMQ `report20`/`member-import` job queues — see `backend/src/queues/import.queue.ts` and `backend/src/worker.ts`); set it in `/etc/gnatsupreme/backend.env`, matching the same password:
 
 ```
 REDIS_URL="redis://:replace-with-a-strong-redis-password@127.0.0.1:6379"
@@ -150,16 +156,16 @@ sudo -u gnatsupreme git clone <your-repo-url> /opt/gnatsupreme/src
 
 For a redeploy, `cd /opt/gnatsupreme/src && sudo -u gnatsupreme git pull` instead of cloning again.
 
-The checkout contains the whole monorepo (`backend/` and `frontend/` side by side), but `/opt/gnatsupreme/backend` — the path the systemd unit's `WorkingDirectory` points at — needs to contain the backend app directly, not nested under a `backend/` subfolder. Sync it across, then build at the deploy path:
+The checkout contains the whole monorepo (`backend/` and `frontend/` side by side), but `/opt/gnatsupreme/backend` — the path PM2's `cwd` points at in `ecosystem.config.cjs` — needs to contain the backend app directly, not nested under a `backend/` subfolder. Sync it across, then build at the deploy path. `--exclude .env` matters here: that's where the env symlink set up below lives, and a plain `rsync --delete` without it would wipe that symlink on every sync since the source checkout has no `.env` file:
 
 ```bash
-sudo -u gnatsupreme rsync -a --delete --exclude node_modules --exclude dist /opt/gnatsupreme/src/backend/ /opt/gnatsupreme/backend/
+sudo -u gnatsupreme rsync -a --delete --exclude node_modules --exclude dist --exclude .env /opt/gnatsupreme/src/backend/ /opt/gnatsupreme/backend/
 cd /opt/gnatsupreme/backend
 sudo -u gnatsupreme npm ci
 sudo -u gnatsupreme npm run build
 ```
 
-Copy `backend/.env.production.example` to `/etc/gnatsupreme/backend.env`, fill in every placeholder (`DATABASE_URL`, `JWT_ACCESS_SECRET`, `FRONTEND_ORIGIN=https://fapem.milifeghana.com`, `REDIS_URL` once adopted, etc.), then lock it down. Run this as `root` (plain `sudo`, not `sudo -u gnatsupreme`) — `/etc/gnatsupreme` is `750` owned by `root:gnatsupreme`, so `gnatsupreme` can read inside it but not create files there:
+Copy `backend/.env.production.example` to `/etc/gnatsupreme/backend.env`, fill in every placeholder (`DATABASE_URL`, `JWT_ACCESS_SECRET`, `FRONTEND_ORIGIN=https://fapem.milifeghana.com`, `REDIS_URL`, etc.), then lock it down. Run this as `root` (plain `sudo`, not `sudo -u gnatsupreme`) — `/etc/gnatsupreme` is `750` owned by `root:gnatsupreme`, so `gnatsupreme` can read inside it but not create files there:
 
 ```bash
 sudo cp /opt/gnatsupreme/backend/.env.production.example /etc/gnatsupreme/backend.env
@@ -168,28 +174,78 @@ sudo chmod 640 /etc/gnatsupreme/backend.env
 sudo nano /etc/gnatsupreme/backend.env
 ```
 
-Run migrations, then install and start the systemd unit. `npm run migrate:deploy` reads `DATABASE_URL` via `prisma.config.ts`'s `dotenv/config`, which loads a `.env` from the current directory — not `/etc/gnatsupreme/backend.env` (only systemd's `EnvironmentFile=` loads that automatically), so source it into the shell manually here:
+`npm run migrate:deploy` (and every other script) reads env vars via `prisma.config.ts`'s / `env.ts`'s `dotenv/config`, which loads a `.env` from the current directory — never `/etc/gnatsupreme/backend.env` directly. Two different consumers need that file, in two different ways:
+
+- **Manual one-off commands** (section 4a) source it into the shell by hand each time.
+- **The PM2-managed API and worker processes** need it every time they start or restart, so symlink it into place once — `dotenv/config` then picks it up automatically on every `node dist/server.js` / `node dist/worker.js`, exactly like local dev's `backend/.env` already works:
+
+```bash
+sudo -u gnatsupreme ln -s /etc/gnatsupreme/backend.env /opt/gnatsupreme/backend/.env
+```
+
+(`gnatsupreme` has group-read on `/etc/gnatsupreme/backend.env` — `640 root:gnatsupreme` — so it can read through the symlink even though it can't write there directly.)
+
+Run migrations, then start both PM2 apps:
 
 ```bash
 cd /opt/gnatsupreme/backend
 sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run migrate:deploy'
 
-sudo cp deploy/gnatsupreme-backend.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now gnatsupreme-backend
-sudo systemctl status gnatsupreme-backend
+sudo -u gnatsupreme pm2 start ecosystem.config.cjs --env production
+sudo -u gnatsupreme pm2 list
+sudo -u gnatsupreme pm2 logs --lines 50
 ```
 
-Install log rotation:
+`instances: "max"` in `ecosystem.config.cjs` forks one API worker per CPU core — on a small VPS (1–2 vCPU) consider hardcoding a lower number instead, to leave headroom for PostgreSQL, Redis, and the worker process. Each API worker gets its own Prisma connection pool, so also check PostgreSQL's `max_connections` before raising `instances` on a multi-core box.
+
+Persist the process list across reboots:
 
 ```bash
-sudo cp deploy/logrotate.conf /etc/logrotate.d/gnatsupreme-backend
-sudo logrotate --debug /etc/logrotate.d/gnatsupreme-backend
+sudo -u gnatsupreme pm2 save
+pm2 startup systemd -u gnatsupreme --hp /home/gnatsupreme
+# run the sudo command it prints
 ```
 
-Tail logs with `journalctl -u gnatsupreme-backend -f`.
+Log rotation for PM2's own log files (separate from the app's structured JSON logging to `LOG_FILE`):
 
-(`ecosystem.config.cjs` is provided as a PM2 alternative to systemd — use one or the other, not both. See `backend/DEPLOYMENT.md` for the PM2 invocation.)
+```bash
+sudo -u gnatsupreme pm2 install pm2-logrotate
+```
+
+Useful commands going forward: `pm2 list`, `pm2 logs gnatsupreme-backend`, `pm2 logs gnatsupreme-worker`, `pm2 restart gnatsupreme-backend gnatsupreme-worker`, `pm2 monit` — all run as `sudo -u gnatsupreme <command>` unless you're SSHed in directly as that account.
+
+(The systemd unit in `deploy/gnatsupreme-backend.service` still exists as a single-process fallback — see `backend/DEPLOYMENT.md` — but don't run it alongside PM2 for the same app; pick one.)
+
+### 4a. Running one-off backend npm commands
+
+Any `npm run <script>` you invoke by hand (`admin:create`, `admin:reset-password`, `db:seed-geography`, `migrate:deploy`, etc.) needs the same env-sourcing wrapper as the migration step in section 4 — `dotenv/config` only loads a `.env` from the current directory, and `/etc/gnatsupreme/backend.env` is otherwise only read automatically by systemd's `EnvironmentFile=`. Running the script without it fails with `Invalid environment configuration` (`DATABASE_URL`/`JWT_ACCESS_SECRET`/`FRONTEND_ORIGIN` reported as `undefined`).
+
+General pattern — run as `gnatsupreme`, from `/opt/gnatsupreme/backend`:
+
+```bash
+cd /opt/gnatsupreme/backend
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run <script>'
+```
+
+For example, creating the first admin user:
+
+```bash
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run admin:create'
+```
+
+Resetting an admin's password:
+
+```bash
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run admin:reset-password'
+```
+
+Seeding geography data (regions/districts), if not already loaded:
+
+```bash
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run db:seed-geography'
+```
+
+`create-admin.ts` and `reset-admin-password.ts` prompt interactively (`@inquirer/prompts`) — that works fine over a normal SSH session, just not piped/non-interactive.
 
 ## 5. Frontend
 
@@ -298,16 +354,7 @@ cd /opt/gnatsupreme/src/frontend
 sudo -u gnatsupreme npm run deploy-update
 ```
 
-The backend script's last step restarts `gnatsupreme-backend`, which needs root — `gnatsupreme` gets a narrowly-scoped passwordless sudo rule for exactly that one command (nothing else), set up once:
-
-```bash
-command -v systemctl   # confirm the path, usually /usr/bin/systemctl
-echo 'gnatsupreme ALL=(root) NOPASSWD: /usr/bin/systemctl restart gnatsupreme-backend' | sudo tee /etc/sudoers.d/gnatsupreme-deploy
-sudo chmod 440 /etc/sudoers.d/gnatsupreme-deploy
-sudo visudo -c   # validates syntax across all sudoers files
-```
-
-Everything else in both scripts (`git pull`, `rsync`, `npm ci`/`build`, `prisma migrate deploy`, the health-check `curl`) runs as `gnatsupreme` against paths it already owns, so no further sudo rules are needed.
+The backend script's last step is `pm2 restart gnatsupreme-backend gnatsupreme-worker` — since PM2 itself runs as `gnatsupreme` (section 4), that needs no root/sudoers rule at all; it's just talking to the PM2 daemon it already owns. Everything else in both scripts (`git pull`, `rsync`, `npm ci`/`build`, `prisma migrate deploy`, the health-check `curl`) also runs as `gnatsupreme` against paths it already owns.
 
 Equivalent manual steps, if you'd rather run them by hand or the scripts don't fit your setup:
 
@@ -317,12 +364,12 @@ cd /opt/gnatsupreme/src
 sudo -u gnatsupreme git pull   # or your artifact deploy step
 
 # Backend
-sudo -u gnatsupreme rsync -a --delete --exclude node_modules --exclude dist /opt/gnatsupreme/src/backend/ /opt/gnatsupreme/backend/
+sudo -u gnatsupreme rsync -a --delete --exclude node_modules --exclude dist --exclude .env /opt/gnatsupreme/src/backend/ /opt/gnatsupreme/backend/
 cd /opt/gnatsupreme/backend
 sudo -u gnatsupreme npm ci
 sudo -u gnatsupreme npm run build
 sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run migrate:deploy'
-sudo systemctl restart gnatsupreme-backend
+sudo -u gnatsupreme pm2 restart gnatsupreme-backend gnatsupreme-worker
 curl --fail https://fapem.milifeghana.com/api/health
 
 # Frontend (.env.production already sits in the checkout from the first deploy — no need to set it again)
@@ -337,5 +384,6 @@ Prisma migrations are forward-only — test schema changes against a restored co
 ## Reference
 
 - `backend/DEPLOYMENT.md` — backend-specific detail (systemd unit, logrotate, PM2 alternative)
-- `backend/deploy/` — `gnatsupreme-backend.service`, `nginx.conf`, `logrotate.conf`
+- `backend/deploy/` — `gnatsupreme-backend.service`, `gnatsupreme-worker.service`, `nginx.conf`, `logrotate.conf`
+- `backend/ecosystem.config.cjs` — PM2 app definitions for `gnatsupreme-backend` (API, cluster) and `gnatsupreme-worker` (BullMQ)
 - `backend/.env.production.example` — full list of required backend environment variables

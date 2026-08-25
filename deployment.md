@@ -12,7 +12,7 @@ This is the full-stack version of `backend/DEPLOYMENT.md` (backend-only, more de
 - PostgreSQL and Redis run on the same host, bound to `127.0.0.1` only (not exposed publicly).
 - Redis is not yet wired into the application code. It's provisioned here because it's the intended backing store for the background-job queue (BullMQ) that import processing is expected to move to — see the comment in `backend/src/modules/imports/import.routes.ts`. Provisioning it now means the app can adopt it without a follow-up infra change. If your deployment doesn't need it yet, you can skip section 3 and add it later.
 
-Adjust the hostname, paths, and the `gnatsupreme` service account name to match your environment. (An earlier version of this doc assumed two separate hostnames, `portal.example.com`/`api.example.com` — if you deliberately want that split instead, put the API on its own `server_name` block rather than the `/api/` location in section 6, and set `CORS_ORIGIN`/`VITE_API_BASE_URL` to the API's own origin.)
+Adjust the hostname, paths, and the `gnatsupreme` service account name to match your environment. (An earlier version of this doc assumed two separate hostnames, `portal.example.com`/`api.example.com` — if you deliberately want that split instead, put the API on its own `server_name` block rather than the `/api/` location in section 6, and set `CORS_ORIGIN`/`VITE_API_URL` to the API's own origin.)
 
 ## 1. Base server setup
 
@@ -193,15 +193,16 @@ Tail logs with `journalctl -u gnatsupreme-backend -f`.
 
 ## 5. Frontend
 
-Build from the same checkout used for the backend (or in CI), with the API origin baked in at build time:
+The app reads `VITE_API_URL` (see `frontend/src/lib/api.ts`) — just the origin, no `/api` suffix (the code appends `/api` itself). Vite bakes this in at build time, so it needs to exist *before* `npm run build` runs. Rather than passing it inline on the command every deploy, persist it as `.env.production` in the checkout — Vite auto-loads that file for `vite build` (mode defaults to `production`):
 
 ```bash
 cd /opt/gnatsupreme/src/frontend
+echo 'VITE_API_URL=https://fapem.milifeghana.com' > .env.production
 npm ci
-VITE_API_BASE_URL=https://fapem.milifeghana.com/api npm run build
+npm run build
 ```
 
-Check `frontend/src/lib/api.ts` / `.env` handling for the exact env var name your build expects before relying on the one above — set whatever it reads.
+`.env.production` is gitignored (see root `.gitignore`), so this survives `git pull` untouched but never gets committed — set it once per environment, not on every deploy.
 
 If the build fails with `Cannot find module '../lightningcss.linux-x64-gnu.node'` (or a similar native-binary error from `esbuild`/`rolldown`): `package-lock.json` was generated on a non-Linux machine, and `npm ci` sometimes fails to resolve the correct platform-specific optional dependency binary — a known npm bug, not a code issue. Fix by re-resolving instead of trusting the lockfile as-is:
 
@@ -301,10 +302,10 @@ sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a
 sudo systemctl restart gnatsupreme-backend
 curl --fail https://fapem.milifeghana.com/api/health
 
-# Frontend
+# Frontend (.env.production already sits in the checkout from the first deploy — no need to set it again)
 cd /opt/gnatsupreme/src/frontend
 npm ci
-VITE_API_BASE_URL=https://fapem.milifeghana.com/api npm run build
+npm run build
 sudo rsync -a --delete dist/ /var/www/gnatsupreme-portal/
 ```
 

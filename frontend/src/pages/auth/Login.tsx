@@ -133,13 +133,14 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   const [memberStep, setMemberStep] = useState<
-    "login" | "lookup" | "setup" | "policy" | "forgot"
+    "login" | "setup" | "policy" | "forgot"
   >(
     requestedMode === "member" && searchParams.get("step") === "policy"
       ? "policy"
       : "login",
   );
   const [controllerId, setControllerId] = useState("");
+  const [passwordStepVisible, setPasswordStepVisible] = useState(false);
   const [memberPassword, setMemberPassword] = useState("");
   const [showMemberPassword, setShowMemberPassword] = useState(false);
   const [memberError, setMemberError] = useState("");
@@ -216,6 +217,42 @@ export default function Login() {
     }
   };
 
+  // Step 1 of member login: only the Member ID is on screen. This checks whether the
+  // membership already has a password set (reusing the existing lookup endpoint, which already
+  // distinguishes the two cases via its response) and branches in place — reveals the password
+  // field for an already-set-up member, or jumps straight to account setup otherwise. This
+  // replaces the old separate "First time signing in?" screen that asked for the Member ID twice.
+  const handleContinue = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
+    if (!/^\d{4,7}$/.test(controllerId.trim())) {
+      setMemberError(
+        `Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`,
+      );
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      const res = await api.post("/member-auth/lookup", {
+        controllerId: controllerId.trim(),
+      });
+      setSetupFullName(res.data.data.fullName);
+      setMemberStep("setup");
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setPasswordStepVisible(true);
+        return;
+      }
+      setMemberError(
+        err?.response?.data?.message || "Unable to look up that Controller ID.",
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
+
   const handleMemberLogin = async (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
@@ -237,7 +274,7 @@ export default function Login() {
       navigate("/member", { replace: true });
     } catch (err: any) {
       if (err?.response?.data?.code === "SETUP_REQUIRED") {
-        setMemberStep("setup");
+        setPasswordStepVisible(false);
         setMemberError("");
         return;
       }
@@ -249,31 +286,10 @@ export default function Login() {
     }
   };
 
-  const handleLookup = async (e: FormEvent) => {
-    e.preventDefault();
+  const editMemberId = () => {
+    setPasswordStepVisible(false);
+    setMemberPassword("");
     setMemberError("");
-
-    if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(
-        `Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`,
-      );
-      return;
-    }
-
-    setMemberSubmitting(true);
-    try {
-      const res = await api.post("/member-auth/lookup", {
-        controllerId: controllerId.trim(),
-      });
-      setSetupFullName(res.data.data.fullName);
-      setMemberStep("setup");
-    } catch (err: any) {
-      setMemberError(
-        err?.response?.data?.message || "Unable to look up that Controller ID.",
-      );
-    } finally {
-      setMemberSubmitting(false);
-    }
   };
 
   const handleSetupAccount = async (e: FormEvent) => {
@@ -418,6 +434,7 @@ export default function Login() {
   const handleMemberModeChange = (nextMode: "staff" | "member") => {
     setMode(nextMode);
     setMemberStep("login");
+    setPasswordStepVisible(false);
     setMemberPassword("");
     setMemberError("");
     setForgotMessage("");
@@ -566,13 +583,6 @@ export default function Login() {
 
           {mode === "staff" ? (
             <>
-              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Sign in
-              </h2>
-              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your credentials to access the admin console
-              </div>
-
               {error && <ErrorBanner message={error} />}
 
               <form onSubmit={handleStaffSubmit} noValidate>
@@ -599,7 +609,7 @@ export default function Login() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. kofi.asante@example.com"
+                      // placeholder="e.g. kofi.asante@example.com"
                       autoComplete="username"
                       className={inputClasses}
                     />
@@ -629,7 +639,7 @@ export default function Login() {
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
+                      // placeholder="Enter your password"
                       autoComplete="current-password"
                       className={`${inputClasses} pr-10`}
                     />
@@ -651,17 +661,21 @@ export default function Login() {
             </>
           ) : memberStep === "login" ? (
             <>
-              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Member access
-              </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your {settings.memberIdLabel} and password to access your
-                membership.
+                {passwordStepVisible
+                  ? "Enter your password to continue."
+                  : // : `Enter your ${settings.memberIdLabel} to continue.`}
+                    ""}
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
 
-              <form onSubmit={handleMemberLogin} noValidate>
+              <form
+                onSubmit={
+                  passwordStepVisible ? handleMemberLogin : handleContinue
+                }
+                noValidate
+              >
                 <div className="mb-3.5">
                   <label
                     htmlFor="controller-id"
@@ -690,82 +704,97 @@ export default function Login() {
                         );
                         setMemberError("");
                       }}
-                      placeholder="e.g. 1188204"
+                      // placeholder="e.g. 1188204"
                       inputMode="numeric"
                       autoComplete="username"
                       maxLength={7}
-                      className={inputClasses}
+                      readOnly={passwordStepVisible}
+                      className={
+                        passwordStepVisible
+                          ? `${inputClasses.replace("pr-3", "pr-16")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`
+                          : inputClasses
+                      }
                     />
+                    {passwordStepVisible && (
+                      <button
+                        type="button"
+                        onClick={editMemberId}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#1e2761] hover:underline"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="mb-1.5">
-                  <label
-                    htmlFor="member-password"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
-                    Password
-                  </label>
-                  <div className="relative">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
+                {passwordStepVisible && (
+                  <div className="mb-1.5">
+                    <label
+                      htmlFor="member-password"
+                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
                     >
-                      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
-                      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
-                    </svg>
-                    <input
-                      id="member-password"
-                      type={showMemberPassword ? "text" : "password"}
-                      value={memberPassword}
-                      onChange={(e) => {
-                        setMemberPassword(e.target.value);
-                        setMemberError("");
-                      }}
-                      placeholder="Enter your password"
-                      autoComplete="current-password"
-                      className={`${inputClasses} pr-10`}
-                    />
-                    <EyeToggle
-                      shown={showMemberPassword}
-                      onToggle={() => setShowMemberPassword((v) => !v)}
-                    />
+                      Password
+                    </label>
+                    <div className="relative">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        className="pointer-events-none absolute left-3 top-1/2 h-3.75 w-3.75 -translate-y-1/2 text-[#5b6472]"
+                      >
+                        <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+                        <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+                      </svg>
+                      <input
+                        id="member-password"
+                        type={showMemberPassword ? "text" : "password"}
+                        value={memberPassword}
+                        onChange={(e) => {
+                          setMemberPassword(e.target.value);
+                          setMemberError("");
+                        }}
+                        // placeholder="Enter your password"
+                        autoComplete="current-password"
+                        autoFocus
+                        className={`${inputClasses} pr-10`}
+                      />
+                      <EyeToggle
+                        shown={showMemberPassword}
+                        onToggle={() => setShowMemberPassword((v) => !v)}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="mb-3.5 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMemberStep("lookup");
-                      setMemberError("");
-                    }}
-                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
-                  >
-                    First time signing in?
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMemberStep("forgot");
-                      setMemberError("");
-                      setForgotMessage("");
-                    }}
-                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                {passwordStepVisible && (
+                  <div className="mb-3.5 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMemberStep("forgot");
+                        setMemberError("");
+                        setForgotMessage("");
+                      }}
+                      className="text-[11.5px] font-semibold text-[#1e2761] hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
 
                 <button
                   type="submit"
                   disabled={memberSubmitting}
-                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`${passwordStepVisible ? "mt-0.5" : "mt-3.5"} w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60`}
                 >
-                  {memberSubmitting ? "Signing in…" : "Sign In"}
+                  {passwordStepVisible
+                    ? memberSubmitting
+                      ? "Signing in…"
+                      : "Sign In"
+                    : memberSubmitting
+                      ? "Checking…"
+                      : "Continue"}
                 </button>
               </form>
               <div className="mt-5 border-t border-[#edf0f5] pt-4 text-[11px] leading-relaxed text-[#5b6472]">
@@ -807,70 +836,14 @@ export default function Login() {
                 )}
               </div>
             </>
-          ) : memberStep === "lookup" ? (
-            <>
-              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Set up your account
-              </h2>
-              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Enter your {settings.memberIdLabel} to get started.
-              </div>
-
-              {memberError && <ErrorBanner message={memberError} />}
-
-              <form onSubmit={handleLookup} noValidate>
-                <div className="mb-4">
-                  <label
-                    htmlFor="lookup-controller-id"
-                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                  >
-                    {settings.memberIdLabel}
-                  </label>
-                  <input
-                    id="lookup-controller-id"
-                    value={controllerId}
-                    onChange={(e) => {
-                      setControllerId(
-                        e.target.value.replace(/\D/g, "").slice(0, 7),
-                      );
-                      setMemberError("");
-                    }}
-                    placeholder="e.g. 1188204"
-                    inputMode="numeric"
-                    autoComplete="username"
-                    maxLength={7}
-                    className={inputClasses.replace("pl-9", "pl-3")}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={memberSubmitting}
-                  className="mt-0.5 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {memberSubmitting ? "Looking up…" : "Register"}
-                </button>
-              </form>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMemberStep("login");
-                  setMemberError("");
-                }}
-                className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
-              >
-                Already set up? Log in
-              </button>
-            </>
           ) : memberStep === "setup" ? (
             <>
-              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Confirm your details
+              <h2 className="mb-5 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                Set up your account
               </h2>
-              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Choose a password and email for signing in from now on.
-              </div>
+              {/* <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                Set your login email and password.
+              </div> */}
 
               {memberError && <ErrorBanner message={memberError} />}
 
@@ -905,16 +878,12 @@ export default function Login() {
                       setSetupDistrictId(value);
                       setMemberError("");
                     }}
-                    placeholder="Select your district if known"
+                    // placeholder="Select your district if known"
                     options={districts.map((d) => ({
                       value: String(d.id),
                       label: `${d.name} — ${d.region.name}`,
                     }))}
                   />
-                  <p className="mt-1.5 text-[11px] text-[#5b6472]">
-                    Not required to continue — only used to fill in your
-                    district if it's missing from your record.
-                  </p>
                 </div>
 
                 <div className="mb-3.5">
@@ -932,12 +901,12 @@ export default function Login() {
                       setSetupEmail(e.target.value);
                       setMemberError("");
                     }}
-                    placeholder="e.g. kwasi.tawia@example.com"
+                    // placeholder="e.g. kwasi.tawia@example.com"
                     autoComplete="email"
                     className={inputClasses.replace("pl-9", "pl-3")}
                   />
                   <p className="mt-1.5 text-[11px] text-[#5b6472]">
-                    Used only to reset your password if you forget it.
+                    Used to reset your password if needed.
                   </p>
                 </div>
 
@@ -996,6 +965,7 @@ export default function Login() {
                 type="button"
                 onClick={() => {
                   setMemberStep("login");
+                  setPasswordStepVisible(false);
                   setMemberError("");
                 }}
                 className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
@@ -1009,7 +979,7 @@ export default function Login() {
                 Your policy details
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                A few more details to finish setting up your membership.
+                A few more details to finish setup.
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
@@ -1298,7 +1268,7 @@ export default function Login() {
                         );
                         setMemberError("");
                       }}
-                      placeholder="e.g. 1188204"
+                      // placeholder="e.g. 1188204"
                       inputMode="numeric"
                       maxLength={7}
                       className={inputClasses.replace("pl-9", "pl-3")}

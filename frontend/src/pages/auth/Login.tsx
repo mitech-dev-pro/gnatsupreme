@@ -133,7 +133,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   const [memberStep, setMemberStep] = useState<
-    "login" | "setup" | "policy" | "forgot"
+    "login" | "setup" | "policy" | "beneficiaries" | "forgot"
   >(
     requestedMode === "member" && searchParams.get("step") === "policy"
       ? "policy"
@@ -158,7 +158,6 @@ export default function Login() {
 
   const [policyDob, setPolicyDob] = useState("");
   const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
-  const [includeSpouse, setIncludeSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
   const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
@@ -335,7 +334,11 @@ export default function Login() {
   const removeBeneficiary = (index: number) =>
     setBeneficiaries((current) => current.filter((_, i) => i !== index));
 
-  const submitPolicyDetails = async (e: FormEvent) => {
+  // Whether spouse details are provided, derived from the (always-visible) full name field rather
+  // than a separate include/exclude toggle.
+  const hasSpouseDetails = spouseName.trim().length > 0;
+
+  const handlePolicyContinue = (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
 
@@ -347,12 +350,12 @@ export default function Login() {
       setMemberError("Enter your Ghana Card ID in the format GHA-000000000-0.");
       return;
     }
-    if (includeSpouse && spouseName.trim().length < 2) {
+    if (hasSpouseDetails && spouseName.trim().length < 2) {
       setMemberError("Enter your spouse's full name.");
       return;
     }
     if (
-      includeSpouse &&
+      hasSpouseDetails &&
       spouseGhanaCardId &&
       !GHANA_CARD.test(spouseGhanaCardId)
     ) {
@@ -361,6 +364,14 @@ export default function Login() {
       );
       return;
     }
+
+    setMemberStep("beneficiaries");
+  };
+
+  const handleFinishSetup = async (e: FormEvent) => {
+    e.preventDefault();
+    setMemberError("");
+
     for (const item of beneficiaries) {
       if (!item.fullName.trim()) {
         setMemberError("Enter a full name for every beneficiary.");
@@ -373,7 +384,7 @@ export default function Login() {
       const res = await api.post("/member-portal/onboarding", {
         dateOfBirth: policyDob,
         ghanaCardId: policyGhanaCardId,
-        spouse: includeSpouse
+        spouse: hasSpouseDetails
           ? {
               fullName: spouseName.trim(),
               dateOfBirth: spouseDob || null,
@@ -388,7 +399,7 @@ export default function Login() {
           trusteeGhanaCardId: item.trusteeGhanaCardId || null,
         })),
       });
-      if (includeSpouse && res.data.data.spouseId && marriageCertFile) {
+      if (hasSpouseDetails && res.data.data.spouseId && marriageCertFile) {
         const formData = new FormData();
         formData.append("file", marriageCertFile);
         await api
@@ -445,7 +456,6 @@ export default function Login() {
     setSetupConfirmPassword("");
     setPolicyDob("");
     setPolicyGhanaCardId("");
-    setIncludeSpouse(false);
     setSpouseName("");
     setSpouseDob("");
     setSpouseGhanaCardId("");
@@ -984,7 +994,7 @@ export default function Login() {
 
               {memberError && <ErrorBanner message={memberError} />}
 
-              <form onSubmit={submitPolicyDetails} noValidate>
+              <form onSubmit={handlePolicyContinue} noValidate>
                 <div className="mb-3.5">
                   <DatePicker
                     label="Date of birth"
@@ -1016,101 +1026,98 @@ export default function Login() {
                   />
                 </div>
 
-                <div className="mb-1.5 flex items-center justify-between rounded-[9px] bg-[#f6f7fb] px-3 py-2.5">
-                  <span className="text-[11.5px] font-bold text-[#1e2761]">
-                    Add a spouse?
-                  </span>
-                  <div className="flex gap-1 rounded-[9px] bg-[#eef0fa] p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setIncludeSpouse(false)}
-                      className={`rounded-[7px] px-2.5 py-1 text-[11px] font-bold transition ${!includeSpouse ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]" : "text-[#5b6472]"}`}
+                <h3 className="mb-2.5 text-[11.5px] font-bold text-[#1e2761]">
+                  Spouse details (optional)
+                </h3>
+                <div className="rounded-[9px] border border-[#e5e9f0] p-3">
+                  <div className="mb-3">
+                    <label
+                      htmlFor="spouse-name"
+                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
                     >
-                      No
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIncludeSpouse(true)}
-                      className={`rounded-[7px] px-2.5 py-1 text-[11px] font-bold transition ${includeSpouse ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]" : "text-[#5b6472]"}`}
+                      Spouse full name
+                    </label>
+                    <input
+                      id="spouse-name"
+                      value={spouseName}
+                      onChange={(e) => {
+                        setSpouseName(e.target.value);
+                        setMemberError("");
+                      }}
+                      className={inputClasses.replace("pl-9", "pl-3")}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <DatePicker
+                      label="Spouse date of birth (optional)"
+                      maxDate={new Date()}
+                      value={parseISODate(spouseDob)}
+                      onChange={(date) =>
+                        setSpouseDob(date ? toISODate(date) : "")
+                      }
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label
+                      htmlFor="spouse-ghana-card"
+                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
                     >
-                      Yes
-                    </button>
+                      Spouse Ghana Card (optional)
+                    </label>
+                    <input
+                      id="spouse-ghana-card"
+                      value={spouseGhanaCardId}
+                      onChange={(e) => {
+                        setSpouseGhanaCardId(
+                          normalizeGhanaCard(e.target.value),
+                        );
+                        setMemberError("");
+                      }}
+                      placeholder="GHA-000000000-0"
+                      className={inputClasses.replace("pl-9", "pl-3")}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="marriage-cert"
+                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                    >
+                      Marriage certificate (optional)
+                    </label>
+                    <input
+                      id="marriage-cert"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) =>
+                        setMarriageCertFile(e.target.files?.[0] ?? null)
+                      }
+                      className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-2 pl-3 pr-3 text-[12px]"
+                    />
                   </div>
                 </div>
 
-                {includeSpouse && (
-                  <div className="mt-3.5 rounded-[9px] border border-[#e5e9f0] p-3">
-                    <div className="mb-3">
-                      <label
-                        htmlFor="spouse-name"
-                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                      >
-                        Spouse full name
-                      </label>
-                      <input
-                        id="spouse-name"
-                        value={spouseName}
-                        onChange={(e) => {
-                          setSpouseName(e.target.value);
-                          setMemberError("");
-                        }}
-                        className={inputClasses.replace("pl-9", "pl-3")}
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <DatePicker
-                        label="Spouse date of birth (optional)"
-                        maxDate={new Date()}
-                        value={parseISODate(spouseDob)}
-                        onChange={(date) =>
-                          setSpouseDob(date ? toISODate(date) : "")
-                        }
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label
-                        htmlFor="spouse-ghana-card"
-                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                      >
-                        Spouse Ghana Card (optional)
-                      </label>
-                      <input
-                        id="spouse-ghana-card"
-                        value={spouseGhanaCardId}
-                        onChange={(e) => {
-                          setSpouseGhanaCardId(
-                            normalizeGhanaCard(e.target.value),
-                          );
-                          setMemberError("");
-                        }}
-                        placeholder="GHA-000000000-0"
-                        className={inputClasses.replace("pl-9", "pl-3")}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="marriage-cert"
-                        className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                      >
-                        Marriage certificate (optional)
-                      </label>
-                      <input
-                        id="marriage-cert"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        onChange={(e) =>
-                          setMarriageCertFile(e.target.files?.[0] ?? null)
-                        }
-                        className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-2 pl-3 pr-3 text-[12px]"
-                      />
-                    </div>
-                  </div>
-                )}
+                <button
+                  type="submit"
+                  disabled={memberSubmitting}
+                  className="mt-4 w-full rounded-[9px] bg-[#1f9c7c] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(31,156,124,0.35)] transition hover:bg-[#17805f] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Continue
+                </button>
+              </form>
+            </>
+          ) : memberStep === "beneficiaries" ? (
+            <>
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
+                Beneficiaries
+              </h2>
+              <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
+                Add anyone who should be listed as a beneficiary.
+              </div>
 
-                <div className="mt-4 mb-2 flex items-center justify-between">
-                  <h3 className="text-[11.5px] font-bold text-[#1e2761]">
-                    Beneficiaries
-                  </h3>
+              {memberError && <ErrorBanner message={memberError} />}
+
+              <form onSubmit={handleFinishSetup} noValidate>
+                <div className="mb-2 flex items-center justify-end">
                   <button
                     type="button"
                     disabled={beneficiaries.length >= 10}
@@ -1232,6 +1239,17 @@ export default function Login() {
                   {memberSubmitting ? "Saving…" : "Finish Setup"}
                 </button>
               </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberStep("policy");
+                  setMemberError("");
+                }}
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-[#5b6472] hover:text-[#1e2761]"
+              >
+                Back
+              </button>
             </>
           ) : (
             <>

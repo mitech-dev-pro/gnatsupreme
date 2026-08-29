@@ -136,6 +136,9 @@ export default function MemberDetail() {
   const [spouseName, setSpouseName] = useState("");
   const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCard, setSpouseGhanaCard] = useState("");
+  const [spouseFieldErrors, setSpouseFieldErrors] = useState<
+    Partial<Record<"fullName" | "dateOfBirth" | "ghanaCardId", string>>
+  >({});
 
   const [addingBeneficiary, setAddingBeneficiary] = useState(false);
   const [newBeneficiary, setNewBeneficiary] = useState({
@@ -239,23 +242,61 @@ export default function MemberDetail() {
     setSpouseName(member?.spouse?.fullName ?? "");
     setSpouseDob(toDateInput(member?.spouse?.dateOfBirth ?? null));
     setSpouseGhanaCard(member?.spouse?.ghanaCardId ?? "");
+    setSpouseFieldErrors({});
+    setActionError("");
     setEditingSpouse(true);
+  };
+
+  const clearSpouseFieldError = (
+    field: "fullName" | "dateOfBirth" | "ghanaCardId",
+  ) => {
+    setSpouseFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   };
 
   const saveSpouse = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setActionError("");
+    setSpouseFieldErrors({});
     try {
       await api.put(`/members/${id}/spouse`, {
         fullName: spouseName.trim(),
         dateOfBirth: spouseDob || null,
         ghanaCardId: spouseGhanaCard.trim() || null,
       });
+      setSpouseFieldErrors({});
       setEditingSpouse(false);
       await load();
     } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Unable to save spouse.");
+      const issues = err?.response?.data?.errors as
+        | Array<{ field?: string; message?: string }>
+        | undefined;
+      const fieldErrors: Partial<
+        Record<"fullName" | "dateOfBirth" | "ghanaCardId", string>
+      > = {};
+      issues?.forEach((issue) => {
+        if (
+          (issue.field === "fullName" ||
+            issue.field === "dateOfBirth" ||
+            issue.field === "ghanaCardId") &&
+          issue.message &&
+          !fieldErrors[issue.field]
+        ) {
+          fieldErrors[issue.field] = issue.message;
+        }
+      });
+      if (Object.keys(fieldErrors).length > 0) {
+        setSpouseFieldErrors(fieldErrors);
+      } else {
+        setActionError(
+          err?.response?.data?.message || "Unable to save spouse.",
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -806,12 +847,23 @@ export default function MemberDetail() {
               {editingSpouse ? (
                 <form onSubmit={saveSpouse} className="space-y-3">
                   <div>
-                    <label className={labelClasses}>Full Name</label>
+                    <label htmlFor="spouse-full-name" className={labelClasses}>Full Name</label>
                     <input
+                      id="spouse-full-name"
                       value={spouseName}
-                      onChange={(e) => setSpouseName(e.target.value)}
-                      className={inputClasses}
+                      onChange={(e) => {
+                        setSpouseName(e.target.value);
+                        clearSpouseFieldError("fullName");
+                      }}
+                      aria-invalid={Boolean(spouseFieldErrors.fullName) || undefined}
+                      aria-describedby={spouseFieldErrors.fullName ? "spouse-full-name-error" : undefined}
+                      className={`${inputClasses} ${spouseFieldErrors.fullName ? "border-(--danger)" : ""}`}
                     />
+                    {spouseFieldErrors.fullName && (
+                      <p id="spouse-full-name-error" className="mt-1.5 text-[11.5px] font-semibold text-(--danger)">
+                        {spouseFieldErrors.fullName}
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -819,16 +871,31 @@ export default function MemberDetail() {
                         label="Date of Birth"
                         maxDate={new Date()}
                         value={parseISODate(spouseDob)}
-                        onChange={(date) => setSpouseDob(date ? toISODate(date) : "")}
+                        error={spouseFieldErrors.dateOfBirth}
+                        onChange={(date) => {
+                          setSpouseDob(date ? toISODate(date) : "");
+                          clearSpouseFieldError("dateOfBirth");
+                        }}
                       />
                     </div>
                     <div>
-                      <label className={labelClasses}>Ghana Card ID</label>
+                      <label htmlFor="spouse-ghana-card" className={labelClasses}>Ghana Card ID</label>
                       <input
+                        id="spouse-ghana-card"
                         value={spouseGhanaCard}
-                        onChange={(e) => setSpouseGhanaCard(e.target.value)}
-                        className={inputClasses}
+                        onChange={(e) => {
+                          setSpouseGhanaCard(e.target.value);
+                          clearSpouseFieldError("ghanaCardId");
+                        }}
+                        aria-invalid={Boolean(spouseFieldErrors.ghanaCardId) || undefined}
+                        aria-describedby={spouseFieldErrors.ghanaCardId ? "spouse-ghana-card-error" : undefined}
+                        className={`${inputClasses} ${spouseFieldErrors.ghanaCardId ? "border-(--danger)" : ""}`}
                       />
+                      {spouseFieldErrors.ghanaCardId && (
+                        <p id="spouse-ghana-card-error" className="mt-1.5 text-[11.5px] font-semibold text-(--danger)">
+                          {spouseFieldErrors.ghanaCardId}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -841,7 +908,11 @@ export default function MemberDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setEditingSpouse(false)}
+                      onClick={() => {
+                        setEditingSpouse(false);
+                        setSpouseFieldErrors({});
+                        setActionError("");
+                      }}
                       className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#5b6472]"
                     >
                       Cancel

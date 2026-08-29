@@ -723,6 +723,18 @@ model ExternalClaimSubmission {
   externalClaimId String?             @unique @map("external_claim_id")
   formUrl         String?             @map("form_url")
   status          ExternalClaimStatus @default(PENDING)
+  claimType       BenefitType?        @map("claim_type")
+  claimantType    String?              @map("claimant_type")
+  claimantName    String?              @map("claimant_name")
+  claimantIdType  String?              @map("claimant_id_type")
+  claimantIdNumber String?             @map("claimant_id_number")
+  claimantContact Json?                @map("claimant_contact")
+  incidentDate    DateTime?            @map("incident_date") @db.Date
+  estimatedAmount Decimal?             @map("estimated_amount") @db.Decimal(12, 2)
+  paymentMethod   String?              @map("payment_method")
+  paymentDetails  Json?                @map("payment_details")
+  documentIds     Int[]                @default([]) @map("document_ids")
+  notes            String?
   errorCode       String?             @map("error_code")
   errorMessage    String?             @map("error_message")
   submittedAt     DateTime?           @map("submitted_at")

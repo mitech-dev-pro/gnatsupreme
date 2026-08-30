@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { canAccessDistrict, memberScope } from "./member.access.js";
+import { canAccessDistrict, memberScope, resolveMemberScope } from "./member.access.js";
 import {
   generateTempPassword,
   hashMemberPassword,
@@ -16,6 +16,7 @@ import {
   createMemberSchema,
   memberIdParamsSchema,
   memberQuerySchema,
+  memberSchoolsQuerySchema,
   memberStatusSchema,
   spouseSchema,
   updateMemberSchema,
@@ -42,6 +43,21 @@ const memberListInclude = {
 
 function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
+}
+
+function monthStart(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function reasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    DEATH: "death",
+    DISABILITY: "disability",
+    RETIREMENT: "retirement",
+    RESIGNATION: "resignation",
+    OTHER: "other",
+  };
+  return labels[reason] ?? reason.toLowerCase();
 }
 
 function validationFailure(response: Response, error: ZodError) {
@@ -84,18 +100,12 @@ memberRouter.get("/", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const { page, limit, search, status, regionId, districtId, missingFromReport20 } = query.data;
-  const requestedScope =
-    user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN"
-      ? districtId
-        ? { districtId }
-        : regionId
-          ? { district: { regionId } }
-          : {}
-      : memberScope(user);
+  const { page, limit, search, status, regionId, districtId, school, missingFromReport20 } = query.data;
+  const requestedScope = resolveMemberScope(user, { regionId, districtId });
   const where = {
     ...requestedScope,
     ...(status ? { status } : {}),
+    ...(school ? { school } : {}),
     ...(missingFromReport20 ? { missingFromReport20At: { not: null } } : {}),
     ...(search
       ? {
@@ -124,6 +134,77 @@ memberRouter.get("/", async (request, response) => {
     data: members,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
+});
+
+memberRouter.get("/stats", async (_request, response) => {
+  const user = currentUser(response);
+  const scope = memberScope(user);
+  const firstOfMonth = monthStart(new Date());
+
+  const [statusGroups, missingFromReport20, newThisMonth, removalsThisMonth] = await Promise.all([
+    prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
+    prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
+    prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
+    prisma.memberWorkflowEvent.groupBy({
+      by: ["reason"],
+      where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
+  const totalMembers = statusGroups.reduce((total, g) => total + g._count._all, 0);
+  const activeCount = statusCounts.ACTIVE ?? 0;
+  const activeCoveragePct = totalMembers ? Math.round((activeCount / totalMembers) * 1000) / 10 : 0;
+
+  const nonZeroReasons = removalsThisMonth
+    .filter((g) => g.reason !== null && g._count._all > 0)
+    .sort((a, b) => b._count._all - a._count._all);
+  const removedTotal = nonZeroReasons.reduce((total, g) => total + g._count._all, 0);
+  const shown = nonZeroReasons.slice(0, 2);
+  const remainder = nonZeroReasons.slice(2).reduce((total, g) => total + g._count._all, 0);
+  const removedBreakdownNote = shown.length
+    ? shown.map((g) => `${g._count._all} ${reasonLabel(g.reason!)}`).join(" · ") +
+      (remainder > 0 ? ` · +${remainder} more` : "")
+    : "No removals this month";
+
+  response.json({
+    success: true,
+    data: {
+      totalMembers,
+      newThisMonth,
+      activeCoverage: activeCount,
+      activeCoveragePct,
+      pendingApproval: statusCounts.PENDING ?? 0,
+      report20Mismatch: missingFromReport20,
+      removedThisMonth: removedTotal,
+      removedBreakdownNote,
+    },
+  });
+});
+
+memberRouter.get("/schools", async (request, response) => {
+  const query = memberSchoolsQuerySchema.safeParse(request.query);
+  if (!query.success) return validationFailure(response, query.error);
+
+  const user = currentUser(response);
+  const districtId = query.data.districtId ?? (user.role === "DISTRICT_ADMIN" ? user.districtId ?? undefined : undefined);
+  if (!districtId) {
+    response.status(400).json({
+      success: false,
+      message: "Invalid request",
+      errors: [{ field: "districtId", message: "districtId is required" }],
+    });
+    return;
+  }
+
+  const rows = await prisma.member.findMany({
+    where: resolveMemberScope(user, { districtId }),
+    select: { school: true },
+    distinct: ["school"],
+    orderBy: { school: "asc" },
+  });
+  response.json({ success: true, data: rows.map((row) => row.school) });
 });
 
 memberRouter.get("/:id", async (request, response) => {

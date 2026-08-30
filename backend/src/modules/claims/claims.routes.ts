@@ -18,7 +18,9 @@ const querySchema = z.object({
     .optional(),
 });
 const idSchema = z.object({ id: z.coerce.number().int().positive() });
-const lookupSchema = z.object({ staffId: z.string().trim().min(1).max(50) });
+const lookupSchema = z.object({
+  staffId: z.string().trim().regex(/^\d{4,7}$/, "Staff ID must contain 4 to 7 digits"),
+});
 const estimateSchema = z.object({
   memberId: z.coerce.number().int().positive(),
   claimType: z.enum(["DEATH", "TOTAL_PERMANENT_DISABILITY", "CRITICAL_ILLNESS", "HOSPITALIZATION"]),
@@ -83,7 +85,9 @@ claimsRouter.get("/member-lookup", async (request, response) => {
   }
   const user = response.locals.user as AuthenticatedUser;
   const member = await prisma.member.findFirst({
-    where: { controllerId: { equals: parsed.data.staffId, mode: "insensitive" }, ...memberScope(user) },
+    // Staff IDs are numeric and normalized by validation, so exact equality can use
+    // the existing unique B-tree index instead of an ILIKE scan.
+    where: { controllerId: parsed.data.staffId, ...memberScope(user) },
     select: { id: true, controllerId: true, fullName: true, phone: true, email: true, ghanaCardId: true, school: true, status: true, ...claimMemberInclude },
   });
   if (!member) {

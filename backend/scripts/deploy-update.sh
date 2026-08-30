@@ -25,6 +25,9 @@ source "$ENV_FILE"
 set +a
 npm run migrate:deploy
 
+echo "==> Verifying performance indexes"
+npm run verify:performance-indexes
+
 echo "==> Restarting API and worker"
 pm2 restart gnatsupreme-backend gnatsupreme-worker
 

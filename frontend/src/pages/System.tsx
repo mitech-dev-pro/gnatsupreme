@@ -58,6 +58,15 @@ function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function useDebouncedValue<T>(value: T, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay, value]);
+  return debounced;
+}
+
 function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const { districts } = useDistricts();
   const regions = Array.from(new Map(districts.map((d) => [d.region.id, d.region])).values());
@@ -66,6 +75,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [roleFilter, setRoleFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -87,7 +97,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/users", { params: { page, limit: 20, search: search || undefined, role: roleFilter || undefined } });
+      const res = await api.get("/users", { params: { page, limit: 20, search: debouncedSearch || undefined, role: roleFilter || undefined } });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
@@ -96,7 +106,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [page, roleFilter, search]);
+  }, [debouncedSearch, page, roleFilter]);
 
   useEffect(() => {
     void load();
@@ -240,7 +250,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or email" className={`max-w-64 ${inputClasses}`} />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search name or email" className={`max-w-64 ${inputClasses}`} />
           <Dropdown
             className="w-48"
             value={roleFilter}
@@ -415,6 +425,8 @@ function AuditLogTab() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const debouncedAction = useDebouncedValue(action);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -423,7 +435,7 @@ function AuditLogTab() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/audit-logs", { params: { page, limit: 30, search: search || undefined, action: action || undefined } });
+      const res = await api.get("/audit-logs", { params: { page, limit: 30, search: debouncedSearch || undefined, action: debouncedAction || undefined } });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
@@ -432,7 +444,7 @@ function AuditLogTab() {
     } finally {
       setLoading(false);
     }
-  }, [action, page, search]);
+  }, [debouncedAction, debouncedSearch, page]);
 
   useEffect(() => {
     void load();

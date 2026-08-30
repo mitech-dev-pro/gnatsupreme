@@ -259,6 +259,10 @@ model User {
 
   @@index([regionId])
   @@index([districtId])
+  @@index([fullName, id])
+  @@index([role, isActive, fullName, id])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_full_name_trgm_idx")
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_email_trgm_idx")
   @@map("users")
 }
 
@@ -301,6 +305,15 @@ model Member {
   @@index([districtId])
   @@index([status])
   @@index([fullName])
+  @@index([status, updatedAt(sort: Desc)])
+  @@index([districtId, status, updatedAt(sort: Desc)])
+  @@index([districtId, school])
+  @@index([districtId, createdAt(sort: Desc)])
+  @@index([districtId, report20Matched])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "members_full_name_trgm_idx")
+  @@index([controllerId(ops: raw("gin_trgm_ops"))], type: Gin, map: "members_controller_id_trgm_idx")
+  @@index([ghanaCardId(ops: raw("gin_trgm_ops"))], type: Gin, map: "members_ghana_card_id_trgm_idx")
+  @@index([school(ops: raw("gin_trgm_ops"))], type: Gin, map: "members_school_trgm_idx")
   @@map("members")
 }
 
@@ -411,6 +424,8 @@ model Notification {
   @@index([status, nextAttemptAt])
   @@index([userId, readAt, createdAt])
   @@index([memberId, readAt, createdAt])
+  @@index([userId, channel, createdAt(sort: Desc)])
+  @@index([memberId, channel, createdAt(sort: Desc)])
   @@index([type])
   @@map("notifications")
 }
@@ -525,6 +540,10 @@ model ImportJob {
   @@unique([type, checksum])
   @@index([status])
   @@index([createdAt])
+  @@index([type, createdAt(sort: Desc)])
+  @@index([type, status, createdAt(sort: Desc)])
+  @@index([uploadedById, type, createdAt(sort: Desc)])
+  @@index([uploadedById, type, status, createdAt(sort: Desc)])
   @@map("import_jobs")
 }
 
@@ -547,6 +566,7 @@ model Report20Row {
 
   @@unique([importJobId, rowNumber])
   @@index([importJobId, status])
+  @@index([importJobId, status, rowNumber])
   @@index([controllerId])
   @@index([memberId])
   @@map("report20_rows")
@@ -575,6 +595,7 @@ model MemberBulkImportRow {
 
   @@unique([importJobId, rowNumber])
   @@index([importJobId, status])
+  @@index([importJobId, status, rowNumber])
   @@index([controllerId])
   @@index([memberId])
   @@index([districtId])
@@ -595,6 +616,7 @@ model MemberWorkflowEvent {
   createdAt     DateTime             @default(now()) @map("created_at")
 
   @@index([memberId, createdAt])
+  @@index([toStatus, createdAt])
   @@index([action])
   @@index([performedById])
   @@map("member_workflow_events")
@@ -619,6 +641,8 @@ model MemberChangeRequest {
   updatedAt           DateTime            @updatedAt @map("updated_at")
 
   @@index([memberId, status])
+  @@index([status, requestedAt(sort: Desc), id(sort: Desc)])
+  @@index([memberId, type, targetBeneficiaryId, status])
   @@index([requestedById])
   @@index([reviewedById])
   @@index([requestedAt])
@@ -680,6 +704,10 @@ model AuditLog {
   @@index([regionId])
   @@index([districtId])
   @@index([createdAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([regionId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([districtId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "audit_logs_description_trgm_idx")
   @@map("audit_logs")
 }
 
@@ -709,6 +737,9 @@ model MemberTransfer {
   @@index([toDistrictId])
   @@index([status])
   @@index([requestedAt])
+  @@index([status, requestedAt(sort: Desc), id(sort: Desc)])
+  @@index([fromDistrictId, status, requestedAt(sort: Desc), id(sort: Desc)])
+  @@index([toDistrictId, status, requestedAt(sort: Desc), id(sort: Desc)])
   @@map("member_transfers")
 }
 
@@ -746,5 +777,7 @@ model ExternalClaimSubmission {
   @@index([submittedById])
   @@index([status])
   @@index([createdAt])
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([memberId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("external_claim_submissions")
 }

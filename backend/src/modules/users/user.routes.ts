@@ -189,9 +189,9 @@ userRouter.post("/", async (request, response) => {
     return;
   }
 
-  const duplicate = await prisma.user.findFirst({
-    where: { email: { equals: parsed.data.email, mode: "insensitive" } },
-  });
+  // User schemas normalize email addresses to lowercase, allowing the unique
+  // email index to serve duplicate checks directly.
+  const duplicate = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (duplicate) {
     response.status(409).json({ success: false, message: "A user with this email already exists" });
     return;
@@ -256,7 +256,7 @@ userRouter.patch("/:id", async (request, response) => {
     const duplicate = await prisma.user.findFirst({
       where: {
         id: { not: existing.id },
-        email: { equals: body.data.email, mode: "insensitive" },
+        email: body.data.email,
       },
     });
     if (duplicate) {

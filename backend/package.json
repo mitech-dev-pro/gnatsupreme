@@ -19,6 +19,7 @@
     "admin:reset-password": "tsx scripts/reset-admin-password.ts",
     "db:seed-geography": "tsx scripts/seed-geography.ts",
     "verify:member-scope": "tsx scripts/verify-member-scope.ts",
+    "verify:performance-indexes": "node scripts/verify-performance-indexes.mjs",
     "postinstall": "prisma generate"
   },
   "keywords": [],

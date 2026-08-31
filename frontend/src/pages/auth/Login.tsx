@@ -148,7 +148,10 @@ export default function Login() {
   const [forgotMessage, setForgotMessage] = useState("");
 
   const [setupFullName, setSetupFullName] = useState("");
+  const [setupSchool, setSetupSchool] = useState("");
   const [setupDistrictId, setSetupDistrictId] = useState("");
+  const [setupDistrictLabel, setSetupDistrictLabel] = useState("");
+  const [setupDistrictLocked, setSetupDistrictLocked] = useState(false);
   const [setupEmail, setSetupEmail] = useState("");
   const [setupPassword, setSetupPassword] = useState("");
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
@@ -238,6 +241,14 @@ export default function Login() {
         controllerId: controllerId.trim(),
       });
       setSetupFullName(res.data.data.fullName);
+      setSetupSchool(res.data.data.school);
+      if (res.data.data.district) {
+        setSetupDistrictId(String(res.data.data.district.id));
+        setSetupDistrictLabel(`${res.data.data.district.name} — ${res.data.data.district.region.name}`);
+        setSetupDistrictLocked(true);
+      } else {
+        setSetupDistrictLocked(false);
+      }
       setMemberStep("setup");
     } catch (err: any) {
       if (err?.response?.status === 409) {
@@ -450,7 +461,10 @@ export default function Login() {
     setMemberError("");
     setForgotMessage("");
     setSetupFullName("");
+    setSetupSchool("");
     setSetupDistrictId("");
+    setSetupDistrictLabel("");
+    setSetupDistrictLocked(false);
     setSetupEmail("");
     setSetupPassword("");
     setSetupConfirmPassword("");
@@ -876,24 +890,50 @@ export default function Login() {
 
                 <div className="mb-3.5">
                   <label
+                    htmlFor="setup-school"
+                    className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
+                  >
+                    School
+                  </label>
+                  <input
+                    id="setup-school"
+                    value={setupSchool}
+                    readOnly
+                    disabled
+                    className={`${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`}
+                  />
+                </div>
+
+                <div className="mb-3.5">
+                  <label
                     htmlFor="setup-district"
                     className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
                   >
-                    District (optional)
+                    {setupDistrictLocked ? "District" : "District (optional)"}
                   </label>
-                  <Dropdown
-                    id="setup-district"
-                    value={setupDistrictId}
-                    onChange={(value) => {
-                      setSetupDistrictId(value);
-                      setMemberError("");
-                    }}
-                    // placeholder="Select your district if known"
-                    options={districts.map((d) => ({
-                      value: String(d.id),
-                      label: `${d.name} — ${d.region.name}`,
-                    }))}
-                  />
+                  {setupDistrictLocked ? (
+                    <input
+                      id="setup-district"
+                      value={setupDistrictLabel}
+                      readOnly
+                      disabled
+                      className={`${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`}
+                    />
+                  ) : (
+                    <Dropdown
+                      id="setup-district"
+                      value={setupDistrictId}
+                      onChange={(value) => {
+                        setSetupDistrictId(value);
+                        setMemberError("");
+                      }}
+                      // placeholder="Select your district if known"
+                      options={districts.map((d) => ({
+                        value: String(d.id),
+                        label: `${d.name} — ${d.region.name}`,
+                      }))}
+                    />
+                  )}
                 </div>
 
                 <div className="mb-3.5">

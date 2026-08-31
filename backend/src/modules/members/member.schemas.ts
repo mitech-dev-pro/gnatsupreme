@@ -72,3 +72,13 @@ export const memberQuerySchema = z.object({
 export const memberSchoolsQuerySchema = z.object({
   districtId: z.coerce.number().int().positive().optional(),
 });
+
+export const memberStatsQuerySchema = z.object({
+  regionId: z.coerce.number().int().positive().optional(),
+  districtId: z.coerce.number().int().positive().optional(),
+  school: z.string().trim().max(160).optional(),
+  // z.coerce.boolean() means Boolean("false") === true — the frontend relies on this by never
+  // sending the literal string "false" (it omits the param instead). Don't "fix" the frontend to
+  // send missingFromReport20=false explicitly; that would silently flip it back to true.
+  missingFromReport20: z.coerce.boolean().optional(),
+});

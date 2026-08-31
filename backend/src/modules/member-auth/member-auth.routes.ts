@@ -204,7 +204,15 @@ memberAuthRouter.post(
 
     const member = await prisma.member.findFirst({
       where: { controllerId: parsed.data.controllerId },
-      select: { id: true, controllerId: true, fullName: true, status: true, passwordHash: true },
+      select: {
+        id: true,
+        controllerId: true,
+        fullName: true,
+        status: true,
+        passwordHash: true,
+        school: true,
+        district: { select: { id: true, name: true, region: { select: { name: true } } } },
+      },
     });
     if (!member || !["ACTIVE", "FLAGGED"].includes(member.status)) {
       genericFailure();
@@ -225,7 +233,10 @@ memberAuthRouter.post(
       entityId: member.id,
       description: `Controller ID ${member.controllerId} was resolved for first-time account setup`,
     });
-    response.json({ success: true, data: { fullName: member.fullName } });
+    response.json({
+      success: true,
+      data: { fullName: member.fullName, school: member.school, district: member.district },
+    });
   },
 );
 

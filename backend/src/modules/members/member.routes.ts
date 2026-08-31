@@ -17,6 +17,7 @@ import {
   memberIdParamsSchema,
   memberQuerySchema,
   memberSchoolsQuerySchema,
+  memberStatsQuerySchema,
   memberStatusSchema,
   spouseSchema,
   updateMemberSchema,
@@ -136,12 +137,20 @@ memberRouter.get("/", async (request, response) => {
   });
 });
 
-memberRouter.get("/stats", async (_request, response) => {
+memberRouter.get("/stats", async (request, response) => {
+  const query = memberStatsQuerySchema.safeParse(request.query);
+  if (!query.success) return validationFailure(response, query.error);
+
   const user = currentUser(response);
-  const scope = memberScope(user);
+  const { regionId, districtId, school, missingFromReport20 } = query.data;
+  const scope = {
+    ...resolveMemberScope(user, { regionId, districtId }),
+    ...(school ? { school } : {}),
+    ...(missingFromReport20 ? { missingFromReport20At: { not: null } } : {}),
+  };
   const firstOfMonth = monthStart(new Date());
 
-  const [statusGroups, missingFromReport20, newThisMonth, removalsThisMonth] = await Promise.all([
+  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth] = await Promise.all([
     prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
     prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
     prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
@@ -176,7 +185,7 @@ memberRouter.get("/stats", async (_request, response) => {
       activeCoverage: activeCount,
       activeCoveragePct,
       pendingApproval: statusCounts.PENDING ?? 0,
-      report20Mismatch: missingFromReport20,
+      report20Mismatch: missingFromReport20Count,
       removedThisMonth: removedTotal,
       removedBreakdownNote,
     },

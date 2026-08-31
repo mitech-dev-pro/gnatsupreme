@@ -141,11 +141,12 @@ export default function MembersList() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    api.get("/members/stats")
+    setStatsLoading(true);
+    api.get("/members/stats", { params: { regionId: regionId || undefined, districtId: districtId || undefined, school: school || undefined, missingFromReport20: missingFromReport20 || undefined } })
       .then((response) => setStats(response.data.data))
       .catch((err) => { console.error("Failed to load member stats", err); setStats(null); })
       .finally(() => setStatsLoading(false));
-  }, []);
+  }, [regionId, districtId, school, missingFromReport20]);
 
   const submitSearch = (event: FormEvent) => { event.preventDefault(); updateParams({ search: searchInput.trim() || null, page: null }); };
   const onRegionChange = (value: string) => updateParams({ regionId: value || null, districtId: null, school: null, page: null });

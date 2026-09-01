@@ -129,23 +129,25 @@ export default function MembersList() {
     setParams(next);
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError("");
     try {
-      const response = await api.get("/members", { params: { page, limit, search: search || undefined, status: status || undefined, regionId: regionId || undefined, districtId: districtId || undefined, school: school || undefined, missingFromReport20: missingFromReport20 || undefined } });
+      const response = await api.get("/members", { signal, params: { page, limit, search: search || undefined, status: status || undefined, regionId: regionId || undefined, districtId: districtId || undefined, school: school || undefined, missingFromReport20: missingFromReport20 || undefined } });
       setRows(response.data.data); setTotal(response.data.pagination.total); setTotalPages(Math.max(1, response.data.pagination.totalPages));
-    } catch { setError("Members could not be loaded. Check your connection and try again."); }
-    finally { setLoading(false); }
+    } catch { if (!signal?.aborted) setError("Members could not be loaded. Check your connection and try again."); }
+    finally { if (!signal?.aborted) setLoading(false); }
   }, [districtId, limit, missingFromReport20, page, regionId, school, search, status]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setStatsLoading(true);
-    api.get("/members/stats", { params: { regionId: regionId || undefined, districtId: districtId || undefined, school: school || undefined, missingFromReport20: missingFromReport20 || undefined } })
+    api.get("/members/stats", { signal: controller.signal, params: { regionId: regionId || undefined, districtId: districtId || undefined, school: school || undefined, missingFromReport20: missingFromReport20 || undefined } })
       .then((response) => setStats(response.data.data))
-      .catch((err) => { console.error("Failed to load member stats", err); setStats(null); })
-      .finally(() => setStatsLoading(false));
+      .catch((err) => { if (!controller.signal.aborted) { console.error("Failed to load member stats", err); setStats(null); } })
+      .finally(() => { if (!controller.signal.aborted) setStatsLoading(false); });
+    return () => controller.abort();
   }, [regionId, districtId, school, missingFromReport20]);
 
   const submitSearch = (event: FormEvent) => { event.preventDefault(); updateParams({ search: searchInput.trim() || null, page: null }); };
@@ -225,7 +227,7 @@ export default function MembersList() {
 
     {error && <div className="mb-3"><Alert tone="error">{error} <button className="ml-2 underline" onClick={() => void load()}>Try again</button></Alert></div>}
     <section className="members-table-shell" aria-label="Member register">
-      {loading ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error ? null : rows.length === 0 ? <EmptyState title={filtered ? "No members match these filters" : "Your member register is empty"} description={filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."} action={filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>} /> : <>
+      {loading && rows.length === 0 ? <div className="members-loading" aria-label="Loading members">{Array.from({ length: 7 }).map((_, index) => <span key={index}/>)}</div> : error && rows.length === 0 ? null : rows.length === 0 ? <EmptyState title={filtered ? "No members match these filters" : "Your member register is empty"} description={filtered ? "Try a different search, status, or district." : "Add a member manually or import an enrollment file to begin."} action={filtered ? <button onClick={clearFilters}>Clear filters</button> : <div><Link to="/members/new">Add member</Link><Link to="/members/upload">Import file</Link></div>} /> : <>
         {selected.length > 0 && <div className="members-selection"><strong>{selected.length}</strong> selected <button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
         <div className="members-table-wrap"><table className="members-table"><thead><tr><th className="members-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all members on this page" /></th><th className="members-number">#</th><th>Member</th><th>Controller ID</th><th>School</th><th>District and region</th><th>Spouse</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map((member, index) => <tr key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><td className="members-check"><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /></td><td className="members-number">{(page - 1) * limit + index + 1}</td><td><Link to={`/members/${member.id}`}><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><span><strong>{member.fullName}</strong><small>Enrolled {formatEnrolled(member.createdAt)}</small></span></Link></td><td><code>{member.controllerId}</code></td><td title={member.school}>{member.school}</td><td>{member.district ? <><strong className="members-location">{member.district.name}</strong><small className="members-region">{member.district.region.name}</small></> : <strong className="members-location" style={{ color: "#b9791a" }}>No district</strong>}</td><td>{member.spouse ? <span className="members-spouse"><strong>{member.spouse.fullName}</strong><small>Recorded</small></span> : <span className="members-none">Not recorded</span>}</td><td><Status value={member.status}/>{member.missingFromReport20At && <span title="Not found in the most recent Report 20 file" style={{ display: "inline-block", marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</td><td><ActionMenu member={member}/></td></tr>)}</tbody></table></div>
         <div className="members-cards">{rows.map((member, index) => <article key={member.id} className={selected.includes(member.id) ? "is-selected" : ""}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggleOne(member.id)} aria-label={`Select ${member.fullName}`} /><span className="members-avatar">{member.fullName.split(/\s+/).slice(0,2).map((part) => part[0]).join("")}</span><div><Link to={`/members/${member.id}`}><strong>{(page - 1) * limit + index + 1}. {member.fullName}</strong></Link><small>{member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}</small><span>{member.district ? `${member.district.name}, ${member.district.region.name}` : "No district"}</span><span>{member.spouse?.fullName ? `Spouse: ${member.spouse.fullName}` : "Spouse not recorded"}</span></div><div className="members-status-cell" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}><Status value={member.status}/>{member.missingFromReport20At && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7a5c00", background: "#fdf6e3", border: "1px solid #f0c96b", borderRadius: 6, padding: "1px 6px" }}>Missing R20</span>}</div></article>)}</div>

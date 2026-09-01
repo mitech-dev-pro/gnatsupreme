@@ -5,7 +5,7 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { settingsHistoryQuerySchema, updateOrganizationSettingsSchema } from "./settings.schemas.js";
-import { getOrganizationSettings, organizationDefaults, publicBranding, settingsSnapshot } from "./settings.service.js";
+import { getOrganizationSettings, invalidateOrganizationSettings, organizationDefaults, publicBranding, settingsSnapshot } from "./settings.service.js";
 
 export const settingsRouter = Router();
 export const publicSettingsRouter = Router();
@@ -29,6 +29,7 @@ async function applySettingsUpdate(request: Request, response: Response, values:
     await transaction.organizationSettingsVersion.create({ data: { settingsId: next.id, version: next.version, snapshot: settingsSnapshot(next), changedFields, changedById: actor.id } });
     return next;
   });
+  await invalidateOrganizationSettings();
   await recordAudit({ request, actor, action: "ORGANIZATION_SETTINGS_UPDATED", entityType: "ORGANIZATION_SETTINGS", entityId: updated.id, description: `Updated organization settings to version ${updated.version}`, beforeData: Object.fromEntries(changedFields.map((field) => [field, existing[field as keyof typeof existing]])), afterData: Object.fromEntries(changedFields.map((field) => [field, updated[field as keyof typeof updated]])) });
   return updated;
 }

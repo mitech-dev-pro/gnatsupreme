@@ -2,6 +2,8 @@ import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
+import { invalidateMemberAuth } from "../../lib/auth-cache.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -120,7 +122,7 @@ memberRouter.get("/", async (request, response) => {
       : {}),
   };
 
-  const [members, total] = await prisma.$transaction([
+  const [members, total] = await Promise.all([
     prisma.member.findMany({
       where,
       include: memberListInclude,
@@ -128,7 +130,7 @@ memberRouter.get("/", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.member.count({ where }),
+    cachedCount("members", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where }, () => prisma.member.count({ where })),
   ]);
   response.json({
     success: true,
@@ -352,6 +354,7 @@ memberRouter.patch("/:id", async (request, response) => {
     },
     include: memberInclude,
   });
+  await invalidateMemberAuth(member.id);
   await recordAudit({
     request,
     actor: user,

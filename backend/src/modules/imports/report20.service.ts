@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
+import { invalidateAllMemberAuth } from "../../lib/auth-cache.js";
 import {
   normalizeDistrictName,
   resolveDistrict,
@@ -454,6 +455,10 @@ export async function reconcileReport20(
     // off the HTTP request path (see import.routes.ts), so there's no user-facing timeout pressure.
     { timeout: 600_000 },
   );
+
+  if (missingMemberIds.length || reappearedMemberIds.length) {
+    await invalidateAllMemberAuth();
+  }
 
   // Best-effort, run after the transaction commits — notifyMember does its own reads/writes
   // outside this transaction, and a failed notification shouldn't roll back the status change.

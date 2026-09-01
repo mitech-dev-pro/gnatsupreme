@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 
 export const auditRouter = Router();
@@ -56,7 +57,7 @@ auditRouter.get("/", async (request, response) => {
       : {}),
   };
 
-  const [logs, total] = await prisma.$transaction([
+  const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       include: { actor: { select: { id: true, fullName: true, email: true, role: true } } },
@@ -64,7 +65,7 @@ auditRouter.get("/", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.auditLog.count({ where }),
+    cachedCount("audit-logs", where, () => prisma.auditLog.count({ where })),
   ]);
 
   response.json({

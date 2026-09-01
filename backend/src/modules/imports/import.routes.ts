@@ -6,6 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { enqueueReport20Job } from "../../queues/import.queue.js";
@@ -191,9 +192,9 @@ importRouter.get("/", async (request, response) => {
   }
   const { page, limit, status } = parsed.data;
   const where = { type: "REPORT_20" as const, ...(status ? { status } : {}) };
-  const [jobs, total] = await prisma.$transaction([
+  const [jobs, total] = await Promise.all([
     prisma.importJob.findMany({ where, include: jobInclude, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
-    prisma.importJob.count({ where }),
+    cachedCount("report20-imports", where, () => prisma.importJob.count({ where })),
   ]);
   response.json({ success: true, data: jobs, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
@@ -289,9 +290,9 @@ importRouter.get("/:id/issues", async (request, response) => {
   }
   const { page, limit, status } = query.data;
   const where = { importJobId: params.data.id, ...(status ? { status } : { status: { not: "MATCHED" as const } }) };
-  const [rows, total] = await prisma.$transaction([
+  const [rows, total] = await Promise.all([
     prisma.report20Row.findMany({ where, include: { member: { select: { id: true, controllerId: true, fullName: true } } }, orderBy: { rowNumber: "asc" }, skip: (page - 1) * limit, take: limit }),
-    prisma.report20Row.count({ where }),
+    cachedCount("report20-rows", where, () => prisma.report20Row.count({ where })),
   ]);
   response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });

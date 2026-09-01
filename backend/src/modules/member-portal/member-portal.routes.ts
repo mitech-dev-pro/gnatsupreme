@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
 import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
@@ -54,7 +55,7 @@ memberPortalRouter.get("/profile", async (_request, response) => {
         beneficiaries: { orderBy: { id: "asc" } },
       },
     }),
-    prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { lte: new Date() } }, include: { benefits: { orderBy: { type: "asc" } } }, orderBy: { effectiveFrom: "desc" } }),
+    getCurrentBenefitPlan(),
     getMemberProfileCompletion(currentMember.id),
   ]);
   if (!profileCompletion.complete) {

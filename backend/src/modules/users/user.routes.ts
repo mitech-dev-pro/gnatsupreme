@@ -4,6 +4,8 @@ import type { ZodError } from "zod";
 
 import type { UserRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
+import { invalidateStaffAuth } from "../../lib/auth-cache.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -146,7 +148,7 @@ userRouter.get("/", async (request, response) => {
       : {}),
   };
 
-  const [users, total] = await prisma.$transaction([
+  const [users, total] = await Promise.all([
     prisma.user.findMany({
       where,
       select: publicUserSelect,
@@ -154,7 +156,7 @@ userRouter.get("/", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.user.count({ where }),
+    cachedCount("users", where, () => prisma.user.count({ where })),
   ]);
 
   response.json({
@@ -290,6 +292,7 @@ userRouter.patch("/:id", async (request, response) => {
       },
       select: publicUserSelect,
     });
+    await invalidateStaffAuth(user.id);
     await recordAudit({
       request,
       actor: actor(response),
@@ -355,6 +358,7 @@ userRouter.patch("/:id/status", async (request, response) => {
         ]
       : []),
   ]);
+  await invalidateStaffAuth(user.id);
   await recordAudit({
     request,
     actor: currentUser,
@@ -392,6 +396,7 @@ userRouter.patch("/:id/password", async (request, response) => {
       data: { revokedAt: new Date() },
     }),
   ]);
+  await invalidateStaffAuth(existing.id);
   await recordAudit({
     request,
     actor: actor(response),

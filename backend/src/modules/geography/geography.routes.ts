@@ -2,6 +2,8 @@ import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cacheKey, deleteCachePrefix, withCache } from "../../lib/cache.js";
+import { env } from "../../config/env.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -34,6 +36,14 @@ function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
 }
 
+function invalidateGeography() {
+  return Promise.all([
+    deleteCachePrefix("reference:regions:"),
+    deleteCachePrefix("reference:districts:"),
+    deleteCachePrefix("reference:district-aliases:"),
+  ]);
+}
+
 regionRouter.use(authenticate);
 districtRouter.use(authenticate);
 
@@ -46,11 +56,11 @@ regionRouter.get("/", async (_request, response) => {
         ? { districts: { some: { id: user.districtId ?? -1 } } }
         : {};
 
-  const regions = await prisma.region.findMany({
-    where,
-    include: { _count: { select: { districts: true } } },
-    orderBy: { name: "asc" },
-  });
+  const regions = await withCache(
+    cacheKey("reference:regions", { role: user.role, regionId: user.regionId, districtId: user.districtId }),
+    env.READ_CACHE_TTL_SECONDS,
+    () => prisma.region.findMany({ where, include: { _count: { select: { districts: true } } }, orderBy: { name: "asc" } }),
+  );
 
   response.json({ success: true, data: regions });
 });
@@ -68,6 +78,7 @@ regionRouter.post("/", geographyManagers, async (request, response) => {
   }
 
   const region = await prisma.region.create({ data: parsed.data });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -108,6 +119,7 @@ regionRouter.patch("/:id", geographyManagers, async (request, response) => {
     where: { id: params.data.id },
     data: body.data,
   });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -143,6 +155,7 @@ regionRouter.delete("/:id", geographyManagers, async (request, response) => {
   }
 
   await prisma.region.delete({ where: { id: params.data.id } });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -170,14 +183,18 @@ districtRouter.get("/", async (request, response) => {
           ? { regionId: query.data.regionId }
           : {};
 
-  const districts = await prisma.district.findMany({
-    where,
-    include: {
-      region: { select: { id: true, name: true } },
-      _count: { select: { members: true } },
-    },
-    orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
-  });
+  const districts = await withCache(
+    cacheKey("reference:districts", { role: user.role, regionId: user.regionId, districtId: user.districtId, filterRegionId: query.data.regionId }),
+    env.READ_CACHE_TTL_SECONDS,
+    () => prisma.district.findMany({
+      where,
+      include: {
+        region: { select: { id: true, name: true } },
+        _count: { select: { members: true } },
+      },
+      orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
+    }),
+  );
   response.json({ success: true, data: districts });
 });
 
@@ -206,6 +223,7 @@ districtRouter.post("/", geographyManagers, async (request, response) => {
     data: parsed.data,
     include: { region: { select: { id: true, name: true } } },
   });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -259,6 +277,7 @@ districtRouter.patch("/:id", geographyManagers, async (request, response) => {
     data: body.data,
     include: { region: { select: { id: true, name: true } } },
   });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -295,6 +314,7 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
   }
 
   await prisma.district.delete({ where: { id: params.data.id } });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),
@@ -312,13 +332,15 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
 // Staff-curated mappings from a raw district spelling (seen in an uploaded file) to the correct
 // district — see src/modules/geography/district-match.ts for how these get used during import.
 districtRouter.get("/aliases", async (_request, response) => {
-  const aliases = await prisma.districtAlias.findMany({
-    include: {
-      district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-      createdBy: { select: { id: true, fullName: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const aliases = await withCache("reference:district-aliases:all", env.READ_CACHE_TTL_SECONDS, () =>
+    prisma.districtAlias.findMany({
+      include: {
+        district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
+        createdBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  );
   response.json({ success: true, data: aliases });
 });
 
@@ -344,6 +366,7 @@ districtRouter.post("/aliases", geographyManagers, async (request, response) => 
   const alias = await prisma.districtAlias.create({
     data: { alias: parsed.data.alias, districtId: district.id, createdById: actor.id },
   });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor,
@@ -369,6 +392,7 @@ districtRouter.delete("/aliases/:id", geographyManagers, async (request, respons
   }
 
   await prisma.districtAlias.delete({ where: { id: params.data.id } });
+  await invalidateGeography();
   await recordAudit({
     request,
     actor: currentUser(response),

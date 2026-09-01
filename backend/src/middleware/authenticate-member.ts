@@ -1,6 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { prisma } from "../lib/prisma.js";
+import { memberAuthCacheKey } from "../lib/auth-cache.js";
+import { withCache } from "../lib/cache.js";
+import { env } from "../config/env.js";
 import { verifyMemberAccessToken } from "../modules/member-auth/member-auth.tokens.js";
 
 export type AuthenticatedMember = {
@@ -18,10 +21,12 @@ export async function authenticateMember(request: Request, response: Response, n
   }
   try {
     const memberId = await verifyMemberAccessToken(authorization.slice(7));
-    const member = await prisma.member.findFirst({
-      where: { id: memberId, status: { in: ["ACTIVE", "FLAGGED"] } },
-      select: { id: true, controllerId: true, fullName: true, status: true },
-    });
+    const member = await withCache(memberAuthCacheKey(memberId), env.AUTH_CACHE_TTL_SECONDS, () =>
+      prisma.member.findFirst({
+        where: { id: memberId, status: { in: ["ACTIVE", "FLAGGED"] } },
+        select: { id: true, controllerId: true, fullName: true, status: true },
+      }),
+    );
     if (!member || (member.status !== "ACTIVE" && member.status !== "FLAGGED")) throw new Error("Inactive member");
     response.locals.member = {
       ...member,

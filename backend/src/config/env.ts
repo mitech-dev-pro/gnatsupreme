@@ -12,6 +12,9 @@ const environmentSchema = z.object({
       (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
       "DATABASE_URL must be a PostgreSQL connection URL",
     ),
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(5),
+  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(250).max(60_000).default(5_000),
+  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
   JWT_ACCESS_SECRET: z.string().min(64, "JWT_ACCESS_SECRET must contain at least 64 characters"),
   JWT_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
@@ -28,6 +31,9 @@ const environmentSchema = z.object({
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
   REDIS_URL: z.string().url().refine((value) => value.startsWith("redis://") || value.startsWith("rediss://"), "REDIS_URL must be a redis:// or rediss:// connection URL"),
+  AUTH_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
+  READ_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(60),
+  SLOW_REQUEST_THRESHOLD_MS: z.coerce.number().int().min(100).max(60_000).default(750),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
   MANKRADO_ENABLED: z
     .enum(["true", "false"])

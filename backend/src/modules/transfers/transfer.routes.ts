@@ -2,6 +2,7 @@ import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -89,7 +90,7 @@ transferRouter.get("/", async (request, response) => {
         }
       : {}),
   };
-  const [transfers, total] = await prisma.$transaction([
+  const [transfers, total] = await Promise.all([
     prisma.memberTransfer.findMany({
       where,
       include: transferInclude,
@@ -97,7 +98,7 @@ transferRouter.get("/", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.memberTransfer.count({ where }),
+    cachedCount("transfers", where, () => prisma.memberTransfer.count({ where })),
   ]);
   response.json({
     success: true,

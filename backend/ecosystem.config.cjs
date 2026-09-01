@@ -1,3 +1,7 @@
+const { availableParallelism } = require("node:os");
+
+const apiInstances = Math.max(1, Math.min(4, Math.ceil(availableParallelism() / 2)));
+
 module.exports = {
   apps: [
     {
@@ -7,7 +11,7 @@ module.exports = {
       name: "gnatsupreme-backend",
       script: "dist/server.js",
       cwd: __dirname,
-      instances: "max",
+      instances: apiInstances,
       exec_mode: "cluster",
       autorestart: true,
       max_memory_restart: "512M",

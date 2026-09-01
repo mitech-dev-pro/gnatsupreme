@@ -1,6 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { prisma } from "../lib/prisma.js";
+import { staffAuthCacheKey } from "../lib/auth-cache.js";
+import { withCache } from "../lib/cache.js";
+import { env } from "../config/env.js";
 import { verifyAccessToken } from "../modules/auth/auth.tokens.js";
 
 export type AuthenticatedUser = {
@@ -22,17 +25,19 @@ export async function authenticate(request: Request, response: Response, next: N
 
   try {
     const userId = await verifyAccessToken(authorization.slice(7));
-    const user = await prisma.user.findFirst({
-      where: { id: userId, isActive: true },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        regionId: true,
-        districtId: true,
-      },
-    });
+    const user = await withCache(staffAuthCacheKey(userId), env.AUTH_CACHE_TTL_SECONDS, () =>
+      prisma.user.findFirst({
+        where: { id: userId, isActive: true },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          regionId: true,
+          districtId: true,
+        },
+      }),
+    );
 
     if (!user) {
       response.status(401).json({ success: false, message: "Authentication required" });

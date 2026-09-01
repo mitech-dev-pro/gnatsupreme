@@ -93,23 +93,25 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
   const availableRoles = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== "SUPER_ADMIN");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/users", { params: { page, limit: 20, search: debouncedSearch || undefined, role: roleFilter || undefined } });
+      const res = await api.get("/users", { signal, params: { page, limit: 20, search: debouncedSearch || undefined, role: roleFilter || undefined } });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
     } catch {
-      setError("Staff accounts could not be loaded.");
+      if (!signal?.aborted) setError("Staff accounts could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [debouncedSearch, page, roleFilter]);
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   const resetForm = () => setForm({ fullName: "", email: "", role: "DISTRICT_ADMIN", regionId: "", districtId: "", password: "" });
@@ -343,7 +345,7 @@ function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && rows.length === 0 ? (
                 <TableSkeleton columns={6} />
               ) : rows.length === 0 ? (
                 <tr>
@@ -431,23 +433,25 @@ function AuditLogTab() {
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/audit-logs", { params: { page, limit: 30, search: debouncedSearch || undefined, action: debouncedAction || undefined } });
+      const res = await api.get("/audit-logs", { signal, params: { page, limit: 30, search: debouncedSearch || undefined, action: debouncedAction || undefined } });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
     } catch {
-      setError("Audit log could not be loaded.");
+      if (!signal?.aborted) setError("Audit log could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [debouncedAction, debouncedSearch, page]);
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   return (
@@ -485,7 +489,7 @@ function AuditLogTab() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && rows.length === 0 ? (
                 <TableSkeleton columns={4} />
               ) : rows.length === 0 ? (
                 <tr>

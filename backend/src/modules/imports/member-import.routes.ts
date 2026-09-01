@@ -6,6 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 
 import { logger } from "../../lib/logger.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { enqueueMemberImportJob } from "../../queues/import.queue.js";
@@ -69,7 +70,7 @@ memberImportRouter.get("/members", async (request, response) => {
   }
   const { page, limit, status } = parsed.data;
   const where = { type: "MEMBER_BULK" as const, ...jobScope(user(response)), ...(status ? { status } : {}) };
-  const [jobs, total] = await prisma.$transaction([
+  const [jobs, total] = await Promise.all([
     prisma.importJob.findMany({
       where,
       include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } },
@@ -77,7 +78,7 @@ memberImportRouter.get("/members", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.importJob.count({ where }),
+    cachedCount("member-imports", { where, userId: user(response).id }, () => prisma.importJob.count({ where })),
   ]);
   response.json({ success: true, data: jobs, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
@@ -193,9 +194,9 @@ memberImportRouter.get("/members/:id/rows", async (request, response) => {
   }
   const { page, limit, status } = query.data;
   const where = { importJobId: job.id, ...(status ? { status } : {}) };
-  const [rows, total] = await prisma.$transaction([
+  const [rows, total] = await Promise.all([
     prisma.memberBulkImportRow.findMany({ where, orderBy: { rowNumber: "asc" }, skip: (page - 1) * limit, take: limit }),
-    prisma.memberBulkImportRow.count({ where }),
+    cachedCount("member-import-rows", where, () => prisma.memberBulkImportRow.count({ where })),
   ]);
   response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });

@@ -20,6 +20,9 @@
     "db:seed-geography": "tsx scripts/seed-geography.ts",
     "verify:member-scope": "tsx scripts/verify-member-scope.ts",
     "verify:performance-indexes": "node scripts/verify-performance-indexes.mjs",
+    "verify:performance-runtime": "node scripts/verify-performance-runtime.mjs",
+    "verify:performance": "npm run verify:performance-indexes && npm run verify:performance-runtime",
+    "performance:slow-queries": "node scripts/report-slow-queries.mjs",
     "postinstall": "prisma generate"
   },
   "keywords": [],

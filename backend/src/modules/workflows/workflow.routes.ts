@@ -2,6 +2,8 @@ import { Router, type Response } from "express";
 
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
+import { invalidateMemberAuth } from "../../lib/auth-cache.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -168,6 +170,7 @@ memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATION
         prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
         prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
       ]);
+      await invalidateMemberAuth(member.id);
       await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Bulk-approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id, bulk: true }, regionId: existing.district?.regionId, districtId: existing.districtId });
       await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
       results.push({ memberId, success: true, memberName: member.fullName, status: toStatus });
@@ -196,6 +199,7 @@ memberWorkflowRouter.post("/bulk/return", authorizeRoles("SUPER_ADMIN", "NATIONA
         prisma.member.update({ where: { id: existing.id }, data: { status: "RETURNED" } }),
         prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "RETURNED", fromStatus: existing.status, toStatus: "RETURNED", note: body.data.note, performedById: actor.id } }),
       ]);
+      await invalidateMemberAuth(member.id);
       await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Bulk-returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id, bulk: true }, regionId: existing.district?.regionId, districtId: existing.districtId });
       await notifyMember({ memberId: member.id, type: "MEMBER_RETURNED", title: "Membership needs correction", message: `Your membership record was returned for correction: ${body.data.note}`, idempotencyKey: `member-workflow:${event.id}` });
       results.push({ memberId, success: true, memberName: member.fullName, status: "RETURNED" });
@@ -232,6 +236,7 @@ memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONA
     prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
     prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
   ]);
+  await invalidateMemberAuth(member.id);
   await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
   response.json({ success: true, data: { member, event } });
@@ -258,6 +263,7 @@ memberWorkflowRouter.post("/:id/return", authorizeRoles("SUPER_ADMIN", "NATIONAL
     prisma.member.update({ where: { id: existing.id }, data: { status: "RETURNED" } }),
     prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "RETURNED", fromStatus: existing.status, toStatus: "RETURNED", note: body.data.note, performedById: actor.id } }),
   ]);
+  await invalidateMemberAuth(member.id);
   await recordAudit({ request, actor, action: "MEMBER_RETURNED", entityType: "MEMBER", entityId: member.id, description: `Returned ${member.fullName} for correction`, beforeData: { status: existing.status }, afterData: { status: member.status, note: body.data.note, workflowEventId: event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "MEMBER_RETURNED", title: "Membership needs correction", message: `Your membership record was returned for correction: ${body.data.note}`, idempotencyKey: `member-workflow:${event.id}` });
   response.json({ success: true, data: { member, event } });
@@ -288,6 +294,7 @@ memberWorkflowRouter.post("/:id/remove", authorizeRoles("SUPER_ADMIN", "NATIONAL
       : null;
     return { member, event, claim };
   });
+  await invalidateMemberAuth(result.member.id);
   await recordAudit({ request, actor, action: "MEMBER_REMOVED", entityType: "MEMBER", entityId: result.member.id, description: `Removed ${result.member.fullName}: ${body.data.reason}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, reason: body.data.reason, workflowEventId: result.event.id, claimSubmissionId: result.claim?.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: result.member.id, type: "MEMBER_REMOVED", title: "Membership status changed", message: `Your GNAT Supreme Care membership has been removed. Reason: ${body.data.reason}.`, idempotencyKey: `member-workflow:${result.event.id}` });
   response.json({ success: true, data: result });
@@ -315,6 +322,7 @@ memberWorkflowRouter.post("/:id/reactivate", authorizeRoles("SUPER_ADMIN", "NATI
     const event = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "REACTIVATED", fromStatus: "INACTIVE", toStatus: "ACTIVE", note: body.data.note, performedById: actor.id } });
     return { member, event };
   });
+  await invalidateMemberAuth(result.member.id);
   await recordAudit({ request, actor, action: "MEMBER_REACTIVATED", entityType: "MEMBER", entityId: result.member.id, description: `Reactivated ${result.member.fullName}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, workflowEventId: result.event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: result.member.id, type: "MEMBER_REACTIVATED", title: "Membership reactivated", message: "Your GNAT Supreme Care membership has been reactivated by a staff member.", idempotencyKey: `member-workflow:${result.event.id}` });
   response.json({ success: true, data: result });
@@ -329,10 +337,11 @@ changeRequestRouter.get("/", async (request, response) => {
     return;
   }
   const { page, limit, status, type } = query.data;
-  const where = { member: { is: memberScope(user(response)) }, ...(status ? { status } : {}), ...(type ? { type } : {}) };
-  const [items, total] = await prisma.$transaction([
+  const actor = user(response);
+  const where = { member: { is: memberScope(actor) }, ...(status ? { status } : {}), ...(type ? { type } : {}) };
+  const [items, total] = await Promise.all([
     prisma.memberChangeRequest.findMany({ where, include: { member: { select: { id: true, controllerId: true, fullName: true, status: true } }, requestedBy: { select: { id: true, fullName: true } }, reviewedBy: { select: { id: true, fullName: true } } }, orderBy: { requestedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
-    prisma.memberChangeRequest.count({ where }),
+    cachedCount("change-requests", { scope: { role: actor.role, regionId: actor.regionId, districtId: actor.districtId }, status, type }, () => prisma.memberChangeRequest.count({ where })),
   ]);
   response.json({ success: true, data: items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
@@ -416,6 +425,7 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
       }
       await transaction.memberChangeRequest.update({ where: { id: item.id }, data: { status: "APPROVED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
     });
+    await invalidateMemberAuth(item.memberId);
   } else {
     await prisma.memberChangeRequest.update({ where: { id: item.id }, data: { status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
   }

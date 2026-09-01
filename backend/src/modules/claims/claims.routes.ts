@@ -3,10 +3,12 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
+import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
 
 export const claimsRouter = Router();
 
@@ -52,11 +54,7 @@ const claimMemberInclude = {
 } as const;
 
 async function activeBenefit(claimType: z.infer<typeof estimateSchema>["claimType"], claimantType: "MEMBER" | "SPOUSE") {
-  const plan = await prisma.benefitPlanVersion.findFirst({
-    where: { effectiveFrom: { lte: new Date() } },
-    orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
-    include: { benefits: true },
-  });
+  const plan = await getCurrentBenefitPlan();
   const benefit = plan?.benefits.find((item) => item.type === claimType && item.enabled);
   const amount = claimantType === "SPOUSE" ? benefit?.spouseAmount : benefit?.memberAmount;
   return { plan, benefit, amount };
@@ -200,7 +198,7 @@ claimsRouter.get("/submissions", async (request, response) => {
     member: { is: memberScope(user) },
     ...(status ? { status } : {}),
   };
-  const [submissions, total] = await prisma.$transaction([
+  const [submissions, total] = await Promise.all([
     prisma.externalClaimSubmission.findMany({
       where,
       select: {
@@ -222,7 +220,7 @@ claimsRouter.get("/submissions", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.externalClaimSubmission.count({ where }),
+    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status }, () => prisma.externalClaimSubmission.count({ where })),
   ]);
   response.json({
     success: true,

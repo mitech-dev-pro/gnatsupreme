@@ -1,5 +1,9 @@
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { deleteCacheKey, withCache } from "../../lib/cache.js";
+import { env } from "../../config/env.js";
+
+const settingsCacheKey = "reference:settings:organization";
 
 export const organizationDefaults = {
   portalName: "GNAT Supreme Care",
@@ -21,13 +25,17 @@ export const organizationDefaults = {
 } as const;
 
 export async function getOrganizationSettings() {
-  return prisma.organizationSettings.upsert({
-    where: { singletonKey: "MILIFE" },
-    update: {},
-    create: { singletonKey: "MILIFE", ...organizationDefaults },
-    include: { updatedBy: { select: { id: true, fullName: true, email: true } } },
-  });
+  return withCache(settingsCacheKey, env.READ_CACHE_TTL_SECONDS, () =>
+    prisma.organizationSettings.upsert({
+      where: { singletonKey: "MILIFE" },
+      update: {},
+      create: { singletonKey: "MILIFE", ...organizationDefaults },
+      include: { updatedBy: { select: { id: true, fullName: true, email: true } } },
+    }),
+  );
 }
+
+export const invalidateOrganizationSettings = () => deleteCacheKey(settingsCacheKey);
 
 export function settingsSnapshot(settings: Record<string, unknown>): Prisma.InputJsonValue {
   const { updatedBy, versions, ...snapshot } = settings;

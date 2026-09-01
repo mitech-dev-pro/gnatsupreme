@@ -196,7 +196,7 @@ sudo -u gnatsupreme pm2 list
 sudo -u gnatsupreme pm2 logs --lines 50
 ```
 
-`instances: "max"` in `ecosystem.config.cjs` forks one API worker per CPU core — on a small VPS (1–2 vCPU) consider hardcoding a lower number instead, to leave headroom for PostgreSQL, Redis, and the worker process. Each API worker gets its own Prisma connection pool, so also check PostgreSQL's `max_connections` before raising `instances` on a multi-core box.
+The current PM2 configuration chooses approximately half the available CPUs, with a minimum of one and a maximum of four API workers. Each API worker has its own five-connection PostgreSQL pool, leaving headroom for PostgreSQL, Redis, and the import worker on the shared VPS.
 
 Persist the process list across reboots:
 
@@ -283,12 +283,23 @@ Single site, single `server_name` — static frontend at `/`, API reverse-proxie
 `/etc/nginx/sites-available/fapem.milifeghana.com`:
 
 ```nginx
+upstream gnatsupreme_api {
+    server 127.0.0.1:4000;
+    keepalive 16;
+}
+
 server {
     listen 80;
     listen [::]:80;
     server_name fapem.milifeghana.com;
 
     client_max_body_size 10m;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types application/json application/javascript text/css text/plain text/xml image/svg+xml;
 
     root /var/www/gnatsupreme-portal;
     index index.html;
@@ -298,8 +309,9 @@ server {
     # proxy_pass — a trailing slash tells Nginx to strip the matched /api/ prefix before forwarding,
     # which would 404 every request unless the client double-prefixed it (e.g. /api/api/members).
     location /api/ {
-        proxy_pass http://127.0.0.1:4000;
+        proxy_pass http://gnatsupreme_api;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -309,6 +321,17 @@ server {
     }
 
     # Frontend — static SPA with client-side routing fallback
+    location ~* \.(?:js|css|svg|png|jpg|jpeg|gif|webp|woff2?)$ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -380,6 +403,28 @@ sudo rsync -a --delete dist/ /var/www/gnatsupreme-portal/
 ```
 
 Prisma migrations are forward-only — test schema changes against a restored copy of production data before applying them live, and take the PostgreSQL backup in section 7 first.
+
+## 9. Performance rollout and production checks
+
+Enable PostgreSQL query statistics before capturing the pre-release baseline. `shared_preload_libraries` requires a PostgreSQL restart; do this during a maintenance window and preserve any existing preload libraries in the value:
+
+```bash
+sudo -u postgres psql -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';"
+sudo systemctl restart postgresql
+sudo -u postgres psql -d gnatsupreme -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+```
+
+After the index migration, run the verification commands with the production environment loaded. The runtime check verifies pool limits, Redis round trips, `pg_stat_statements`, and the target of less than 60% PostgreSQL connection usage. The index check also runs representative query plans.
+
+```bash
+cd /opt/gnatsupreme/backend
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run verify:performance'
+sudo -u gnatsupreme bash -c 'set -a; source /etc/gnatsupreme/backend.env; set +a; npm run performance:slow-queries'
+```
+
+Capture the slow-query report immediately before rollout and again after comparable traffic. During the first 24 hours, record every 15 minutes: host CPU and memory, `pm2 list` worker count/restarts, Redis `INFO stats` hit/miss counters and memory, API error rate and p50/p95 latency, plus PostgreSQL active connections, cache hit ratio, and top statements by total time, mean time, and calls. Application logs emit a privacy-safe `slow request` event for requests above `SLOW_REQUEST_THRESHOLD_MS`; it contains route, status, request ID, and authorization scope, but no credentials or personal data.
+
+Keep `DB_POOL_MAX=5` while all services share the VPS. Increase workers or pool sizes only after measurements show connection use stays below 60% of `max_connections`. Benchmark cold-cache, warm-cache, Redis-offline, and pool-pressure cases against an anonymized production-sized restore before deployment. Only add cursor pagination to deep import-row review if telemetry still shows those requests above 500 ms.
 
 ## Reference
 

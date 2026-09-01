@@ -224,23 +224,25 @@ export default function Transfers() {
     setParams(next);
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get("/transfers", { params: { page, limit, status: status || undefined } });
+      const res = await api.get("/transfers", { signal, params: { page, limit, status: status || undefined } });
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
       setTotalPages(Math.max(1, res.data.pagination.totalPages));
     } catch {
-      setError("Transfers could not be loaded.");
+      if (!signal?.aborted) setError("Transfers could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [page, status]);
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   const review = async (id: number, decision: "APPROVED" | "REJECTED") => {
@@ -303,7 +305,7 @@ export default function Transfers() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && rows.length === 0 ? (
                 <TableSkeleton columns={6} />
               ) : rows.length === 0 ? (
                 <tr>

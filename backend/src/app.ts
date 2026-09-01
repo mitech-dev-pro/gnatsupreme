@@ -10,6 +10,7 @@ import { logger, requestLogger } from "./lib/logger.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { prisma } from "./lib/prisma.js";
 import { apiRateLimiter } from "./middleware/rate-limit.js";
+import { logSlowRequests } from "./middleware/slow-request.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { districtRouter, regionRouter } from "./modules/geography/geography.routes.js";
 import { userRouter } from "./modules/users/user.routes.js";
@@ -33,6 +34,7 @@ import { publicSettingsRouter, settingsRouter } from "./modules/settings/setting
 export const app = express();
 
 app.use(requestLogger);
+app.use(logSlowRequests);
 
 if (env.API_DOCS_ENABLED) {
   app.get("/api/openapi.json", (_request, response) => response.json(openApiDocument));

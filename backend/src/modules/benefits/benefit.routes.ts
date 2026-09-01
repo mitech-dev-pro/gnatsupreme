@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { benefitPlanInclude, getBenefitSchedule, getCurrentBenefitPlan, invalidateBenefitPlans } from "./benefit.service.js";
 import {
   benefitHistoryQuerySchema,
   benefitPlanIdSchema,
@@ -12,10 +13,7 @@ import {
 
 export const benefitRouter = Router();
 
-const planInclude = {
-  benefits: { orderBy: { type: "asc" as const } },
-  createdBy: { select: { id: true, fullName: true, email: true } },
-} as const;
+const planInclude = benefitPlanInclude;
 
 const benefitTypes = {
   death: "DEATH",
@@ -31,11 +29,7 @@ function currentUser(response: Response) {
 benefitRouter.use(authenticate);
 
 benefitRouter.get("/current", async (_request, response) => {
-  const plan = await prisma.benefitPlanVersion.findFirst({
-    where: { effectiveFrom: { lte: new Date() } },
-    include: planInclude,
-    orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
-  });
+  const plan = await getCurrentBenefitPlan();
   response.json({ success: true, data: plan });
 });
 
@@ -63,12 +57,7 @@ benefitRouter.get("/history", async (request, response) => {
 });
 
 benefitRouter.get("/schedule", async (_request, response) => {
-  const now = new Date();
-  const [current, next] = await Promise.all([
-    prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { lte: now } }, include: planInclude, orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }] }),
-    prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { gt: now } }, include: planInclude, orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }] }),
-  ]);
-  response.json({ success: true, data: { current, next } });
+  response.json({ success: true, data: await getBenefitSchedule() });
 });
 
 benefitRouter.get("/:id", async (request, response) => {
@@ -138,6 +127,7 @@ benefitRouter.post(
       },
       include: planInclude,
     });
+    await invalidateBenefitPlans();
     await recordAudit({
       request,
       actor,
@@ -203,6 +193,7 @@ benefitRouter.patch(
         include: planInclude,
       });
     });
+    await invalidateBenefitPlans();
 
     const actor = currentUser(response);
     await recordAudit({

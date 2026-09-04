@@ -48,9 +48,17 @@ enum FileCategory {
   REPORT_20
   MEMBER_IMPORT
   MEMBER_CREDENTIALS
+  CLAIM_DOCUMENT
   OTHER
 
   @@map("file_category")
+}
+
+enum ClaimSubmissionSource {
+  STAFF
+  MEMBER_PORTAL
+
+  @@map("claim_submission_source")
 }
 
 enum TransferStatus {
@@ -63,9 +71,27 @@ enum TransferStatus {
 }
 
 enum ExternalClaimStatus {
+  // PENDING is reused as "awaiting staff review" for a member-submitted claim (source =
+  // MEMBER_PORTAL). Two other things already touch PENDING and must stay disjoint from that
+  // meaning by `source`, not by status alone:
+  //   1. The real Mankrado provider integration is a stub that always throws (see
+  //      claims/mankrado.provider.ts) — no live path uses PENDING/REDIRECT_READY as "awaiting
+  //      provider sync" today.
+  //   2. workflows/workflow.routes.ts's POST /:id/remove creates a claim stub with
+  //      status: PENDING (source defaults to STAFF) when removing a member for DEATH/DISABILITY
+  //      — a pre-existing, unrelated use. The staff review queue filters on
+  //      `source: MEMBER_PORTAL AND status: PENDING`, so this STAFF-sourced row is correctly
+  //      excluded, but any future code that creates a claim must set `source` deliberately
+  //      rather than relying on the STAFF default to stay out of the review queue.
+  // If real Mankrado sync is ever wired up, or that removal workflow changes, re-check this
+  // invariant before reusing PENDING for anything else.
   PENDING
   REDIRECT_READY
   SUBMITTED
+  // A member-submitted claim staff sent back for correction — the member can edit and
+  // resubmit it (see ExternalClaimSubmission.reviewedById etc.), unlike FAILED which is
+  // terminal.
+  RETURNED
   FAILED
   SYNCHRONIZED
 
@@ -245,6 +271,7 @@ model User {
   requestedTransfers          MemberTransfer[]              @relation("TransferRequestedBy")
   reviewedTransfers           MemberTransfer[]              @relation("TransferReviewedBy")
   claimSubmissions            ExternalClaimSubmission[]
+  reviewedClaimSubmissions    ExternalClaimSubmission[]     @relation("ClaimReviewedBy")
   importJobs                  ImportJob[]
   benefitPlans                BenefitPlanVersion[]
   memberWorkflowEvents        MemberWorkflowEvent[]
@@ -267,40 +294,41 @@ model User {
 }
 
 model Member {
-  id               Int                       @id @default(autoincrement())
-  controllerId     String                    @unique @map("controller_id")
-  fullName         String                    @map("full_name")
-  dateOfBirth      DateTime?                 @map("date_of_birth") @db.Date
-  ghanaCardId      String?                   @unique @map("ghana_card_id")
-  phone            String?                   @unique
-  phoneVerifiedAt  DateTime?                 @map("phone_verified_at")
-  email            String?                   @unique
-  passwordHash     String?                   @map("password_hash")
-  school           String
-  status           MemberStatus              @default(PENDING)
-  report20Matched  Boolean                   @default(false) @map("report20_matched")
-  missingFromReport20At DateTime?            @map("missing_from_report20_at")
-  spouseDeclarationStatus SpouseDeclarationStatus @default(UNKNOWN) @map("spouse_declaration_status")
-  profileCompletionDismissedAt DateTime?     @map("profile_completion_dismissed_at")
-  districtId       Int?                      @map("district_id")
-  createdById      Int?                      @map("created_by_id")
-  district         District?                 @relation(fields: [districtId], references: [id], onDelete: Restrict)
-  createdBy        User?                     @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  spouse           Spouse?
-  beneficiaries    Beneficiary[]
-  files            StoredFile[]
-  uploadedFiles    StoredFile[]              @relation("StoredFileUploadedByMember")
-  transfers        MemberTransfer[]
-  claimSubmissions ExternalClaimSubmission[]
-  importRows       Report20Row[]
-  bulkImportRows   MemberBulkImportRow[]
-  workflowEvents   MemberWorkflowEvent[]
-  changeRequests   MemberChangeRequest[]
-  memberSessions   MemberSession[]
-  passwordResetTokens MemberPasswordResetToken[]
-  notifications    Notification[]
-  createdAt        DateTime                  @default(now()) @map("created_at")
-  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  id                           Int                        @id @default(autoincrement())
+  controllerId                 String                     @unique @map("controller_id")
+  fullName                     String                     @map("full_name")
+  dateOfBirth                  DateTime?                  @map("date_of_birth") @db.Date
+  ghanaCardId                  String?                    @unique @map("ghana_card_id")
+  phone                        String?                    @unique
+  phoneVerifiedAt              DateTime?                  @map("phone_verified_at")
+  email                        String?                    @unique
+  passwordHash                 String?                    @map("password_hash")
+  school                       String
+  status                       MemberStatus               @default(PENDING)
+  report20Matched              Boolean                    @default(false) @map("report20_matched")
+  missingFromReport20At        DateTime?                  @map("missing_from_report20_at")
+  spouseDeclarationStatus      SpouseDeclarationStatus    @default(UNKNOWN) @map("spouse_declaration_status")
+  profileCompletionDismissedAt DateTime?                  @map("profile_completion_dismissed_at")
+  districtId                   Int?                       @map("district_id")
+  createdById                  Int?                       @map("created_by_id")
+  district                     District?                  @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  createdBy                    User?                      @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  spouse                       Spouse?
+  beneficiaries                Beneficiary[]
+  files                        StoredFile[]
+  uploadedFiles                StoredFile[]               @relation("StoredFileUploadedByMember")
+  transfers                    MemberTransfer[]
+  claimSubmissions             ExternalClaimSubmission[]
+  claimSubmissionsFiled        ExternalClaimSubmission[]  @relation("ClaimSubmittedByMember")
+  importRows                   Report20Row[]
+  bulkImportRows               MemberBulkImportRow[]
+  workflowEvents               MemberWorkflowEvent[]
+  changeRequests               MemberChangeRequest[]
+  memberSessions               MemberSession[]
+  passwordResetTokens          MemberPasswordResetToken[]
+  notifications                Notification[]
+  createdAt                    DateTime                   @default(now()) @map("created_at")
+  updatedAt                    DateTime                   @updatedAt @map("updated_at")
 
   @@index([districtId])
   @@index([status])
@@ -478,27 +506,31 @@ model OrganizationSettingsVersion {
 }
 
 model StoredFile {
-  id           Int          @id @default(autoincrement())
-  category     FileCategory
-  originalName String       @map("original_name")
-  storedName   String       @unique @map("stored_name")
-  mimeType     String       @map("mime_type")
-  sizeBytes    Int          @map("size_bytes")
-  storagePath  String       @unique @map("storage_path")
-  downloadPath String       @unique @map("download_path")
-  memberId     Int?         @map("member_id")
-  spouseId     Int?         @map("spouse_id")
+  id                 Int          @id @default(autoincrement())
+  category           FileCategory
+  originalName       String       @map("original_name")
+  storedName         String       @unique @map("stored_name")
+  mimeType           String       @map("mime_type")
+  sizeBytes          Int          @map("size_bytes")
+  storagePath        String       @unique @map("storage_path")
+  downloadPath       String       @unique @map("download_path")
+  memberId           Int?         @map("member_id")
+  spouseId           Int?         @map("spouse_id")
   // Exactly one of these is set: uploadedById for a staff upload, uploadedByMemberId for a
   // member's own self-service upload (e.g. their marriage certificate) — enforced in app code,
   // since Prisma has no "exactly one of" constraint.
-  uploadedById       Int?    @map("uploaded_by_id")
-  uploadedByMemberId Int?    @map("uploaded_by_member_id")
-  member       Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  spouse       Spouse?      @relation(fields: [spouseId], references: [id], onDelete: SetNull)
-  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  uploadedByMember Member?  @relation("StoredFileUploadedByMember", fields: [uploadedByMemberId], references: [id], onDelete: SetNull)
-  createdAt    DateTime     @default(now()) @map("created_at")
-  importJob    ImportJob?
+  uploadedById       Int?         @map("uploaded_by_id")
+  uploadedByMemberId Int?         @map("uploaded_by_member_id")
+  // Only meaningful for CLAIM_DOCUMENT rows: which CLAIM_DOCUMENT_MANIFEST slot (see
+  // claims/claims.schemas.ts) this file satisfies, e.g. "doctorReport". Self-attested at
+  // upload time — a completeness gate, not a content guarantee. Null for every other category.
+  slotKey            String?      @map("slot_key")
+  member             Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  spouse             Spouse?      @relation(fields: [spouseId], references: [id], onDelete: SetNull)
+  uploadedBy         User?        @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedByMember   Member?      @relation("StoredFileUploadedByMember", fields: [uploadedByMemberId], references: [id], onDelete: SetNull)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  importJob          ImportJob?
 
   @@index([memberId])
   @@index([spouseId])
@@ -509,33 +541,33 @@ model StoredFile {
 }
 
 model ImportJob {
-  id            Int                   @id @default(autoincrement())
-  type          ImportType
-  status        ImportStatus          @default(PENDING)
-  checksum      String
-  fileId        Int                   @unique @map("file_id")
-  file          StoredFile            @relation(fields: [fileId], references: [id], onDelete: Restrict)
-  uploadedById  Int                   @map("uploaded_by_id")
-  uploadedBy    User                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reportMonth   DateTime?             @map("report_month") @db.Date
-  totalRows     Int                   @default(0) @map("total_rows")
-  matchedRows   Int                   @default(0) @map("matched_rows")
-  changedRows   Int                   @default(0) @map("changed_rows")
-  unmatchedRows Int                   @default(0) @map("unmatched_rows")
-  duplicateRows Int                   @default(0) @map("duplicate_rows")
-  invalidRows   Int                   @default(0) @map("invalid_rows")
-  errorMessage  String?               @map("error_message")
-  startedAt     DateTime?             @map("started_at")
-  completedAt   DateTime?             @map("completed_at")
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
-  rows          Report20Row[]
-  memberRows    MemberBulkImportRow[]
-  readyRows     Int                   @default(0) @map("ready_rows")
-  importedRows  Int                   @default(0) @map("imported_rows")
-  enrolledRows  Int                   @default(0) @map("enrolled_rows")
-  flaggedForRemovalRows Int           @default(0) @map("flagged_for_removal_rows")
-  processedRows Int                   @default(0) @map("processed_rows")
+  id                    Int                   @id @default(autoincrement())
+  type                  ImportType
+  status                ImportStatus          @default(PENDING)
+  checksum              String
+  fileId                Int                   @unique @map("file_id")
+  file                  StoredFile            @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  uploadedById          Int                   @map("uploaded_by_id")
+  uploadedBy            User                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reportMonth           DateTime?             @map("report_month") @db.Date
+  totalRows             Int                   @default(0) @map("total_rows")
+  matchedRows           Int                   @default(0) @map("matched_rows")
+  changedRows           Int                   @default(0) @map("changed_rows")
+  unmatchedRows         Int                   @default(0) @map("unmatched_rows")
+  duplicateRows         Int                   @default(0) @map("duplicate_rows")
+  invalidRows           Int                   @default(0) @map("invalid_rows")
+  errorMessage          String?               @map("error_message")
+  startedAt             DateTime?             @map("started_at")
+  completedAt           DateTime?             @map("completed_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  rows                  Report20Row[]
+  memberRows            MemberBulkImportRow[]
+  readyRows             Int                   @default(0) @map("ready_rows")
+  importedRows          Int                   @default(0) @map("imported_rows")
+  enrolledRows          Int                   @default(0) @map("enrolled_rows")
+  flaggedForRemovalRows Int                   @default(0) @map("flagged_for_removal_rows")
+  processedRows         Int                   @default(0) @map("processed_rows")
 
   @@unique([type, checksum])
   @@index([status])
@@ -666,15 +698,15 @@ model BenefitPlanVersion {
 }
 
 model BenefitAmount {
-  id            Int                @id @default(autoincrement())
-  planVersionId Int                @map("plan_version_id")
-  planVersion   BenefitPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
-  type          BenefitType
-  enabled       Boolean            @default(true)
-  memberAmount  Decimal            @map("member_amount") @db.Decimal(14, 2)
-  spouseAmount  Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
-  note          String?
-  namedConditions String[]         @default([]) @map("named_conditions")
+  id              Int                @id @default(autoincrement())
+  planVersionId   Int                @map("plan_version_id")
+  planVersion     BenefitPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  type            BenefitType
+  enabled         Boolean            @default(true)
+  memberAmount    Decimal            @map("member_amount") @db.Decimal(14, 2)
+  spouseAmount    Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
+  note            String?
+  namedConditions String[]           @default([]) @map("named_conditions")
 
   @@unique([planVersionId, type])
   @@index([type])
@@ -744,38 +776,58 @@ model MemberTransfer {
 }
 
 model ExternalClaimSubmission {
-  id              Int                 @id @default(autoincrement())
-  memberId        Int                 @map("member_id")
-  member          Member              @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  submittedById   Int                 @map("submitted_by_id")
-  submittedBy     User                @relation(fields: [submittedById], references: [id], onDelete: Restrict)
-  provider        String              @default("MANKRADO")
-  idempotencyKey  String              @unique @map("idempotency_key")
-  externalClaimId String?             @unique @map("external_claim_id")
-  formUrl         String?             @map("form_url")
-  status          ExternalClaimStatus @default(PENDING)
-  claimType       BenefitType?        @map("claim_type")
-  claimantType    String?              @map("claimant_type")
-  claimantName    String?              @map("claimant_name")
-  claimantIdType  String?              @map("claimant_id_type")
-  claimantIdNumber String?             @map("claimant_id_number")
-  claimantContact Json?                @map("claimant_contact")
-  incidentDate    DateTime?            @map("incident_date") @db.Date
-  estimatedAmount Decimal?             @map("estimated_amount") @db.Decimal(12, 2)
-  paymentMethod   String?              @map("payment_method")
-  paymentDetails  Json?                @map("payment_details")
-  documentIds     Int[]                @default([]) @map("document_ids")
-  notes            String?
-  errorCode       String?             @map("error_code")
-  errorMessage    String?             @map("error_message")
-  submittedAt     DateTime?           @map("submitted_at")
-  lastSyncedAt    DateTime?           @map("last_synced_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  id                  Int                   @id @default(autoincrement())
+  memberId            Int                   @map("member_id")
+  member              Member                @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  // Exactly one of these two is set (enforced in app code, same convention as
+  // StoredFile.uploadedById/uploadedByMemberId): submittedById for a staff-filed claim,
+  // submittedByMemberId for a member self-service submission. memberId above is a separate
+  // concern — it's whose policy the claim is against, always set regardless of who filed it.
+  submittedById       Int?                  @map("submitted_by_id")
+  submittedBy         User?                 @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedByMemberId Int?                  @map("submitted_by_member_id")
+  submittedByMember   Member?               @relation("ClaimSubmittedByMember", fields: [submittedByMemberId], references: [id], onDelete: SetNull)
+  source              ClaimSubmissionSource @default(STAFF)
+  provider            String                @default("MANKRADO")
+  idempotencyKey      String                @unique @map("idempotency_key")
+  externalClaimId     String?               @unique @map("external_claim_id")
+  formUrl             String?               @map("form_url")
+  status              ExternalClaimStatus   @default(PENDING)
+  claimType           BenefitType?          @map("claim_type")
+  claimantType        String?               @map("claimant_type")
+  claimantName        String?               @map("claimant_name")
+  claimantIdType      String?               @map("claimant_id_type")
+  claimantIdNumber    String?               @map("claimant_id_number")
+  claimantContact     Json?                 @map("claimant_contact")
+  incidentDate        DateTime?             @map("incident_date") @db.Date
+  // Type-specific claim data, keyed by claimType (see claims/claims.schemas.ts):
+  //   DEATH / TOTAL_PERMANENT_DISABILITY: { subjectName, relationship, dateOfEvent, cause }
+  //   CRITICAL_ILLNESS: { diagnosisDate, diagnosingHospital, diagnosingPhysician, illness, illnessOther? }
+  //   HOSPITALIZATION: { hospitalName, admissionDate, dischargeDate, reason, nights }
+  // nights is always server-computed and stored, never trusted from the client.
+  claimDetails        Json?                 @map("claim_details")
+  estimatedAmount     Decimal?              @map("estimated_amount") @db.Decimal(12, 2)
+  paymentMethod       String?               @map("payment_method")
+  paymentDetails      Json?                 @map("payment_details")
+  documentIds         Int[]                 @default([]) @map("document_ids")
+  notes               String?
+  errorCode           String?               @map("error_code")
+  errorMessage        String?               @map("error_message")
+  submittedAt         DateTime?             @map("submitted_at")
+  lastSyncedAt        DateTime?             @map("last_synced_at")
+  // Staff review of a MEMBER_PORTAL-sourced claim (mirrors MemberChangeRequest's review fields).
+  reviewedById        Int?                  @map("reviewed_by_id")
+  reviewedBy          User?                 @relation("ClaimReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote          String?               @map("review_note")
+  reviewedAt          DateTime?             @map("reviewed_at")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
 
   @@index([memberId])
   @@index([submittedById])
+  @@index([submittedByMemberId])
   @@index([status])
+  @@index([source, status])
   @@index([createdAt])
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([memberId, createdAt(sort: Desc), id(sort: Desc)])

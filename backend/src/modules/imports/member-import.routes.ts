@@ -10,6 +10,7 @@ import { cachedCount } from "../../lib/cached-count.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { enqueueMemberImportJob } from "../../queues/import.queue.js";
+import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { hasValidReport20Signature, memberImportFileUpload, uploadRoot } from "../files/file.storage.js";
 import { bulkRawFields } from "./member-import.service.js";
@@ -201,27 +202,20 @@ memberImportRouter.get("/members/:id/rows", async (request, response) => {
   response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
 
-memberImportRouter.post("/members/:id/commit", async (request, response) => {
-  const params = idSchema.safeParse(request.params);
-  if (!params.success) {
-    response.status(400).json({ success: false, message: "Invalid import ID" });
-    return;
-  }
-  const currentUser = user(response);
-  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "MEMBER_BULK", status: "COMPLETED", ...jobScope(currentUser) } });
-  if (!job) {
-    response.status(404).json({ success: false, message: "Validated member import not found" });
-    return;
-  }
-  const jobId = job.id;
-  const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
-  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date(), totalRows: readyCount, processedRows: 0 } });
-
-  // Committing can mean creating up to MAX_ROWS members one at a time; run it off the request/response
-  // cycle for the same reason staging and Report 20 reconciliation do (see stageMemberImport above).
-  // Each row needs its own nested spouse/beneficiary creates, so unlike Report 20's flat auto-enroll
-  // this can't be batched with createManyAndReturn — but progress is still reported periodically so
-  // a long commit isn't a silent black box.
+// Committing can mean creating up to MAX_ROWS members one at a time; run it off the request/response
+// cycle for the same reason staging and Report 20 reconciliation do (see stageMemberImport above).
+// Each row needs its own nested spouse/beneficiary creates, so unlike Report 20's flat auto-enroll
+// this can't be batched with createManyAndReturn — but progress is still reported periodically so
+// a long commit isn't a silent black box.
+//
+// Naturally resumable: it only ever queries rows still in READY status, so if a previous attempt
+// died partway through (see the /:id/rerun stale-job path below), already-IMPORTED/FAILED rows are
+// skipped automatically — no row is ever re-processed. readyRows is set to the actual remaining
+// READY count (always 0 once the loop finishes, since it processes every row it queried) rather
+// than decremented by this run's count alone, so a resumed run converges on the correct total
+// instead of leaving stale "still ready" rows from whatever a crashed earlier attempt didn't get
+// to account for.
+function runMemberImportCommit(jobId: number, currentUser: AuthenticatedUser, auditRequest: Request) {
   const PROGRESS_EVERY = 200;
   void (async () => {
     const rows = await prisma.memberBulkImportRow.findMany({ where: { importJobId: jobId, status: "READY" }, orderBy: { rowNumber: "asc" } });
@@ -243,7 +237,7 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
           return created;
         });
         imported += 1;
-        await recordAudit({ request, actor: currentUser, action: "MEMBER_BULK_ENROLLED", entityType: "MEMBER", entityId: member.id, description: `Bulk enrolled ${member.fullName} (${member.controllerId})`, afterData: { importJobId: jobId, rowNumber: row.rowNumber, status: member.status }, districtId: member.districtId });
+        await recordAudit({ request: auditRequest, actor: currentUser, action: "MEMBER_BULK_ENROLLED", entityType: "MEMBER", entityId: member.id, description: `Bulk enrolled ${member.fullName} (${member.controllerId})`, afterData: { importJobId: jobId, rowNumber: row.rowNumber, status: member.status }, districtId: member.districtId });
       } catch (error) {
         failed += 1;
         await prisma.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "FAILED", issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"] } });
@@ -253,10 +247,87 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
         await prisma.importJob.update({ where: { id: jobId }, data: { processedRows: processed } });
       }
     }
-    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), processedRows: processed, importedRows: { increment: imported }, readyRows: { decrement: imported + failed }, invalidRows: { increment: failed } } });
-    await recordAudit({ request, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: jobId, description: `Committed bulk member import ${jobId}`, afterData: { imported, failed, status: updated.status } });
+    const remainingReady = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
+    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), processedRows: processed, importedRows: { increment: imported }, readyRows: remainingReady, invalidRows: { increment: failed } } });
+    await recordAudit({ request: auditRequest, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: jobId, description: `Committed bulk member import ${jobId}`, afterData: { imported, failed, status: updated.status } });
   })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while committing member import job"));
+}
+
+memberImportRouter.post("/members/:id/commit", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid import ID" });
+    return;
+  }
+  const currentUser = user(response);
+  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "MEMBER_BULK", status: "COMPLETED", ...jobScope(currentUser) } });
+  if (!job) {
+    response.status(404).json({ success: false, message: "Validated member import not found" });
+    return;
+  }
+  const jobId = job.id;
+  const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
+  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date(), totalRows: readyCount, processedRows: 0 } });
+  runMemberImportCommit(jobId, currentUser, request);
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId } });
+  response.status(202).json({ success: true, data: pendingJob });
+});
+
+// Recovers a job whose worker died mid-run (see lib/stale-jobs.ts) — same class of problem as
+// Report 20's /:id/rerun. Which phase to resume is inferred from whether staging ever finished:
+// no MemberBulkImportRow rows at all means it died during staging (stageMemberImport is one
+// transaction, so nothing partial was left behind — safe to restart from scratch); rows already
+// existing means staging completed and it died mid-commit, so resume the commit loop instead,
+// which naturally picks up only rows still READY.
+memberImportRouter.post("/members/:id/rerun", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid import ID" });
+    return;
+  }
+  const currentUser = user(response);
+  const job = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "MEMBER_BULK", ...jobScope(currentUser) },
+    include: { file: { select: { originalName: true, storagePath: true, mimeType: true } } },
+  });
+  if (!job) {
+    response.status(404).json({ success: false, message: "Member import not found" });
+    return;
+  }
+  if (!isStaleImportJob(job)) {
+    response.status(409).json({
+      success: false,
+      message: job.status === "PENDING" || job.status === "PROCESSING" ? "This import is still being processed" : "Only a stalled import can be retried",
+    });
+    return;
+  }
+
+  const stagedRowCount = await prisma.memberBulkImportRow.count({ where: { importJobId: job.id } });
+  if (stagedRowCount === 0) {
+    await prisma.importJob.update({ where: { id: job.id }, data: { status: "PROCESSING", startedAt: new Date(), errorMessage: null, totalRows: 0, processedRows: 0 } });
+    const memberImportWorkerData: MemberImportWorkerData = {
+      importJobId: job.id,
+      filePath: path.join(uploadRoot, job.file.storagePath),
+      mimeType: job.file.mimeType,
+      originalName: job.file.originalName,
+      actorUser: currentUser,
+      auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
+    };
+    try {
+      await enqueueMemberImportJob(memberImportWorkerData);
+    } catch (error) {
+      logger.error({ err: error, importJobId: job.id }, "Could not queue member import retry");
+      await prisma.importJob.update({ where: { id: job.id }, data: { status: "FAILED", errorMessage: "Could not queue this retry for processing", completedAt: new Date() } });
+      response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+      return;
+    }
+  } else {
+    const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: job.id, status: "READY" } });
+    await prisma.importJob.update({ where: { id: job.id }, data: { status: "PROCESSING", startedAt: new Date(), errorMessage: null, totalRows: readyCount, processedRows: 0 } });
+    runMemberImportCommit(job.id, currentUser, request);
+  }
+
+  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } } });
   response.status(202).json({ success: true, data: pendingJob });
 });

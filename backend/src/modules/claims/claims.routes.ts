@@ -9,6 +9,13 @@ import { memberScope } from "../members/member.access.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
+import {
+  claimSubmissionUnion,
+  dateOfEventFromClaimDetails,
+  hasRequiredDocuments,
+  HOSPITALIZATION_MINIMUM_NIGHTS,
+  nightsBetween,
+} from "./claims.schemas.js";
 
 export const claimsRouter = Router();
 
@@ -16,8 +23,9 @@ const querySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z
-    .enum(["PENDING", "REDIRECT_READY", "SUBMITTED", "FAILED", "SYNCHRONIZED"])
+    .enum(["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"])
     .optional(),
+  source: z.enum(["STAFF", "MEMBER_PORTAL"]).optional(),
 });
 const idSchema = z.object({ id: z.coerce.number().int().positive() });
 const lookupSchema = z.object({
@@ -28,8 +36,9 @@ const estimateSchema = z.object({
   claimType: z.enum(["DEATH", "TOTAL_PERMANENT_DISABILITY", "CRITICAL_ILLNESS", "HOSPITALIZATION"]),
   claimantType: z.enum(["MEMBER", "SPOUSE"]),
 });
-const submissionSchema = estimateSchema.extend({
-  incidentDate: z.coerce.date().max(new Date(), "Incident date cannot be in the future"),
+const submissionSchema = claimSubmissionUnion({
+  memberId: z.coerce.number().int().positive(),
+  claimantType: z.enum(["MEMBER", "SPOUSE"]),
   claimantIdType: z.literal("GHANA_CARD"),
   claimantIdNumber: z.string().trim().min(3, "Enter the claimant ID number").max(80),
   claimantContact: z.object({
@@ -46,6 +55,15 @@ const submissionSchema = estimateSchema.extend({
   documentIds: z.array(z.number().int().positive()).max(10).default([]),
   notes: z.string().trim().max(1000).optional(),
 });
+const reviewSchema = z
+  .object({
+    action: z.enum(["APPROVE", "RETURN", "REJECT"]),
+    note: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((value) => value.action === "APPROVE" || Boolean(value.note), {
+    message: "A review note is required",
+    path: ["note"],
+  });
 
 const claimMemberInclude = {
   district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
@@ -60,6 +78,37 @@ async function activeBenefit(claimType: z.infer<typeof estimateSchema>["claimTyp
   return { plan, benefit, amount };
 }
 
+async function uploadedSlotKeys(documentIds: number[], memberId: number) {
+  if (!documentIds.length) return new Set<string>();
+  const files = await prisma.storedFile.findMany({
+    where: { id: { in: documentIds }, memberId, category: "CLAIM_DOCUMENT" },
+    select: { id: true, slotKey: true },
+  });
+  if (files.length !== new Set(documentIds).size) return null;
+  return new Set(files.map((file) => file.slotKey).filter((key): key is string => Boolean(key)));
+}
+
+const submissionSelect = {
+  id: true,
+  externalClaimId: true,
+  provider: true,
+  status: true,
+  source: true,
+  claimType: true,
+  claimantName: true,
+  estimatedAmount: true,
+  errorMessage: true,
+  reviewNote: true,
+  reviewedAt: true,
+  submittedAt: true,
+  lastSyncedAt: true,
+  createdAt: true,
+  member: { select: { id: true, controllerId: true, fullName: true } },
+  submittedBy: { select: { id: true, fullName: true } },
+  submittedByMember: { select: { id: true, controllerId: true, fullName: true } },
+  reviewedBy: { select: { id: true, fullName: true } },
+} as const;
+
 claimsRouter.use(authenticate);
 
 claimsRouter.get("/provider", (_request, response) => {
@@ -73,6 +122,12 @@ claimsRouter.get("/provider", (_request, response) => {
       simulation: true,
     },
   });
+});
+
+claimsRouter.get("/illnesses", async (_request, response) => {
+  const plan = await getCurrentBenefitPlan();
+  const benefit = plan?.benefits.find((item) => item.type === "CRITICAL_ILLNESS" && item.enabled);
+  response.json({ success: true, data: { illnesses: benefit?.namedConditions ?? [] } });
 });
 
 claimsRouter.get("/member-lookup", async (request, response) => {
@@ -150,19 +205,37 @@ claimsRouter.post("/submissions", async (request, response) => {
     response.status(400).json({ success: false, message: "Complete the selected payment details" });
     return;
   }
-  if (parsed.data.documentIds.length) {
-    const documentCount = await prisma.storedFile.count({ where: { id: { in: parsed.data.documentIds }, memberId: member.id } });
-    if (documentCount !== new Set(parsed.data.documentIds).size) {
-      response.status(400).json({ success: false, message: "One or more claim documents are invalid" });
+
+  if (parsed.data.claimType === "HOSPITALIZATION") {
+    const nights = nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate);
+    if (nights < HOSPITALIZATION_MINIMUM_NIGHTS) {
+      response.status(400).json({ success: false, message: "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit." });
       return;
     }
   }
+
+  const uniqueDocumentIds = [...new Set(parsed.data.documentIds)];
+  const slotKeys = await uploadedSlotKeys(uniqueDocumentIds, member.id);
+  if (slotKeys === null) {
+    response.status(400).json({ success: false, message: "One or more claim documents are invalid" });
+    return;
+  }
+  if (!hasRequiredDocuments(parsed.data.claimType, slotKeys)) {
+    response.status(400).json({ success: false, message: "Attach the required documents for this claim type before submitting." });
+    return;
+  }
+
   const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType);
   const simulationId = `SIM-${new Date().getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const claimDetails =
+    parsed.data.claimType === "HOSPITALIZATION"
+      ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
+      : parsed.data.claimDetails;
   const claim = await prisma.externalClaimSubmission.create({
     data: {
       memberId: member.id,
       submittedById: user.id,
+      source: "STAFF",
       provider: "SIMULATION",
       idempotencyKey: `simulation:${randomUUID()}`,
       externalClaimId: simulationId,
@@ -174,16 +247,66 @@ claimsRouter.post("/submissions", async (request, response) => {
       claimantIdType: parsed.data.claimantIdType,
       claimantIdNumber: parsed.data.claimantIdNumber,
       claimantContact: parsed.data.claimantContact,
-      incidentDate: parsed.data.incidentDate,
+      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+      claimDetails,
       estimatedAmount: estimate.amount ?? null,
       paymentMethod: parsed.data.paymentMethod,
       paymentDetails: parsed.data.paymentDetails,
-      documentIds: [...new Set(parsed.data.documentIds)],
+      documentIds: uniqueDocumentIds,
       notes: parsed.data.notes || null,
     },
   });
   await recordAudit({ request, actor: user, action: "CLAIM_SIMULATION_SUBMITTED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id, description: `Submitted simulated ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for ${member.fullName}`, afterData: { reference: simulationId, claimType: parsed.data.claimType, claimantType: parsed.data.claimantType, estimatedAmount: estimate.amount?.toString() ?? null }, regionId: member.district?.regionId, districtId: member.districtId });
   response.status(201).json({ success: true, data: claim });
+});
+
+claimsRouter.patch("/submissions/:id/review", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  const body = reviewSchema.safeParse(request.body);
+  if (!params.success || !body.success) {
+    response.status(400).json({ success: false, message: "Invalid review request" });
+    return;
+  }
+  const user = response.locals.user as AuthenticatedUser;
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, source: "MEMBER_PORTAL", status: "PENDING", member: { is: memberScope(user) } },
+    select: { id: true, claimType: true, memberId: true, member: { select: { fullName: true, districtId: true, district: { select: { regionId: true } } } } },
+  });
+  if (!claim) {
+    response.status(404).json({ success: false, message: "No pending member claim matches that ID" });
+    return;
+  }
+
+  const { action, note } = body.data;
+  const reviewedAt = new Date();
+  const data =
+    action === "APPROVE"
+      ? {
+          status: "SUBMITTED" as const,
+          submittedAt: reviewedAt,
+          externalClaimId: `SIM-${reviewedAt.getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
+        }
+      : action === "RETURN"
+        ? { status: "RETURNED" as const, errorMessage: null }
+        : { status: "FAILED" as const, errorMessage: note ?? null };
+
+  const updated = await prisma.externalClaimSubmission.update({
+    where: { id: claim.id },
+    data: { ...data, reviewedById: user.id, reviewNote: note ?? null, reviewedAt },
+    select: submissionSelect,
+  });
+  await recordAudit({
+    request,
+    actor: user,
+    action: `CLAIM_${action}D`,
+    entityType: "EXTERNAL_CLAIM_SUBMISSION",
+    entityId: claim.id,
+    description: `${action === "APPROVE" ? "Approved" : action === "RETURN" ? "Returned" : "Rejected"} a member-submitted ${claim.claimType?.toLowerCase().replaceAll("_", " ")} claim for ${claim.member.fullName}`,
+    afterData: { action, note: note ?? null },
+    regionId: claim.member.district?.regionId,
+    districtId: claim.member.districtId,
+  });
+  response.json({ success: true, data: updated });
 });
 
 claimsRouter.get("/submissions", async (request, response) => {
@@ -193,34 +316,21 @@ claimsRouter.get("/submissions", async (request, response) => {
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
-  const { page, limit, status } = parsed.data;
+  const { page, limit, status, source } = parsed.data;
   const where = {
     member: { is: memberScope(user) },
     ...(status ? { status } : {}),
+    ...(source ? { source } : {}),
   };
   const [submissions, total] = await Promise.all([
     prisma.externalClaimSubmission.findMany({
       where,
-      select: {
-        id: true,
-        externalClaimId: true,
-        provider: true,
-        status: true,
-        claimType: true,
-        claimantName: true,
-        estimatedAmount: true,
-        errorMessage: true,
-        submittedAt: true,
-        lastSyncedAt: true,
-        createdAt: true,
-        member: { select: { id: true, controllerId: true, fullName: true } },
-        submittedBy: { select: { id: true, fullName: true } },
-      },
+      select: submissionSelect,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status }, () => prisma.externalClaimSubmission.count({ where })),
+    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status, source: parsed.data.source }, () => prisma.externalClaimSubmission.count({ where })),
   ]);
   response.json({
     success: true,
@@ -239,28 +349,17 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
   const submission = await prisma.externalClaimSubmission.findFirst({
     where: { id: params.data.id, member: { is: memberScope(user) } },
     select: {
-      id: true,
-      externalClaimId: true,
-      provider: true,
-      status: true,
-      claimType: true,
+      ...submissionSelect,
       claimantType: true,
-      claimantName: true,
       claimantIdType: true,
       claimantIdNumber: true,
       claimantContact: true,
       incidentDate: true,
-      estimatedAmount: true,
+      claimDetails: true,
       paymentMethod: true,
       paymentDetails: true,
       documentIds: true,
       notes: true,
-      errorMessage: true,
-      submittedAt: true,
-      lastSyncedAt: true,
-      createdAt: true,
-      member: { select: { id: true, controllerId: true, fullName: true } },
-      submittedBy: { select: { id: true, fullName: true } },
     },
   });
   if (!submission) {

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useDistricts } from "@/lib/useDistricts";
 import Button from "@/components/ui/Button";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
@@ -22,10 +23,16 @@ type ImportJob = {
   importedRows: number;
   errorMessage: string | null;
   createdAt: string;
+  updatedAt: string;
   completedAt: string | null;
   file: { originalName: string };
   uploadedBy: { id: number; fullName: string };
 };
+
+// Mirrors the backend's STUCK_JOB_THRESHOLD_MS (lib/stale-jobs.ts) — a PENDING/PROCESSING job
+// that hasn't moved in this long had its worker die without reporting back, so it needs a manual
+// retry rather than waiting on progress that will never come.
+const STUCK_JOB_THRESHOLD_MS = 15 * 60 * 1_000;
 
 type ImportRow = {
   id: number;
@@ -63,6 +70,9 @@ export default function ImportReview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [committing, setCommitting] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+  const [confirmingRerun, setConfirmingRerun] = useState(false);
+  const [rerunMessage, setRerunMessage] = useState("");
   const [mappingRowId, setMappingRowId] = useState<number | null>(null);
   const [mappingDistrictId, setMappingDistrictId] = useState("");
   const [mappingBusy, setMappingBusy] = useState(false);
@@ -114,6 +124,23 @@ export default function ImportReview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.status]);
 
+  const rerun = async () => {
+    setRerunning(true);
+    setError("");
+    setRerunMessage("");
+    try {
+      const res = await api.post(`/imports/members/${id}/rerun`);
+      setJob(res.data.data);
+      setRerunMessage("This import is running again in the background — this page will update automatically.");
+      setPage(1);
+      setConfirmingRerun(false);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Unable to retry this import.");
+    } finally {
+      setRerunning(false);
+    }
+  };
+
   const handleCommit = async () => {
     setCommitting(true);
     setError("");
@@ -163,6 +190,9 @@ export default function ImportReview() {
   if (!job) return null;
 
   const canCommit = job.status === "COMPLETED" && job.readyRows > 0;
+  const isStuck =
+    (job.status === "PENDING" || job.status === "PROCESSING") &&
+    Date.now() - new Date(job.updatedAt).getTime() > STUCK_JOB_THRESHOLD_MS;
 
   return (
     <div>
@@ -173,7 +203,44 @@ export default function ImportReview() {
         &larr; All Members
       </Link>
 
-      <PageHeader eyebrow="Member import review" title={job.file.originalName} description={`Uploaded by ${job.uploadedBy.fullName}`} actions={<StatusBadge tone={statusTone(job.status)}>{job.status.charAt(0) + job.status.slice(1).toLowerCase()}</StatusBadge>} />
+      <PageHeader
+        eyebrow="Member import review"
+        title={job.file.originalName}
+        description={`Uploaded by ${job.uploadedBy.fullName}`}
+        actions={
+          <div className="flex items-center gap-2.5">
+            <StatusBadge tone={statusTone(job.status)}>{job.status.charAt(0) + job.status.slice(1).toLowerCase()}</StatusBadge>
+            {isStuck && (
+              <button
+                type="button"
+                onClick={() => setConfirmingRerun(true)}
+                disabled={rerunning}
+                className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] transition hover:border-[#1f9c7c] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {rerunning ? "Retrying…" : "Retry (appears stuck)"}
+              </button>
+            )}
+          </div>
+        }
+      />
+
+      {confirmingRerun && (
+        <div className="mb-4">
+          <ConfirmationPanel
+            title="Retry this import?"
+            description="This import hasn't made progress in a while and appears stuck — its worker likely stopped mid-run. Retrying picks up from where it left off: rows already imported are left alone, and only unfinished work resumes."
+            confirmLabel="Retry import"
+            busyLabel="Starting…"
+            tone="warning"
+            confirmVariant="primary"
+            busy={rerunning}
+            onConfirm={() => void rerun()}
+            onCancel={() => setConfirmingRerun(false)}
+          />
+        </div>
+      )}
+
+      {rerunMessage && <div className="mb-4"><Alert tone="success">{rerunMessage}</Alert></div>}
 
       {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
 

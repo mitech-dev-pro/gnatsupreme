@@ -19,6 +19,7 @@ const ImportReview = lazy(() => import("@/pages/members/ImportReview"));
 const Report20Upload = lazy(() => import("@/pages/imports/Report20Upload"));
 const Report20Review = lazy(() => import("@/pages/imports/Report20Review"));
 const MemberHome = lazy(() => import("@/pages/member/MemberHome"));
+const MemberClaimNew = lazy(() => import("@/pages/member/MemberClaimNew"));
 const MemberPortalLayout = lazy(() => import("@/components/member/MemberPortalLayout"));
 const ChangeRequests = lazy(() => import("@/pages/members/ChangeRequests"));
 const PendingApprovals = lazy(() => import("@/pages/members/PendingApprovals"));
@@ -79,6 +80,8 @@ export default function App() {
               <Route path="coverage" element={<MemberHome section="coverage" />} />
               <Route path="requests" element={<MemberHome section="requests" />} />
               <Route path="claims" element={<MemberHome section="claims" />} />
+              <Route path="claims/new" element={<MemberClaimNew />} />
+              <Route path="claims/:id/resubmit" element={<MemberClaimNew />} />
               <Route path="notifications" element={<MemberHome section="notifications" />} />
               <Route path="help" element={<MemberHome section="help" />} />
             </Route>

@@ -19,7 +19,7 @@ const fileParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 const storedNameParamsSchema = z.object({
   storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp|csv|xlsx)$/),
 });
-const categorySchema = z.enum(["MEMBER_DOCUMENT", "MARRIAGE_CERTIFICATE", "OTHER"]);
+const categorySchema = z.enum(["MEMBER_DOCUMENT", "MARRIAGE_CERTIFICATE", "CLAIM_DOCUMENT", "OTHER"]);
 
 function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
@@ -132,6 +132,10 @@ memberFileRouter.post(
 
     const storagePath = path.posix.join("member-files", request.file.filename);
     const downloadPath = `/api/files/${request.file.filename}`;
+    const slotKey =
+      category.data === "CLAIM_DOCUMENT" && typeof request.body.slotKey === "string" && request.body.slotKey.trim()
+        ? request.body.slotKey.trim().slice(0, 80)
+        : null;
 
     try {
       const file = await prisma.storedFile.create({
@@ -146,6 +150,7 @@ memberFileRouter.post(
           memberId: member.id,
           spouseId: category.data === "MARRIAGE_CERTIFICATE" ? member.spouse?.id : null,
           uploadedById: currentUser(response).id,
+          slotKey,
         },
         select: {
           id: true,
@@ -155,6 +160,7 @@ memberFileRouter.post(
           sizeBytes: true,
           downloadPath: true,
           createdAt: true,
+          slotKey: true,
         },
       });
       await recordAudit({

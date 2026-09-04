@@ -10,6 +10,7 @@ import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { enqueueReport20Job } from "../../queues/import.queue.js";
+import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
   hasValidReport20Signature,
@@ -213,13 +214,6 @@ importRouter.get("/:id", async (request, response) => {
   response.json({ success: true, data: job });
 });
 
-// A worker that's genuinely still working updates processedRows every couple thousand rows (see
-// reconcileReport20's batched auto-enroll loop), so updatedAt keeps moving. If a PENDING/PROCESSING
-// job hasn't been touched in this long, its worker process died without ever reporting back (e.g.
-// killed by a dev-server restart mid-run) — otherwise a stuck job could never be retried, since
-// nothing else ever flips it out of PENDING.
-const STUCK_JOB_THRESHOLD_MS = 15 * 60 * 1_000;
-
 importRouter.post("/:id/rerun", async (request, response) => {
   const params = idSchema.safeParse(request.params);
   if (!params.success) {
@@ -234,9 +228,7 @@ importRouter.post("/:id/rerun", async (request, response) => {
     response.status(404).json({ success: false, message: "Report 20 import not found" });
     return;
   }
-  const isStuck =
-    (job.status === "PENDING" || job.status === "PROCESSING") &&
-    Date.now() - job.updatedAt.getTime() > STUCK_JOB_THRESHOLD_MS;
+  const isStuck = isStaleImportJob(job);
   if (job.status !== "COMPLETED" && !isStuck) {
     response.status(409).json({
       success: false,

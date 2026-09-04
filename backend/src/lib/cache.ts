@@ -5,7 +5,10 @@ import { Redis } from "ioredis";
 import { env } from "../config/env.js";
 import { logger } from "./logger.js";
 
-const cache = new Redis(env.REDIS_URL, {
+// Falls back to the local default when unset (REDIS_URL is optional outside production — see
+// config/env.ts) — harmless since lazyConnect + the connect/command error handling below already
+// degrade to the PostgreSQL fallback path when nothing is listening there.
+const cache = new Redis(env.REDIS_URL ?? "redis://127.0.0.1:6379", {
   lazyConnect: true,
   enableOfflineQueue: false,
   maxRetriesPerRequest: 1,

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { formatCurrency } from "@/lib/currency";
@@ -75,6 +75,28 @@ type MemberNotification = {
   message: string;
   readAt: string | null;
   createdAt: string;
+};
+
+type ClaimItem = {
+  id: number;
+  provider: string;
+  externalClaimId: string | null;
+  status: "PENDING" | "REDIRECT_READY" | "SUBMITTED" | "RETURNED" | "FAILED" | "SYNCHRONIZED";
+  source: "STAFF" | "MEMBER_PORTAL";
+  claimType: string | null;
+  claimantType: string | null;
+  estimatedAmount: string | null;
+  reviewNote: string | null;
+  errorMessage: string | null;
+  submittedAt: string | null;
+  createdAt: string;
+};
+
+const CLAIM_TYPE_LABELS: Record<string, string> = {
+  DEATH: "Death Claim",
+  TOTAL_PERMANENT_DISABILITY: "Total & Permanent Disability",
+  CRITICAL_ILLNESS: "Named Critical Illness",
+  HOSPITALIZATION: "Hospitalization",
 };
 
 type ProfileCompletion = {
@@ -621,6 +643,7 @@ export default function MemberHome({
 }) {
   const { settings } = useOrganizationSettings();
   useMemberAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
   const [profileCompletion, setProfileCompletion] =
@@ -629,6 +652,7 @@ export default function MemberHome({
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
+  const [claims, setClaims] = useState<ClaimItem[]>([]);
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [editingSpouse, setEditingSpouse] = useState(false);
@@ -676,6 +700,15 @@ export default function MemberHome({
     }
   };
 
+  const loadClaims = async () => {
+    try {
+      const res = await api.get("/member-portal/claims");
+      setClaims(res.data.data);
+    } catch {
+      // claim history is supplementary — a failed fetch shouldn't block the page
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -704,6 +737,7 @@ export default function MemberHome({
       }
     })();
     void loadRequests();
+    void loadClaims();
     return () => {
       cancelled = true;
     };
@@ -2266,15 +2300,80 @@ export default function MemberHome({
           )}
 
           {section === "claims" && (
-            <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 md:col-span-2">
-              <h2 className="text-[15px] font-bold text-(--text-strong)">
-                Claims
-              </h2>
-              <p className="mt-1 max-w-[65ch] text-[12.5px] text-(--text-muted)">
-                Your submitted claims and their processing status will appear
-                here.
-              </p>
-            </div>
+            <section
+              className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
+              aria-labelledby="member-claims-heading"
+            >
+              <header className="flex flex-col gap-3 border-b border-(--border-default) px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div>
+                  <h2 id="member-claims-heading" className="text-[15px] font-bold text-(--text-strong)">
+                    Claims
+                  </h2>
+                  <p className="mt-1 max-w-[65ch] text-[11.5px] text-(--text-muted)">
+                    File a claim and track its review status here.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/member/claims/new")}
+                  className="inline-flex min-h-9 items-center justify-center rounded-[9px] bg-(--action-primary) px-4 text-[12px] font-bold text-(--text-on-action) hover:bg-(--action-primary-hover)"
+                >
+                  File a claim
+                </button>
+              </header>
+              {claims.length === 0 ? (
+                <div className="px-4 py-8 text-center sm:px-5">
+                  <p className="text-[12.5px] text-(--text-muted)">
+                    You haven't submitted any claims yet.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-(--border-default)">
+                  {claims.map((claim) => {
+                    const statusLabel =
+                      claim.status === "PENDING" && claim.source === "MEMBER_PORTAL"
+                        ? "Submitted — awaiting staff review"
+                        : claim.status === "RETURNED"
+                          ? "Returned — needs your attention"
+                          : claim.status.charAt(0) + claim.status.slice(1).toLowerCase();
+                    const tone =
+                      claim.status === "SUBMITTED" || claim.status === "SYNCHRONIZED"
+                        ? "text-(--success)"
+                        : claim.status === "FAILED"
+                          ? "text-(--danger)"
+                          : "text-(--warning)";
+                    return (
+                      <li key={claim.id} className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <div>
+                          <div className="text-[13px] font-bold text-(--ink)">
+                            {claim.claimType ? CLAIM_TYPE_LABELS[claim.claimType] ?? claim.claimType : "Claim"}
+                          </div>
+                          <div className={`mt-0.5 text-[11.5px] font-semibold ${tone}`}>{statusLabel}</div>
+                          {claim.status === "RETURNED" && claim.reviewNote && (
+                            <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">{claim.reviewNote}</p>
+                          )}
+                          {claim.status === "FAILED" && (claim.reviewNote || claim.errorMessage) && (
+                            <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">{claim.reviewNote || claim.errorMessage}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-(--text-muted)">{timeAgo(claim.createdAt)}</span>
+                          {claim.status === "RETURNED" && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/member/claims/${claim.id}/resubmit`)}
+                              className="rounded-[7px] border border-(--action-primary) px-2.5 py-1 text-[11px] font-bold text-(--action-primary) hover:bg-(--info-soft)"
+                            >
+                              Edit &amp; resubmit
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           )}
 
           {section === "help" && (

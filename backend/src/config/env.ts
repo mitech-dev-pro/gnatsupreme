@@ -30,7 +30,18 @@ const environmentSchema = z.object({
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
-  REDIS_URL: z.string().url().refine((value) => value.startsWith("redis://") || value.startsWith("rediss://"), "REDIS_URL must be a redis:// or rediss:// connection URL"),
+  // Optional outside production: with it unset, the app runs background jobs (member/Report 20
+  // imports) inline in the API process instead of via BullMQ+Redis+a separate worker process —
+  // see queues/import.queue.ts. Caching (lib/cache.ts) already degrades to a PostgreSQL fallback
+  // without Redis, so this is the only thing that actually needs it locally.
+  REDIS_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z
+      .string()
+      .url()
+      .refine((value) => value.startsWith("redis://") || value.startsWith("rediss://"), "REDIS_URL must be a redis:// or rediss:// connection URL")
+      .optional(),
+  ),
   AUTH_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   READ_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(60),
   SLOW_REQUEST_THRESHOLD_MS: z.coerce.number().int().min(100).max(60_000).default(750),
@@ -64,6 +75,10 @@ if (!result.success) {
 
 if (result.success && result.data.MANKRADO_ENABLED && !result.data.MANKRADO_BASE_URL) {
   throw new Error("MANKRADO_BASE_URL is required when the Mankrado integration is enabled");
+}
+
+if (result.success && result.data.NODE_ENV === "production" && !result.data.REDIS_URL) {
+  throw new Error("REDIS_URL is required in production");
 }
 
 export const env = result.data;

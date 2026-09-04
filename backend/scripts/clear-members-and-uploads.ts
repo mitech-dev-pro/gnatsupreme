@@ -97,14 +97,17 @@ async function main() {
     select: { storagePath: true },
   });
 
-  await prisma.$transaction([
-    prisma.externalClaimSubmission.deleteMany({}),
-    prisma.memberTransfer.deleteMany({}),
-    prisma.importJob.deleteMany({}), // cascades Report20Row, MemberBulkImportRow
-    prisma.storedFile.deleteMany({}),
-    prisma.member.deleteMany({}), // cascades Spouse, Beneficiary, MemberWorkflowEvent,
-    // MemberChangeRequest, MemberSession, MemberPasswordResetToken, Notification
-  ]);
+  await prisma.$transaction(
+    [
+      prisma.externalClaimSubmission.deleteMany({}),
+      prisma.memberTransfer.deleteMany({}),
+      prisma.importJob.deleteMany({}), // cascades Report20Row, MemberBulkImportRow
+      prisma.storedFile.deleteMany({}),
+      prisma.member.deleteMany({}), // cascades Spouse, Beneficiary, MemberWorkflowEvent,
+      // MemberChangeRequest, MemberSession, MemberPasswordResetToken, Notification
+    ],
+    { timeout: 10 * 60_000 }, // large member counts cascade a lot of child-row deletes; the 5s default commit timeout isn't enough
+  );
 
   console.log("Database rows deleted.");
 

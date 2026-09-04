@@ -133,12 +133,16 @@ export async function reconcileReport20(
   importJobId: number,
   sourceRows: SourceRow[],
 ) {
+  // Captured up front so sourceRows can be dropped once classification is done (see below) --
+  // this is the only later use of its length.
+  const totalRows = sourceRows.length;
+
   await prisma.importJob.update({
     where: { id: importJobId },
     data: {
       status: "PROCESSING",
       startedAt: new Date(),
-      totalRows: sourceRows.length,
+      totalRows,
       processedRows: 0,
     },
   });
@@ -313,6 +317,14 @@ export async function reconcileReport20(
       data: { processedRows: classifiedSoFar },
     });
   }
+  // sourceRows has nothing left to offer from here on -- everything downstream reads from
+  // `data` (the classified Report20Row payloads) instead. Dropping the reference here, rather
+  // than letting it sit alive for the rest of the job (auto-enrollment + the final bulk-insert
+  // transaction, both of which can take real time on a large file), lets it be garbage
+  // collected instead of doubling this job's peak memory footprint for no reason. The caller
+  // (report20.worker.ts) doesn't hold a separate reference to the same array, so this is the
+  // last one.
+  sourceRows = [];
 
   // Newly-enrolled members need real ids before the Report20Row rows can reference them, so
   // create them first and then patch memberId onto the corresponding row payloads.
@@ -438,8 +450,8 @@ export async function reconcileReport20(
         where: { id: importJobId },
         data: {
           status: "COMPLETED",
-          totalRows: sourceRows.length,
-          processedRows: sourceRows.length,
+          totalRows,
+          processedRows: totalRows,
           matchedRows: counts.matched,
           changedRows: counts.changed,
           unmatchedRows: counts.unmatched,

@@ -18,8 +18,11 @@ export type Report20WorkerData = {
 // entries directly (rather than via an Express Request) since a queued job has no live request.
 export async function processReport20Job(data: Report20WorkerData) {
   try {
-    const rows = await parseReport20(data.filePath, data.mimeType);
-    await reconcileReport20(data.importJobId, rows);
+    // Passed inline rather than bound to a local `rows` variable, so this scope holds no
+    // separate reference to the parsed rows -- reconcileReport20 can drop its own reference
+    // once classification is done (see report20.service.ts) and actually free the memory,
+    // instead of this awaited call keeping it alive for the whole job regardless.
+    await reconcileReport20(data.importJobId, await parseReport20(data.filePath, data.mimeType));
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
     await prisma.importJob.update({

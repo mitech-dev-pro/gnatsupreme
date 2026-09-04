@@ -30,7 +30,11 @@ const membersItems: NavSubItem[] = [
   { label: "Add Member", target: "add", to: "/members/new" },
   { label: "Pending Approvals", target: "pending", to: "/approvals" },
   { label: "Change Requests", target: "changes", to: "/change-requests" },
-  { label: "Removed Members", target: "removed", to: "/members?status=REMOVED" },
+  {
+    label: "Removed Members",
+    target: "removed",
+    to: "/members?status=REMOVED",
+  },
 ];
 
 const baseImportsItems: NavSubItem[] = [
@@ -96,9 +100,20 @@ const settingsIcon = (
   </svg>
 );
 
-const ALL_STAFF_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"];
+const ALL_STAFF_ROLES = [
+  "SUPER_ADMIN",
+  "NATIONAL_ADMIN",
+  "REGIONAL_ADMIN",
+  "DISTRICT_ADMIN",
+];
 
-const adminItems: { label: string; to: string; lock: string; roles: string[]; icon: ReactNode }[] = [
+const adminItems: {
+  label: string;
+  to: string;
+  lock: string;
+  roles: string[];
+  icon: ReactNode;
+}[] = [
   {
     label: "Global Settings",
     to: "/settings",
@@ -144,7 +159,8 @@ const adminItems: { label: string; to: string; lock: string; roles: string[]; ic
 
 const navItemBase =
   "flex items-center gap-2.75 rounded-[9px] px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
-const navItemActive = "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
+const navItemActive =
+  "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
 const navSoonBadge =
   "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
 
@@ -176,7 +192,9 @@ function NavGroup({
         aria-controls={id}
         className={`w-full ${navItemBase}`}
       >
-        <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">{icon}</span>
+        <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
+          {icon}
+        </span>
         {label}
         <svg
           viewBox="0 0 24 24"
@@ -203,7 +221,8 @@ function NavGroup({
               to={item.to}
               onClick={onNavigate}
               className={() => {
-                const isActive = location.pathname + location.search === item.to;
+                const isActive =
+                  location.pathname + location.search === item.to;
                 return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
                   isActive
                     ? "bg-white/8 font-semibold text-white"
@@ -247,7 +266,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     : baseImportsItems;
   const [membersExpanded, setMembersExpanded] = useState(
     () =>
-      (location.pathname.startsWith("/members") && !location.pathname.startsWith("/members/upload")) ||
+      (location.pathname.startsWith("/members") &&
+        !location.pathname.startsWith("/members/upload")) ||
       location.pathname.startsWith("/change-requests") ||
       location.pathname.startsWith("/approvals"),
   );
@@ -273,17 +293,23 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside
         id="app-sidebar"
         style={{ backgroundColor: settings.primaryColor }}
-        className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] py-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] pt-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 text-[13px] font-extrabold text-[#1e2761] shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
+          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 text-[13px] font-extrabold text-[#1e2761] shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
             {settings.sidebarMark}
-          </div>
+          </div> */}
           <div className="leading-[1.15]">
-            <div className="text-[14.5px] font-bold text-white">
+            {/* <div className="text-[14.5px] font-bold text-white">
               {settings.portalName}
+            </div> */}
+            <div className="text-[14.5px] font-bold text-white">
+              GNAT Supreme Care
+            </div>
+            <div className="text-[12.5px] font-medium text-white mb-1">
+              Group Insurance Scheme
             </div>
             <div className="text-[10.5px] tracking-[0.3px] text-[#9aa2c4]">
               Member Portal · v1.0
@@ -391,8 +417,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
           {settings.schemeSponsor} &copy; {new Date().getFullYear()}
-          <br />
-          Underwritten by {settings.underwriter}
+          {/* <br />
+          Underwritten by {settings.underwriter} */}
         </div>
       </aside>
     </>

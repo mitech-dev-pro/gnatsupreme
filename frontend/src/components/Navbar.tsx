@@ -9,7 +9,10 @@ type NavbarProps = {
   onToggleSidebar: () => void;
 };
 
-export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) {
+export default function Navbar({
+  isSidebarOpen,
+  onToggleSidebar,
+}: NavbarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -57,7 +60,7 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
           </svg>
         </button>
 
-        <div className="hidden items-center gap-3 sm:flex">
+        {/* <div className="hidden items-center gap-3 sm:flex">
           <div className="flex h-9 items-center rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] px-2">
             <img
               src="/brand/gnat-logo.png?v=1"
@@ -78,7 +81,7 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
               />
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="flex items-center gap-4.5">
@@ -92,7 +95,9 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
             aria-expanded={menuOpen}
             aria-controls="account-menu"
             aria-haspopup="menu"
-            aria-label={user ? `Account menu for ${user.fullName}` : "Account menu"}
+            aria-label={
+              user ? `Account menu for ${user.fullName}` : "Account menu"
+            }
             className="flex items-center gap-2.5"
           >
             <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-[#1f9c7c] text-[13px] font-bold text-white">
@@ -114,7 +119,11 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
                 className="fixed inset-0 z-59"
                 onClick={() => setMenuOpen(false)}
               />
-              <div id="account-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-60 min-w-42.5 overflow-hidden rounded-[10px] border border-[#e5e9f0] bg-white shadow-[0_12px_30px_rgba(23,27,38,0.22)]">
+              <div
+                id="account-menu"
+                role="menu"
+                className="absolute right-0 top-[calc(100%+8px)] z-60 min-w-42.5 overflow-hidden rounded-[10px] border border-[#e5e9f0] bg-white shadow-[0_12px_30px_rgba(23,27,38,0.22)]"
+              >
                 <button
                   ref={signOutButtonRef}
                   type="button"

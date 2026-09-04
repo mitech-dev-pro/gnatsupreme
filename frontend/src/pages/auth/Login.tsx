@@ -244,7 +244,9 @@ export default function Login() {
       setSetupSchool(res.data.data.school);
       if (res.data.data.district) {
         setSetupDistrictId(String(res.data.data.district.id));
-        setSetupDistrictLabel(`${res.data.data.district.name} — ${res.data.data.district.region.name}`);
+        setSetupDistrictLabel(
+          `${res.data.data.district.name} — ${res.data.data.district.region.name}`,
+        );
         setSetupDistrictLocked(true);
       } else {
         setSetupDistrictLocked(false);
@@ -478,8 +480,8 @@ export default function Login() {
   };
 
   return (
-    <div className="fixed inset-0 flex justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5 [align-items:safe_center]">
-      <div className="grid w-full max-w-120 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-1">
+    <div className="fixed inset-0 flex justify-center overflow-y-auto bg-[linear-gradient(160deg,#1e2761_0%,#2b3568_55%,#232c5e_100%)] p-5 items-center-safe">
+      <div className="grid w-full max-w-140 grid-cols-1 overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_24px_60px_rgba(10,14,40,0.35)] md:grid-cols-1">
         {/* Brand side */}
         {/* <div className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(165deg,#1e2761_0%,#17805f_130%)] px-9 py-10 text-white md:flex">
           <div
@@ -556,9 +558,14 @@ export default function Login() {
 
         {/* Form side */}
         <div className="flex flex-col px-9 py-10">
-          <h1 className="relative z-10 mb-2.5 text-[22px] font-extrabold tracking-tight">
-            {settings.portalName}
-          </h1>
+          <div className="flex items-center justify-center flex-col text-center">
+            <h1 className="text-4xl font-extrabold tracking-tight mb-1">
+              GNAT Supreme Care
+            </h1>
+            <p className="text-base font-medium text-muted-foreground">
+              Group Insurance Scheme Portal
+            </p>
+          </div>
           <br />
           <div className="mb-5.5 flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
             <button

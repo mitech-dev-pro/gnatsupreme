@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GNAT Supreme Care — Submit a Claim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1E2761;
+    --navy-light:#2B3568;
+    --navy-pale:#EEF0FA;
+    --teal:#1F9C7C;
+    --teal-dark:#17805F;
+    --mint:#DFF7EE;
+    --mint-border:#BDEBDA;
+    --amber:#B9791A;
+    --amber-bg:#FBF0DD;
+    --rose:#C23B3B;
+    --rose-bg:#FBE9E9;
+    --violet:#6E5AD6;
+    --violet-bg:#EEEBFB;
+    --slate:#5B6472;
+    --bg:#F4F6FA;
+    --card:#FFFFFF;
+    --border:#E5E9F0;
+    --text:#171B26;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);}
+  h1,h2,h3,.jakarta{font-family:'Plus Jakarta Sans',sans-serif;}
+  a{color:inherit;}
+  button{font-family:inherit;cursor:pointer;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    background:#fff;border-bottom:1px solid var(--border);padding:14px 32px;
+    display:flex;align-items:center;justify-content:space-between;gap:20px;position:sticky;top:0;z-index:20;
+  }
+  .partner-logos{display:flex;align-items:center;gap:14px;}
+  .logo-chip{display:flex;align-items:center;gap:7px;padding:5px 10px 5px 6px;border:1px solid var(--border);border-radius:9px;background:#FBFCFE;}
+  .logo-chip .sq{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:18px;color:#fff;}
+  .logo-chip.gnat .sq{background:var(--navy);}
+  .logo-chip.milife .sq{background:var(--teal);}
+  .logo-chip .txt{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;color:var(--text);}
+  .logo-chip .txt small{display:block;font-weight:500;font-size:16px;color:var(--slate);font-family:'Inter',sans-serif;}
+  .logo-divider{width:1px;height:26px;background:var(--border);}
+  .scheme-name{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:19.5px;color:var(--navy);margin-left:4px;}
+
+  .user-chip{display:flex;align-items:center;gap:10px;}
+  .user-chip .info{text-align:right;line-height:1.2;}
+  .user-chip .info .who{font-size:18.5px;font-weight:700;}
+  .user-chip .info .role{font-size:17px;color:var(--slate);}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18.5px;}
+
+  /* ---------- content ---------- */
+  .content{max-width:1180px;margin:0 auto;padding:28px 28px 60px;}
+
+  .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px;flex-wrap:wrap;}
+  .page-head h1{margin:0;font-size:30px;font-weight:800;color:var(--navy);}
+  .breadcrumb{display:flex;align-items:center;gap:6px;font-size:18px;color:var(--slate);margin-top:6px;flex-wrap:wrap;}
+  .breadcrumb .seg{background:var(--navy-pale);color:var(--navy);padding:3px 9px;border-radius:20px;font-weight:600;}
+  .breadcrumb .sep{color:#B7BEDD;}
+
+  .btn{border:none;border-radius:9px;padding:10px 16px;font-size:18.5px;font-weight:700;display:inline-flex;align-items:center;gap:7px;}
+  .btn svg{width:15px;height:15px;}
+  .btn-primary{background:var(--teal);color:#fff;box-shadow:0 2px 6px rgba(31,156,124,.35);}
+  .btn-primary:hover{background:var(--teal-dark);}
+  .btn-ghost{background:#fff;color:var(--navy);border:1px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--navy);}
+  .btn-sm{padding:7px 11px;font-size:18px;}
+
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
+  .panel-head{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .panel-head h2{margin:0;font-size:20.5px;font-weight:700;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:17.5px;font-weight:700;color:var(--navy);margin-bottom:5px;}
+  .field .hint{font-size:17px;color:var(--slate);font-weight:500;margin-top:4px;}
+  .field input,.field select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:18.5px;font-family:inherit;background:#FBFCFE;}
+  .field input:disabled{background:var(--mint);color:var(--teal-dark);border-color:var(--mint-border);font-weight:600;}
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .fieldset{border:1px dashed var(--border);border-radius:10px;padding:14px;margin-bottom:16px;}
+  .fieldset-title{font-size:18px;font-weight:800;color:var(--navy);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+  .validate-row{display:flex;gap:8px;}
+  .validate-row input{flex:1;}
+
+  .drawer-footer{padding:16px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
+
+  .workspace{display:grid;grid-template-columns:1fr 300px;gap:18px;align-items:start;}
+
+  .queue-item{padding:12px 18px;border-bottom:1px solid var(--border);}
+  .queue-item:last-child{border-bottom:none;}
+  .queue-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+  .queue-name{font-size:18.5px;font-weight:700;}
+  .queue-meta{font-size:17px;color:var(--slate);}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:17px;font-weight:700;padding:4px 9px;border-radius:20px;}
+  .badge.active{background:var(--mint);color:var(--teal-dark);}
+  .badge.pending{background:var(--amber-bg);color:var(--amber);}
+  .badge.approved{background:var(--violet-bg);color:var(--violet);}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+  /* ---------- claims-specific ---------- */
+  .member-context{display:flex;align-items:center;gap:14px;padding:16px 18px;flex-wrap:wrap;}
+  .mc-avatar{width:44px;height:44px;border-radius:50%;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0;}
+  .mc-info{flex:1;min-width:180px;}
+  .mc-name{font-size:19.5px;font-weight:800;color:var(--navy);}
+  .mc-sub{font-size:17.5px;color:var(--slate);margin-top:1px;}
+  .mc-tag{font-size:17px;font-weight:700;color:var(--teal-dark);background:var(--mint);padding:3px 9px;border-radius:20px;}
+
+  .claim-type-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:18px;}
+  .claim-type-card{border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;background:#fff;transition:border-color .15s, background .15s;}
+  .claim-type-card:hover{border-color:var(--teal);}
+  .claim-type-card.selected{border-color:var(--teal);background:var(--mint);box-shadow:0 0 0 3px rgba(31,156,124,.14);}
+  .claim-type-card .ct-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;}
+  .claim-type-card .ct-icon svg{width:19px;height:19px;}
+  .claim-type-card .ct-title{font-size:24px;font-weight:800;color:var(--navy);margin-bottom:4px;}
+  .claim-type-card .ct-cover{font-size:17px;color:var(--slate);margin-bottom:10px;}
+  .claim-type-card .ct-benefit{font-size:20px;font-weight:800;color:var(--teal-dark);font-family:'Plus Jakarta Sans',sans-serif;}
+  .claim-type-card .ct-benefit small{display:block;font-size:16px;font-weight:600;color:var(--slate);margin-top:1px;}
+
+  .icon-rose{background:var(--rose-bg);color:var(--rose);}
+  .icon-violet{background:var(--violet-bg);color:var(--violet);}
+  .icon-amber{background:var(--amber-bg);color:var(--amber);}
+  .icon-teal{background:var(--mint);color:var(--teal-dark);}
+
+  .benefit-banner{background:var(--navy);color:#fff;border-radius:12px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:14px;}
+  .benefit-banner .bb-type{font-size:17px;text-transform:uppercase;letter-spacing:1px;color:#9AA2C4;font-weight:700;}
+  .benefit-banner .bb-name{font-size:24px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;margin-top:2px;}
+  .benefit-banner .bb-right{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  .benefit-banner .bb-amount{font-size:28px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#fff;text-align:right;}
+  .benefit-banner .bb-amount small{display:block;font-size:16.5px;font-weight:600;color:#9AA2C4;}
+  .who-panel{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;}
+  .who-panel .who-title{font-weight:800;font-size:19.5px;color:var(--navy);margin-bottom:12px;}
+  .who-options{display:flex;flex-direction:column;gap:12px;}
+  .who-options label{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--text);cursor:pointer;}
+  .who-options label.picked{color:var(--teal-dark);}
+  .who-options input[type=radio]{accent-color:var(--teal);width:19px;height:19px;cursor:pointer;flex-shrink:0;}
+
+  .doc-check{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F1F3F7;font-size:18px;}
+  .doc-check:last-child{border-bottom:none;}
+  .doc-check input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal);flex-shrink:0;}
+  .doc-check .req-tag{margin-left:auto;font-size:16px;font-weight:700;color:var(--rose);background:var(--rose-bg);padding:2px 8px;border-radius:20px;flex-shrink:0;}
+  .doc-check .opt-tag{margin-left:auto;font-size:16px;font-weight:700;color:var(--slate);background:#EEF0F4;padding:2px 8px;border-radius:20px;flex-shrink:0;}
+  .doc-check .any-tag{margin-left:auto;font-size:16px;font-weight:700;color:var(--amber);background:var(--amber-bg);padding:2px 8px;border-radius:20px;flex-shrink:0;}
+  .doc-upload-btn{font-size:15px;font-weight:700;color:var(--teal-dark);background:var(--mint);border:1px solid var(--mint-border);padding:5px 12px;border-radius:7px;margin-left:10px;flex-shrink:0;display:none;align-items:center;gap:5px;}
+  .doc-upload-btn svg{width:13px;height:13px;flex-shrink:0;}
+  .doc-upload-btn.show{display:inline-flex;}
+  .doc-upload-btn.attached{background:var(--navy-pale);color:var(--navy);border-color:var(--navy-pale);}
+  .doc-note{font-size:17px;color:var(--slate);margin:-2px 0 10px;font-style:italic;}
+  .required-star{color:var(--rose);margin-left:2px;}
+
+  .illness-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 18px;margin-top:6px;}
+  #illnessGrid label.illness-item{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:8px;padding:6px 0;font-size:18px;}
+  #illnessGrid label.illness-item span{min-width:0;overflow-wrap:break-word;}
+  .illness-item input{accent-color:var(--teal);width:15px;height:15px;}
+
+  .nights-check{margin-top:10px;padding:9px 12px;border-radius:8px;font-size:17.5px;font-weight:700;display:flex;align-items:center;gap:7px;}
+  .nights-check svg{width:15px;height:15px;flex-shrink:0;}
+  .nights-check.ok{background:var(--mint);color:var(--teal-dark);}
+  .nights-check.bad{background:var(--rose-bg);color:var(--rose);}
+  .nights-check.neutral{background:#F4F6FA;color:var(--slate);}
+
+  .pay-toggle{display:flex;gap:8px;margin-bottom:14px;}
+  .pay-btn{flex:1;border:1px solid var(--border);background:#fff;border-radius:9px;padding:10px;text-align:center;font-size:18px;font-weight:700;color:var(--slate);}
+  .pay-btn.active{border-color:var(--teal);background:var(--mint);color:var(--teal-dark);}
+
+  .declare-box{display:flex;gap:10px;align-items:flex-start;background:#FAFBFD;border:1px solid var(--border);border-radius:9px;padding:12px 14px;font-size:18px;color:var(--slate);line-height:1.5;}
+  .declare-box input{margin-top:2px;width:16px;height:16px;accent-color:var(--teal);flex-shrink:0;}
+
+  .benefit-recap{padding:16px 18px;}
+  .benefit-recap .br-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F1F3F7;font-size:18px;}
+  .benefit-recap .br-row:last-child{border-bottom:none;}
+  .benefit-recap .br-row .k{color:var(--slate);}
+  .benefit-recap .br-row .v{font-weight:700;}
+  .doc-progress{margin:4px 0 16px;background:var(--navy-pale);border-radius:8px;padding:10px 12px;font-size:17.5px;font-weight:700;color:var(--navy);display:flex;justify-content:space-between;}
+  .side-panel{display:flex;flex-direction:column;gap:16px;}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;
+    padding:12px 20px;border-radius:10px;font-size:18.5px;font-weight:600;display:flex;align-items:center;gap:9px;
+    opacity:0;pointer-events:none;transition:all .25s;z-index:70;box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast svg{width:16px;height:16px;color:var(--teal);}
+
+  @media(max-width:980px){
+    .claim-type-grid{grid-template-columns:repeat(2,1fr);}
+    .workspace{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="content">
+
+  <div class="page-head">
+    <div>
+      <h1>Submit a Claim</h1>
+      <div class="breadcrumb">
+        <span class="seg">National</span><span class="sep">/</span><span class="seg">Ashanti Region</span><span class="sep">/</span><span class="seg">Kumasi Metro District</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:18px;">
+    <div style="padding:18px;">
+      <div class="field" style="max-width:360px;margin-bottom:0;">
+        <label>Staff ID / Unique ID</label>
+        <div class="validate-row">
+          <input id="staffIdInput" placeholder="e.g. 118820451" value="118820451">
+          <button class="btn btn-primary btn-sm" id="staffIdLookupBtn">Find</button>
+        </div>
+        <div class="hint">Enter the member's Staff ID / Unique ID to load their details below.</div>
+      </div>
+      <div class="member-context" id="memberContext" style="padding:18px 0 0;margin-top:14px;border-top:1px solid var(--border);">
+        <div class="mc-avatar" id="claimAvatar">AS</div>
+        <div class="mc-info">
+          <div class="mc-name" id="claimMemberName">Ama Serwaa</div>
+          <div class="mc-sub" id="claimMemberSub">118820451 · St. Louis SHS · Kumasi Metro</div>
+        </div>
+        <span class="mc-tag" id="claimSpouseTag">Spouse on record: Yaw Serwaa</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-head"><h2>1. Select Claim Type</h2></div>
+    <div class="claim-type-grid" id="claimTypeGrid"></div>
+  </div>
+
+  <div id="claimFormWrap" style="display:none;">
+
+    <div class="benefit-banner" id="benefitBanner"></div>
+
+    <div class="who-panel" id="whoPanel" style="display:none;">
+      <div class="who-title">Who is this claim for?</div>
+      <div class="who-options" id="whoOptions">
+        <label class="picked"><input type="radio" name="claimWho" value="member" checked> For Member</label>
+        <label><input type="radio" name="claimWho" value="spouse"> For Spouse</label>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <div class="panel">
+        <div class="panel-head"><h2>2. Claim Details</h2></div>
+        <div style="padding:18px;">
+
+          <div class="fieldset">
+            <div class="fieldset-title">Member on Record</div>
+            <div class="row-2">
+              <div class="field"><label>Name of Member</label><input disabled id="cfMemberName" value=""></div>
+              <div class="field"><label>Controller ID</label><input disabled id="cfControllerId" value=""></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label>Region</label><input disabled id="cfRegion" value=""></div>
+              <div class="field"><label>District</label><input disabled id="cfDistrict" value=""></div>
+            </div>
+          </div>
+
+          <div class="fieldset" id="fsDynamic"></div>
+
+          <div class="fieldset">
+            <div class="fieldset-title">Documents You're Presenting</div>
+            <div id="docChecklist"></div>
+          </div>
+
+          <div class="fieldset">
+            <div class="fieldset-title">Mode of Payment</div>
+            <div style="margin-bottom:10px;"><span class="badge active"><span class="dot"></span>Cheque</span></div>
+            <div class="field hint" style="margin:0;">Payment for this scheme is made by cheque only, issued to the member's registered district office for collection.</div>
+          </div>
+
+          <div class="fieldset">
+            <div class="fieldset-title">Declaration</div>
+            <div class="declare-box">
+              <input type="checkbox" id="declareCheck">
+              <label for="declareCheck">I do hereby declare that all the above information provided are true and that I have not concealed or withheld any material information. I undertake to furnish the company with any documentation which may be required.</label>
+            </div>
+            <div class="field" style="margin-top:14px;"><label>Claim Lodged By</label><input id="cfLodgedBy" value="Kwame Owusu, Kumasi Metro District Secretary"></div>
+            <div class="row-2">
+              <div class="field"><label>Mobile Number</label><input id="cfMobile" value="024 XXX XXXX"></div>
+              <div class="field"><label>Date</label><input disabled value="4 Sep 2026"></div>
+            </div>
+          </div>
+
+        </div>
+        <div class="drawer-footer">
+          <button class="btn btn-ghost" id="saveDraftClaim">Save Draft</button>
+          <button class="btn btn-primary" id="submitClaim">Submit Claim for Review</button>
+        </div>
+      </div>
+
+      <div class="side-panel">
+        <div class="panel">
+          <div class="panel-head"><h2>Benefit Summary</h2></div>
+          <div class="benefit-recap" id="benefitRecap"></div>
+        </div>
+        <div class="doc-progress" id="docProgress"></div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M9 12.5 11 14.5 15.5 9"/><circle cx="12" cy="12" r="9"/></svg><span id="toastMsg">Saved</span></div>
+
+<script>
+/* ---------------- sample data ---------------- */
+const MEMBERS = [
+  {name:"Ama Serwaa", id:"118820451", school:"St. Louis SHS", district:"Kumasi Metro", region:"Ashanti Region"},
+  {name:"Yaw Mensah-Bonsu", id:"118004221", school:"Anglican Basic School", district:"Ejisu", region:"Ashanti Region"},
+  {name:"Comfort Adjei", id:"117993310", school:"Obuasi Girls SHS", district:"Obuasi", region:"Ashanti Region"},
+  {name:"Abena Owusu", id:"118839120", school:"Kumasi High School", district:"Kumasi Metro", region:"Ashanti Region"},
+  {name:"Yaa Frimpong", id:"118771002", school:"Prempeh College", district:"Kumasi Metro", region:"Ashanti Region"},
+  {name:"Nana Yeboah", id:"117440871", school:"Obuasi Technical Institute", district:"Obuasi", region:"Ashanti Region"},
+  {name:"Efua Darko", id:"118002234", school:"Kumasi Anglican SHS", district:"Kumasi Metro", region:"Ashanti Region"},
+  {name:"Kojo Antwi", id:"119003321", school:"Tema Metro Basic", district:"Tema", region:"Greater Accra Region"},
+];
+
+const CLAIM_SPOUSES = {
+  "Ama Serwaa": {name:"Yaw Serwaa", ghanaCard:"GHA-221004521-3"},
+  "Efua Darko": {name:"Kwabena Darko", ghanaCard:"GHA-330218847-1"},
+  "Comfort Adjei": {name:"Samuel Adjei", ghanaCard:"GHA-118820234-9"},
+};
+
+function initials(name){ return name.split(" ").map(w=>w[0]).slice(0,2).join(""); }
+function fmtGHS(n){ return "GH¢" + n.toLocaleString(); }
+
+let claimMember = {name:"Ama Serwaa", id:"118820451", school:"St. Louis SHS", district:"Kumasi Metro", region:"Ashanti Region"};
+let selectedClaimType = null;
+let claimWho = "member";
+
+function loadClaimMember(name){
+  const m = MEMBERS.find(x=>x.name===name);
+  claimMember = m ? {name:m.name, id:m.id, school:m.school, district:m.district, region:m.region} : claimMember;
+  document.getElementById("staffIdInput").value = claimMember.id;
+  document.getElementById("claimAvatar").textContent = initials(claimMember.name);
+  document.getElementById("claimMemberName").textContent = claimMember.name;
+  document.getElementById("claimMemberSub").textContent = `${claimMember.id} · ${claimMember.school} · ${claimMember.district}, ${claimMember.region}`;
+  const spouse = CLAIM_SPOUSES[claimMember.name];
+  const tag = document.getElementById("claimSpouseTag");
+  tag.style.display = spouse ? "inline-block" : "none";
+  tag.textContent = spouse ? `Spouse on record: ${spouse.name}` : "";
+  if(selectedClaimType) selectClaimType(selectedClaimType);
+}
+
+const CLAIM_TYPES = {
+  death: {
+    label:"Death Claim", coverage:"Member & Spouse",
+    benefit:{member:13000, spouse:6500},
+    icon:`<path d="M4 21V9l8-5 8 5v12"/><path d="M9 21v-6h6v6"/><path d="M12 3v4"/>`,
+    color:"rose",
+    docs:(who)=>[
+      {label:"Medical Certificate or Doctor's Report of Cause of Death", any:true},
+      {label:"Death Certificate or Mortuary Documentation", any:true},
+      {label:"Police Report (in case of accident)", req:false},
+      {label:"Others", req:false},
+    ],
+  },
+  tpd: {
+    label:"Total & Permanent Disability", coverage:"Member & Spouse",
+    benefit:{member:13000, spouse:6500},
+    icon:`<circle cx="12" cy="5.5" r="2"/><path d="M12 8v5l-3.5 6M12 13l3.5 6M8 11h8"/>`,
+    color:"violet",
+    docs:(who)=>[
+      {label:"Doctor's Report of Proof of Inability to Perform Duties", req:true},
+      {label:"Police Report (in case of accident)", req:false},
+      {label:"Marriage Certificate", req: who==="spouse"},
+      {label:"Others", req:false},
+    ],
+  },
+  critical: {
+    label:"Named Critical Illness", coverage:"Member only",
+    benefit:{member:8000},
+    icon:`<path d="M3 12h4l2-7 4 14 2-7h6"/>`,
+    color:"amber",
+    docs:()=>[
+      {label:"Medical Report / Specialist Confirmation of Diagnosis", req:true},
+      {label:"Laboratory / Diagnostic Test Results", req:false},
+      {label:"Hospital Discharge Summary (if applicable)", req:false},
+      {label:"Others", req:false},
+    ],
+  },
+  hospital: {
+    label:"Hospitalization", coverage:"Member only",
+    benefit:{member:2500}, benefitNote:"per scheme year · minimum 10 consecutive nights",
+    icon:`<path d="M4 21V9l8-5 8 5v12"/><path d="M9 21v-6h6v6"/><path d="M12 7v4M10 9h4"/>`,
+    color:"teal",
+    docs:()=>[
+      {label:"Hospital Discharge Summary or Medical Bill Showing Number of Nights", req:true},
+      {label:"Doctor's Report", req:false},
+      {label:"Others", req:false},
+    ],
+  },
+};
+
+const ILLNESSES = ["Cancer","Heart Attack","Major Organ Transplant","Paraplegia","Heart Valve Replacement","Major Burns","Multiple Sclerosis","Liver Failure","Stroke","Kidney Failure","Coronary Artery Bypass Surgery","Blindness","Surgery of the Aorta","End Stage Lung Failure","Coma"];
+
+function renderClaimTypeGrid(){
+  const grid = document.getElementById("claimTypeGrid");
+  grid.innerHTML = Object.entries(CLAIM_TYPES).map(([key,t])=>`
+    <div class="claim-type-card ${selectedClaimType===key?'selected':''}" data-claim-key="${key}">
+      <div class="ct-icon icon-${t.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${t.icon}</svg></div>
+      <div class="ct-title">${t.label}</div>
+      <div class="ct-cover">${t.coverage}</div>
+      <div class="ct-benefit">${t.benefit.spouse ? fmtGHS(t.benefit.member)+" / "+fmtGHS(t.benefit.spouse) : fmtGHS(t.benefit.member)}
+        <small>${t.benefit.spouse ? "Member / Spouse" : (t.benefitNote || "Flat benefit")}</small>
+      </div>
+    </div>
+  `).join("");
+  grid.querySelectorAll(".claim-type-card").forEach(card=>{
+    card.addEventListener("click", ()=>selectClaimType(card.dataset.claimKey));
+  });
+}
+
+function selectClaimType(key){
+  selectedClaimType = key;
+  claimWho = "member";
+  document.querySelectorAll(".claim-type-card").forEach(c=>c.classList.toggle("selected", c.dataset.claimKey===key));
+  document.getElementById("claimFormWrap").style.display = "";
+
+  document.getElementById("cfMemberName").value = claimMember.name;
+  document.getElementById("cfControllerId").value = claimMember.id;
+  document.getElementById("cfRegion").value = claimMember.region;
+  document.getElementById("cfDistrict").value = claimMember.district;
+
+  renderBenefitBanner();
+  renderWhoPanel();
+  renderDynamicFields();
+  renderDocuments();
+  updateBenefitRecap();
+}
+
+function renderBenefitBanner(){
+  const t = CLAIM_TYPES[selectedClaimType];
+  const hasWho = !!t.benefit.spouse;
+  const amount = claimWho==="spouse" && t.benefit.spouse ? t.benefit.spouse : t.benefit.member;
+  document.getElementById("benefitBanner").innerHTML = `
+    <div>
+      <div class="bb-type">${t.coverage}</div>
+      <div class="bb-name">${t.label}</div>
+    </div>
+    <div class="bb-right">
+      <div class="bb-amount">${fmtGHS(amount)}<small>${t.benefitNote || (hasWho ? (claimWho==="spouse"?"Spouse benefit":"Member benefit") : "Benefit amount")}</small></div>
+    </div>
+  `;
+}
+
+function renderWhoPanel(){
+  const t = CLAIM_TYPES[selectedClaimType];
+  const hasWho = !!t.benefit.spouse;
+  const panel = document.getElementById("whoPanel");
+  panel.style.display = hasWho ? "" : "none";
+  if(!hasWho) return;
+  document.getElementById("whoOptions").innerHTML = `
+    <label class="${claimWho==='member'?'picked':''}"><input type="radio" name="claimWho" value="member" ${claimWho==='member'?'checked':''}> For Member</label>
+    <label class="${claimWho==='spouse'?'picked':''}"><input type="radio" name="claimWho" value="spouse" ${claimWho==='spouse'?'checked':''}> For Spouse</label>
+  `;
+  document.querySelectorAll('#whoOptions input[name="claimWho"]').forEach(r=>{
+    r.addEventListener("change", ()=>{
+      claimWho = r.value;
+      renderBenefitBanner();
+      renderWhoPanel();
+      renderDynamicFields();
+      renderDocuments();
+      updateBenefitRecap();
+    });
+  });
+}
+
+function renderDynamicFields(){
+  const t = CLAIM_TYPES[selectedClaimType];
+  const fs = document.getElementById("fsDynamic");
+  const spouse = CLAIM_SPOUSES[claimMember.name];
+
+  if(selectedClaimType==="death" || selectedClaimType==="tpd"){
+    const personLabel = selectedClaimType==="death" ? "Deceased" : "Disabled Person";
+    const prefillName = claimWho==="spouse" ? (spouse ? spouse.name : "") : claimMember.name;
+    const relationship = claimWho==="spouse" ? "Spouse" : "Self";
+    fs.innerHTML = `
+      <div class="fieldset-title">Description of the ${personLabel}</div>
+      <div class="row-2">
+        <div class="field"><label>Name of ${personLabel}</label><input disabled value="${prefillName}"></div>
+        <div class="field"><label>Relationship to Member</label><input disabled value="${relationship}"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>${selectedClaimType==="death"?"Date of Death":"Date of Incidence"}</label><input type="date"></div>
+        <div class="field"><label>${selectedClaimType==="death"?"Cause of Death":"Cause of Disability"}</label><input placeholder="e.g. ${selectedClaimType==='death'?'Cardiac arrest':'Road traffic accident'}"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>ID Type</label>
+          <select><option>Ghana Card</option></select>
+        </div>
+        <div class="field"><label>ID Number</label><input placeholder="${claimWho==='spouse' && spouse ? spouse.ghanaCard : 'GHA-000000000-0'}" value="${claimWho==='spouse' && spouse ? spouse.ghanaCard : ''}"></div>
+      </div>
+    `;
+  } else if(selectedClaimType==="critical"){
+    fs.innerHTML = `
+      <div class="fieldset-title">Diagnosis Details</div>
+      <div class="row-2">
+        <div class="field"><label>Date of Diagnosis</label><input type="date"></div>
+        <div class="field"><label>Diagnosing Hospital / Physician</label><input placeholder="e.g. Komfo Anokye Teaching Hospital"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>ID Type</label><select><option>Ghana Card</option></select></div>
+        <div class="field"><label>ID Number</label><input placeholder="GHA-000000000-0"></div>
+      </div>
+      <div class="field">
+        <label>Named Critical Illness Diagnosed (tick one)</label>
+        <div class="illness-grid" id="illnessGrid">
+          ${ILLNESSES.map((ill,i)=>`<label class="illness-item"><input type="radio" name="illness" value="${ill}"><span>${ill}</span></label>`).join("")}
+          <label class="illness-item"><input type="radio" name="illness" value="Others" id="illnessOthersRadio"><span>Others (specify)</span></label>
+        </div>
+        <input id="illnessOthersInput" placeholder="Specify illness — subject to approval by miLife" style="margin-top:8px;display:none;">
+      </div>
+    `;
+    document.getElementById("illnessOthersRadio").addEventListener("change", ()=>{
+      document.getElementById("illnessOthersInput").style.display = "";
+    });
+    fs.querySelectorAll('input[name="illness"]').forEach(r=>{
+      r.addEventListener("change", ()=>{
+        if(r.value!=="Others") document.getElementById("illnessOthersInput").style.display = "none";
+      });
+    });
+  } else if(selectedClaimType==="hospital"){
+    fs.innerHTML = `
+      <div class="fieldset-title">Hospitalization Details</div>
+      <div class="field"><label>Name of Hospital<span class="required-star">*</span></label><input placeholder="e.g. Komfo Anokye Teaching Hospital" id="hospName"></div>
+      <div class="row-2">
+        <div class="field"><label>Date of Admission</label><input type="date" id="hospAdmit"></div>
+        <div class="field"><label>Date of Discharge</label><input type="date" id="hospDischarge"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Number of Nights Admitted</label><input disabled id="hospNights" value="—"></div>
+        <div class="field"><label>Reason for Hospitalization / Diagnosis</label><input placeholder="e.g. Malaria complications"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>ID Type</label><select><option>Ghana Card</option></select></div>
+        <div class="field"><label>ID Number</label><input placeholder="GHA-000000000-0"></div>
+      </div>
+      <div class="nights-check neutral" id="nightsCheck">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>
+        Enter admission and discharge dates to check eligibility
+      </div>
+    `;
+    const admitEl = document.getElementById("hospAdmit");
+    const dischargeEl = document.getElementById("hospDischarge");
+    const recalc = ()=>{
+      const a = new Date(admitEl.value), d = new Date(dischargeEl.value);
+      const box = document.getElementById("nightsCheck");
+      if(admitEl.value && dischargeEl.value && d > a){
+        const nights = Math.round((d-a)/86400000);
+        document.getElementById("hospNights").value = nights + (nights===1 ? " night" : " nights");
+        if(nights >= 10){
+          box.className = "nights-check ok";
+          box.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 12.5 11 14.5 15.5 9"/><circle cx="12" cy="12" r="9"/></svg>${nights} nights meets the 10-night minimum — eligible for the GH¢2,500 benefit`;
+        } else {
+          box.className = "nights-check bad";
+          box.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 9v4.5M12 16.2v.2"/><circle cx="12" cy="12" r="9"/></svg>${nights} nights is below the 10-night minimum required for this benefit`;
+        }
+      } else {
+        document.getElementById("hospNights").value = "—";
+      }
+    };
+    admitEl.addEventListener("change", recalc);
+    dischargeEl.addEventListener("change", recalc);
+  }
+}
+
+function renderDocuments(){
+  const t = CLAIM_TYPES[selectedClaimType];
+  const docs = t.docs(claimWho);
+  const note = selectedClaimType==="death"
+    ? `<div class="doc-note">Provide any ONE of the death-proof documents below.</div>`
+    : "";
+  document.getElementById("docChecklist").innerHTML = note + docs.map((d,i)=>{
+    const tagClass = d.any ? "any-tag" : (d.req ? "req-tag" : "opt-tag");
+    const tagText = d.any ? "Any One Required" : (d.req ? "Required" : "Optional");
+    return `
+    <div class="doc-check">
+      <input type="checkbox" id="doc${i}">
+      <label for="doc${i}">${d.label}</label>
+      <span class="${tagClass}">${tagText}</span>
+      <button type="button" class="doc-upload-btn" id="docUpload${i}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 15V4m0 0 4 4m-4-4-4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        Upload
+      </button>
+    </div>
+  `;}).join("");
+  docs.forEach((d,i)=>{
+    const cb = document.getElementById(`doc${i}`);
+    const btn = document.getElementById(`docUpload${i}`);
+    cb.addEventListener("change", ()=>{
+      btn.classList.toggle("show", cb.checked);
+      if(!cb.checked){
+        btn.classList.remove("attached");
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 15V4m0 0 4 4m-4-4-4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>Upload`;
+      }
+      updateDocProgress();
+    });
+    btn.addEventListener("click", ()=>{
+      btn.classList.add("attached");
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 12.5 11 14.5 15.5 9"/><circle cx="12" cy="12" r="9"/></svg>Attached`;
+    });
+  });
+  updateDocProgress();
+}
+
+function updateDocProgress(){
+  const boxes = document.querySelectorAll('#docChecklist input[type=checkbox]');
+  const total = boxes.length;
+  const checked = Array.from(boxes).filter(b=>b.checked).length;
+  document.getElementById("docProgress").textContent = `${checked} of ${total} documents checked`;
+}
+
+function updateBenefitRecap(){
+  const t = CLAIM_TYPES[selectedClaimType];
+  const amount = claimWho==="spouse" && t.benefit.spouse ? t.benefit.spouse : t.benefit.member;
+  document.getElementById("benefitRecap").innerHTML = `
+    <div class="br-row"><span class="k">Claim type</span><span class="v">${t.label}</span></div>
+    <div class="br-row"><span class="k">Filing for</span><span class="v">${t.benefit.spouse ? (claimWho==="spouse"?"Spouse":"Member") : "Member"}</span></div>
+    <div class="br-row"><span class="k">Estimated benefit</span><span class="v" style="color:var(--teal-dark)">${fmtGHS(amount)}</span></div>
+    <div class="br-row"><span class="k">Member</span><span class="v">${claimMember.name}</span></div>
+    <div class="br-row"><span class="k">District</span><span class="v">${claimMember.district}</span></div>
+  `;
+}
+
+function lookupStaffId(){
+  const val = document.getElementById("staffIdInput").value.trim().toLowerCase();
+  if(!val) return;
+  const m = MEMBERS.find(x=>x.id.toLowerCase().includes(val) || x.name.toLowerCase().includes(val));
+  if(m){
+    loadClaimMember(m.name);
+  } else {
+    showToast("No member found for that Staff ID / Unique ID");
+  }
+}
+document.getElementById("staffIdLookupBtn").addEventListener("click", lookupStaffId);
+document.getElementById("staffIdInput").addEventListener("keydown", e=>{
+  if(e.key==="Enter") lookupStaffId();
+});
+
+function showToast(msg){
+  document.getElementById("toastMsg").textContent = msg;
+  const t = document.getElementById("toast");
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2600);
+}
+
+document.getElementById("saveDraftClaim").addEventListener("click", ()=>{
+  showToast("Draft saved");
+});
+
+document.getElementById("submitClaim").addEventListener("click", ()=>{
+  if(!selectedClaimType){ showToast("Select a claim type to continue"); return; }
+  if(!document.getElementById("declareCheck").checked){ showToast("Please confirm the declaration before submitting"); return; }
+  showToast("Claim submitted for review — Ref: GSC-CLM-00482");
+  document.getElementById("claimFormWrap").style.display = "none";
+  selectedClaimType = null;
+  renderClaimTypeGrid();
+});
+
+/* ---------------- init ---------------- */
+loadClaimMember(claimMember.name);
+renderClaimTypeGrid();
+</script>
+</body>
+</html>

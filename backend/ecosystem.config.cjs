@@ -36,7 +36,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
-      max_memory_restart: "1024M",
+      max_memory_restart: "3G",
       kill_timeout: 15000,
       env_production: {
         NODE_ENV: "production",

@@ -19,6 +19,7 @@
     "admin:reset-password": "tsx scripts/reset-admin-password.ts",
     "db:seed-geography": "tsx scripts/seed-geography.ts",
     "verify:member-scope": "tsx scripts/verify-member-scope.ts",
+    "clear:members-and-uploads": "tsx scripts/clear-members-and-uploads.ts",
     "verify:performance-indexes": "node scripts/verify-performance-indexes.mjs",
     "verify:performance-runtime": "node scripts/verify-performance-runtime.mjs",
     "verify:performance": "npm run verify:performance-indexes && npm run verify:performance-runtime",

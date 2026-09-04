@@ -117,7 +117,7 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
   const checksum = await sha256File(request.file.path);
   const duplicate = await prisma.importJob.findUnique({
     where: { type_checksum: { type: "REPORT_20", checksum } },
-    select: { id: true, status: true, createdAt: true, fileId: true, matchedRows: true, changedRows: true, file: { select: { storagePath: true } } },
+    select: { id: true, status: true, createdAt: true, updatedAt: true, fileId: true, matchedRows: true, changedRows: true, file: { select: { storagePath: true } } },
   });
   if (duplicate) {
     // Only block a re-upload once this file actually reconciled something. A failed run, or one that completed
@@ -127,6 +127,24 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
       response.status(409).json({
         success: false,
         message: "This exact Report 20 file has already been uploaded",
+        duplicateImport: duplicate,
+      });
+      return;
+    }
+    // A PENDING/PROCESSING duplicate might still be actively worked on by the queue -- deleting its
+    // row and underlying file out from under that job crashes it mid-run (observed in production as
+    // a PrismaClientKnownRequestError P2025 when the worker's own error handler tried to write
+    // status: FAILED to a row that had just been deleted by this exact code path). Once it's
+    // genuinely stale (see lib/stale-jobs.ts), point at /:id/rerun instead of re-uploading -- that
+    // reuses the same stored file rather than deleting and recreating it.
+    if (duplicate.status === "PENDING" || duplicate.status === "PROCESSING") {
+      await removeFile(request.file.path);
+      const stale = isStaleImportJob({ status: duplicate.status, updatedAt: duplicate.updatedAt });
+      response.status(409).json({
+        success: false,
+        message: stale
+          ? `This file is already uploaded as import #${duplicate.id}, which appears stuck. Use its Retry action instead of uploading again.`
+          : `This file is already being processed as import #${duplicate.id}. Wait for it to finish before uploading again.`,
         duplicateImport: duplicate,
       });
       return;

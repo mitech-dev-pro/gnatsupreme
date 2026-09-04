@@ -97,7 +97,7 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
   const checksum = await sha256File(request.file.path);
   const duplicate = await prisma.importJob.findUnique({
     where: { type_checksum: { type: "MEMBER_BULK", checksum } },
-    select: { id: true, status: true, fileId: true, importedRows: true, file: { select: { storagePath: true } } },
+    select: { id: true, status: true, updatedAt: true, fileId: true, importedRows: true, file: { select: { storagePath: true } } },
   });
   if (duplicate) {
     // Only block a re-upload once something was actually enrolled from this file. A failed run, or one that
@@ -106,6 +106,22 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
     if (duplicate.importedRows > 0) {
       await removeFile(request.file.path);
       response.status(409).json({ success: false, message: "This exact member file has already been uploaded", duplicateImport: duplicate });
+      return;
+    }
+    // A PENDING/PROCESSING duplicate might still be actively worked on by the queue -- deleting its
+    // row and underlying file out from under that job crashes it mid-run. Once it's genuinely stale
+    // (see lib/stale-jobs.ts), point at /:id/rerun instead of re-uploading -- that reuses the same
+    // stored file rather than deleting and recreating it.
+    if (duplicate.status === "PENDING" || duplicate.status === "PROCESSING") {
+      await removeFile(request.file.path);
+      const stale = isStaleImportJob({ status: duplicate.status, updatedAt: duplicate.updatedAt });
+      response.status(409).json({
+        success: false,
+        message: stale
+          ? `This file is already uploaded as import #${duplicate.id}, which appears stuck. Use its Retry action instead of uploading again.`
+          : `This file is already being processed as import #${duplicate.id}. Wait for it to finish before uploading again.`,
+        duplicateImport: duplicate,
+      });
       return;
     }
     await prisma.importJob.delete({ where: { id: duplicate.id } });

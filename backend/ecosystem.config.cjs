@@ -1,6 +1,9 @@
 const { availableParallelism } = require("node:os");
 
-const apiInstances = Math.max(1, Math.min(4, Math.ceil(availableParallelism() / 2)));
+const apiInstances = Math.max(
+  1,
+  Math.min(4, Math.ceil(availableParallelism() / 2)),
+);
 
 module.exports = {
   apps: [
@@ -33,7 +36,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
-      max_memory_restart: "512M",
+      max_memory_restart: "1024M",
       kill_timeout: 15000,
       env_production: {
         NODE_ENV: "production",

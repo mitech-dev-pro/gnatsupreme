@@ -30,6 +30,7 @@ import { memberPortalRouter } from "./modules/member-portal/member-portal.routes
 import { notificationRouter } from "./modules/notifications/notification.routes.js";
 import { memberNotificationRouter } from "./modules/notifications/member-notification.routes.js";
 import { publicSettingsRouter, settingsRouter } from "./modules/settings/settings.routes.js";
+import { externalRouter } from "./modules/external/external.routes.js";
 
 export const app = express();
 
@@ -80,6 +81,9 @@ app.use("/api/members", memberWorkflowRouter);
 app.use("/api/change-requests", changeRequestRouter);
 app.use("/api/member-auth", memberAuthRouter);
 app.use("/api/member-portal", memberPortalRouter);
+if (env.EXTERNAL_API_ENABLED) {
+  app.use("/api/external", externalRouter);
+}
 app.use("/api/notifications", notificationRouter);
 app.use("/api/member-portal", memberNotificationRouter);
 app.use("/api/settings", settingsRouter);

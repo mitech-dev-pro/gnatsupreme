@@ -74,9 +74,9 @@ export default function App() {
 
           <Route element={<MemberProtectedRoute />}>
             <Route path="/member" element={<MemberPortalLayout />}>
-              <Route index element={<MemberHome section="overview" />} />
-              <Route path="profile" element={<MemberHome section="profile" />} />
-              <Route path="household" element={<MemberHome section="household" />} />
+              <Route index element={<MemberHome section="profile" />} />
+              <Route path="profile" element={<Navigate to="/member" replace />} />
+              <Route path="household" element={<Navigate to="/member/requests" replace />} />
               <Route path="coverage" element={<MemberHome section="coverage" />} />
               <Route path="requests" element={<MemberHome section="requests" />} />
               <Route path="claims" element={<MemberHome section="claims" />} />

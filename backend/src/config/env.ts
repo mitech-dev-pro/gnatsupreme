@@ -96,6 +96,17 @@ const environmentSchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.string().min(16).optional(),
   ),
+  // Gates the external, API-key-authenticated member-lookup endpoint (modules/external) --
+  // dark (unmounted) by default so this cross-boundary, lower-trust surface only exists once a
+  // real partner key has been issued.
+  EXTERNAL_API_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  EXTERNAL_API_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(32).optional(),
+  ),
 });
 
 const result = environmentSchema.safeParse(process.env);
@@ -126,6 +137,16 @@ if (
   !result.data.REDIS_URL
 ) {
   throw new Error("REDIS_URL is required in production");
+}
+
+if (
+  result.success &&
+  result.data.EXTERNAL_API_ENABLED &&
+  !result.data.EXTERNAL_API_KEY
+) {
+  throw new Error(
+    "EXTERNAL_API_KEY is required when the external member API is enabled",
+  );
 }
 
 export const env = result.data;

@@ -627,9 +627,7 @@ function BeneficiaryForm({
 }
 
 export type MemberPortalSection =
-  | "overview"
   | "profile"
-  | "household"
   | "coverage"
   | "requests"
   | "claims"
@@ -637,7 +635,7 @@ export type MemberPortalSection =
   | "help";
 
 export default function MemberHome({
-  section = "overview",
+  section = "profile",
 }: {
   section?: MemberPortalSection;
 }) {
@@ -675,6 +673,11 @@ export default function MemberHome({
   const [requestComposer, setRequestComposer] = useState<
     "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | null
   >(null);
+  // Endorsements consolidates the old separate "My Covered lives" page as a sub-tab here,
+  // rather than a 5th sidebar item.
+  const [endorsementsTab, setEndorsementsTab] = useState<
+    "requests" | "household"
+  >("requests");
   const [completionBusy, setCompletionBusy] = useState(false);
   const [completionError, setCompletionError] = useState("");
 
@@ -863,9 +866,9 @@ export default function MemberHome({
         </div>
       ) : profile ? (
         <div
-          className={`grid grid-cols-1 gap-4 md:grid-cols-2 xl:gap-5 ${section === "household" ? "lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)]" : ""}`}
+          className={`grid grid-cols-1 gap-4 md:grid-cols-2 xl:gap-5 ${section === "requests" && endorsementsTab === "household" ? "lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)]" : ""}`}
         >
-          {section === "overview" && (
+          {section === "profile" && (
             <>
               <section
                 className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
@@ -1163,235 +1166,6 @@ export default function MemberHome({
               )}
 
               <section
-                className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5"
-                aria-labelledby="member-actions-title"
-              >
-                <h2
-                  id="member-actions-title"
-                  className="text-[14px] font-bold text-(--text-strong)"
-                >
-                  What would you like to do?
-                </h2>
-                <nav
-                  className="mt-3 divide-y divide-(--border-default)"
-                  aria-label="Member actions"
-                >
-                  {[
-                    [
-                      "Review my details",
-                      "/member/profile",
-                      "Check your personal and employment information",
-                    ],
-                    [
-                      "Manage covered lives",
-                      "/member/household",
-                      "Review spouse and beneficiary records",
-                    ],
-                    [
-                      "Track my requests",
-                      "/member/requests",
-                      "Follow changes submitted for review",
-                    ],
-                    [
-                      "Check my claims",
-                      "/member/claims",
-                      "View claim submission status",
-                    ],
-                  ].map(([label, to, description]) => (
-                    <Link
-                      key={to}
-                      to={to}
-                      className="group flex min-h-13 items-center gap-3 py-2.5 text-left no-underline"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <strong className="block text-[12.5px] text-(--text-strong)">
-                          {label}
-                        </strong>
-                        <small className="block truncate text-[10.5px] text-(--text-muted)">
-                          {description}
-                        </small>
-                      </span>
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 20 20"
-                        fill="none"
-                        className="size-4 shrink-0 text-(--text-muted) transition-transform group-hover:translate-x-0.5"
-                      >
-                        <path
-                          d="m7.5 5 5 5-5 5"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </Link>
-                  ))}
-                </nav>
-              </section>
-
-              <section
-                className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5"
-                aria-labelledby="household-summary-title"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h2
-                    id="household-summary-title"
-                    className="text-[14px] font-bold text-(--text-strong)"
-                  >
-                    Covered lives
-                  </h2>
-                  <Link
-                    to="/member/household"
-                    className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline"
-                  >
-                    Manage
-                  </Link>
-                </div>
-                <dl className="mt-4 space-y-3 text-[12px]">
-                  <div className="flex items-center justify-between">
-                    <dt className="text-(--text-muted)">Spouse</dt>
-                    <dd className="font-semibold text-(--text-strong)">
-                      {profile.spouse?.fullName ?? "Not recorded"}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-(--text-muted)">Beneficiaries</dt>
-                    <dd className="font-semibold text-(--text-strong)">
-                      {profile.beneficiaries.length} of 10 recorded
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <dt className="text-(--text-muted)">
-                      Changes awaiting review
-                    </dt>
-                    <dd className="font-semibold text-(--text-strong)">
-                      {
-                        requests.filter(
-                          (request) => request.status === "PENDING",
-                        ).length
-                      }
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section
-                className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5 md:col-span-2 xl:col-span-1"
-                aria-labelledby="recent-requests-title"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h2
-                    id="recent-requests-title"
-                    className="text-[14px] font-bold text-(--text-strong)"
-                  >
-                    Recent requests
-                  </h2>
-                  <Link
-                    to="/member/requests"
-                    className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline"
-                  >
-                    View all
-                  </Link>
-                </div>
-                {requests.length === 0 ? (
-                  <p className="mt-3 text-[12px] text-(--text-muted)">
-                    No change requests submitted.
-                  </p>
-                ) : (
-                  <ul className="mt-2 divide-y divide-(--border-default)">
-                    {requests.slice(0, 3).map((request) => (
-                      <li
-                        key={request.id}
-                        className="flex items-center gap-3 py-2.5"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate text-[12px] text-(--text-strong)">
-                            {REQUEST_TYPE_LABELS[request.type]}
-                          </strong>
-                          <small className="text-[10.5px] text-(--text-muted)">
-                            {timeAgo(request.requestedAt)}
-                          </small>
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[9.5px] font-bold ${REQUEST_STATUS_STYLES[request.status]}`}
-                        >
-                          {request.status.charAt(0) +
-                            request.status.slice(1).toLowerCase()}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section
-                className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5 md:col-span-2 xl:col-span-1"
-                aria-labelledby="recent-notifications-title"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h2
-                    id="recent-notifications-title"
-                    className="text-[14px] font-bold text-(--text-strong)"
-                  >
-                    Recent notifications
-                  </h2>
-                  <Link
-                    to="/member/notifications"
-                    className="text-[11px] font-bold text-(--action-primary) no-underline hover:underline"
-                  >
-                    View all {unreadCount > 0 ? `(${unreadCount})` : ""}
-                  </Link>
-                </div>
-                {notifications.length === 0 ? (
-                  <p className="mt-3 text-[12px] text-(--text-muted)">
-                    No notifications yet.
-                  </p>
-                ) : (
-                  <ul className="mt-2 divide-y divide-(--border-default)">
-                    {notifications.slice(0, 3).map((item) => (
-                      <li
-                        key={item.id}
-                        className="flex items-start gap-2.5 py-2.5"
-                      >
-                        {!item.readAt && (
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-(--action-primary)" />
-                        )}
-                        {item.type === "PROFILE_COMPLETION_REQUIRED" ? (
-                          <Link
-                            to="/member"
-                            className="min-w-0 flex-1 no-underline"
-                          >
-                            <strong className="block truncate text-[12px] text-(--text-strong)">
-                              {item.title}
-                            </strong>
-                            <small className="mt-0.5 line-clamp-1 block text-[10.5px] text-(--text-muted)">
-                              {item.message}
-                            </small>
-                          </Link>
-                        ) : (
-                          <span className="min-w-0 flex-1">
-                            <strong className="block truncate text-[12px] text-(--text-strong)">
-                              {item.title}
-                            </strong>
-                            <small className="mt-0.5 line-clamp-1 block text-[10.5px] text-(--text-muted)">
-                              {item.message}
-                            </small>
-                          </span>
-                        )}
-                        <time className="shrink-0 text-[9.5px] text-(--text-muted)">
-                          {timeAgo(item.createdAt)}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </>
-          )}
-
-          {section === "profile" && (
-            <section
               className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
               aria-labelledby="member-profile-title"
             >
@@ -1516,9 +1290,37 @@ export default function MemberHome({
                 />
               )}
             </section>
+            </>
           )}
 
-          {section === "household" && (
+          {section === "requests" && (
+            <div
+              className="flex gap-1 rounded-[9px] bg-(--surface-subtle) p-1 md:col-span-2"
+              role="tablist"
+              aria-label="Endorsements"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={endorsementsTab === "requests"}
+                onClick={() => setEndorsementsTab("requests")}
+                className={`min-h-9 flex-1 rounded-[7px] px-3 text-[11.5px] font-bold transition focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)] ${endorsementsTab === "requests" ? "bg-(--surface-raised) text-(--brand-primary) shadow-[0_1px_2px_rgba(30,39,97,0.08)]" : "text-(--text-muted) hover:text-(--ink)"}`}
+              >
+                Requests history
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={endorsementsTab === "household"}
+                onClick={() => setEndorsementsTab("household")}
+                className={`min-h-9 flex-1 rounded-[7px] px-3 text-[11.5px] font-bold transition focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)] ${endorsementsTab === "household" ? "bg-(--surface-raised) text-(--brand-primary) shadow-[0_1px_2px_rgba(30,39,97,0.08)]" : "text-(--text-muted) hover:text-(--ink)"}`}
+              >
+                Household
+              </button>
+            </div>
+          )}
+
+          {section === "requests" && endorsementsTab === "household" && (
             <section
               className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
               aria-labelledby="household-title"
@@ -1566,7 +1368,7 @@ export default function MemberHome({
             </section>
           )}
 
-          {section === "household" && (
+          {section === "requests" && endorsementsTab === "household" && (
             <section
               className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5"
               aria-labelledby="spouse-title"
@@ -1636,7 +1438,7 @@ export default function MemberHome({
             </section>
           )}
 
-          {section === "household" && (
+          {section === "requests" && endorsementsTab === "household" && (
             <section
               className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-5"
               aria-labelledby="beneficiaries-title"
@@ -1919,7 +1721,7 @@ export default function MemberHome({
             </section>
           )}
 
-          {section === "requests" && (
+          {section === "requests" && endorsementsTab === "requests" && (
             <section
               className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
               aria-labelledby="new-request-heading"
@@ -2021,19 +1823,20 @@ export default function MemberHome({
                 </div>
               )}
               <footer className="border-t border-(--border-default) px-4 py-3 text-[11px] text-(--text-muted) sm:px-5">
-                To update or remove an existing beneficiary, use{" "}
-                <Link
-                  to="/member/household"
-                  className="font-bold text-(--brand-primary)"
+                To update or remove an existing beneficiary, use the{" "}
+                <button
+                  type="button"
+                  onClick={() => setEndorsementsTab("household")}
+                  className="font-bold text-(--brand-primary) underline-offset-2 hover:underline"
                 >
-                  Covered lives
-                </Link>{" "}
-                and select that person.
+                  Household
+                </button>{" "}
+                tab and select that person.
               </footer>
             </section>
           )}
 
-          {section === "requests" && requests.length > 0 && (
+          {section === "requests" && endorsementsTab === "requests" && requests.length > 0 && (
             <section
               className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
               aria-labelledby="requests-heading"
@@ -2232,7 +2035,7 @@ export default function MemberHome({
               No active benefit plan is available yet.
             </div>
           )}
-          {section === "requests" && requests.length === 0 && (
+          {section === "requests" && endorsementsTab === "requests" && requests.length === 0 && (
             <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) px-5 py-6 text-center md:col-span-2">
               <h2 className="text-[14px] font-bold text-(--brand-primary)">
                 No request history yet

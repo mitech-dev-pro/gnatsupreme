@@ -1,5 +1,5 @@
 type Method = "get" | "post" | "patch" | "put" | "delete";
-type Security = "public" | "staff" | "member";
+type Security = "public" | "staff" | "member" | "external";
 
 type Endpoint = {
   method: Method;
@@ -80,6 +80,7 @@ const endpoints: Endpoint[] = [
   { method: "patch", path: "/api/member-portal/profile-completion/spouse-declaration", summary: "Declare that no spouse should be recorded", tag: "Member portal", security: "member" },
   { method: "post", path: "/api/member-portal/change-requests", summary: "Submit member change request", tag: "Member portal", security: "member" },
   { method: "patch", path: "/api/member-portal/change-requests/{id}/cancel", summary: "Cancel a pending member change request", tag: "Member portal", security: "member" },
+  { method: "get", path: "/api/external/members/{controllerId}", summary: "External member identity/eligibility lookup", tag: "External", security: "external" },
 ];
 
 function parameters(path: string) {
@@ -95,7 +96,10 @@ for (const endpoint of endpoints) {
     tags: [endpoint.tag],
     summary: endpoint.summary,
     operationId: `${endpoint.method}_${endpoint.path.replace(/[^a-zA-Z0-9]+/g, "_")}`,
-    security: endpoint.security === "public" ? [] : [{ [endpoint.security === "member" ? "memberBearer" : "staffBearer"]: [] }],
+    security:
+      endpoint.security === "public"
+        ? []
+        : [{ [endpoint.security === "member" ? "memberBearer" : endpoint.security === "external" ? "externalApiKey" : "staffBearer"]: [] }],
     ...(parameters(endpoint.path).length ? { parameters: parameters(endpoint.path) } : {}),
     ...(["post", "patch", "put"].includes(endpoint.method)
       ? { requestBody: { required: false, content: { "application/json": { schema: { type: "object", additionalProperties: true } }, "multipart/form-data": { schema: { type: "object", additionalProperties: true } } } } }
@@ -124,6 +128,7 @@ export const openApiDocument = {
     securitySchemes: {
       staffBearer: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "Staff access token" },
       memberBearer: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "Member access token" },
+      externalApiKey: { type: "apiKey", in: "header", name: "X-API-Key", description: "Shared external integration key" },
     },
     schemas: {
       Error: {

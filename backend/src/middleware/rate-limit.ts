@@ -117,6 +117,17 @@ export const memberLookupIpRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("member-lookup-network"),
 });
 
+// IP-keyed since the only caller identity on this route is one shared API key (no per-caller
+// login/session to key off of) -- this throttles key-guessing attempts too, since it's mounted
+// ahead of the API-key check in external.routes.ts.
+export const externalApiKeyRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("external-member-lookup"),
+});
+
 export const memberSetupRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: 5,

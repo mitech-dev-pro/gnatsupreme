@@ -20,19 +20,9 @@ const icon = (path: ReactNode) => (
 );
 const NAV_ITEMS: NavItem[] = [
   {
-    label: "Overview",
+    label: "Member Details",
     to: "/member",
     end: true,
-    icon: icon(
-      <>
-        <path d="M4 11.5 12 5l8 6.5V20H4Z" />
-        <path d="M9 20v-5h6v5" />
-      </>,
-    ),
-  },
-  {
-    label: "My profile",
-    to: "/member/profile",
     icon: icon(
       <>
         <circle cx="12" cy="8" r="3.5" />
@@ -41,32 +31,12 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "My Covered lives",
-    to: "/member/household",
-    icon: icon(
-      <>
-        <circle cx="9" cy="8" r="3" />
-        <path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.5M16 14c2.8 0 5 2.2 5 5" />
-      </>,
-    ),
-  },
-  {
-    label: "My Benefits",
+    label: "My Scheme Benefits",
     to: "/member/coverage",
     icon: icon(
       <>
         <path d="M12 3 5 6v5c0 4.7 2.8 8.2 7 10 4.2-1.8 7-5.3 7-10V6Z" />
         <path d="m9 12 2 2 4-4" />
-      </>,
-    ),
-  },
-  {
-    label: "My Requests",
-    to: "/member/requests",
-    icon: icon(
-      <>
-        <path d="M7 3h10v4H7zM5 5H4v16h16V5h-1" />
-        <path d="M8 12h8M8 16h5" />
       </>,
     ),
   },
@@ -81,16 +51,22 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Notifications",
-    to: "/member/notifications",
+    label: "Endorsements",
+    to: "/member/requests",
     icon: icon(
       <>
-        <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M10 21h4" />
+        <path d="M7 3h10v4H7zM5 5H4v16h16V5h-1" />
+        <path d="M8 12h8M8 16h5" />
       </>,
     ),
   },
+];
+
+// Not part of the primary 4-item nav (Member Details / My Scheme Benefits / My Claims /
+// Endorsements) -- rendered separately in the desktop footer and the mobile "More" sheet.
+const SECONDARY_LINKS: NavItem[] = [
   {
-    label: "Help",
+    label: "Help & support",
     to: "/member/help",
     icon: icon(
       <>
@@ -101,13 +77,18 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+// Standalone so the header notification bell doesn't depend on NAV_ITEMS still having a
+// "Notifications" entry at a fixed index -- Notifications dropped out of the primary nav but
+// the route/page itself is unchanged and still reachable via this bell.
+const bellIcon = icon(
+  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M10 21h4" />,
+);
+
 const PAGE_TITLES: Record<string, string> = {
-  "/member": "Overview",
-  "/member/profile": "My profile",
-  "/member/household": "Covered lives",
-  "/member/coverage": "My Benefits",
-  "/member/requests": "My requests",
+  "/member": "Member Details",
+  "/member/coverage": "My Scheme Benefits",
   "/member/claims": "My Claims",
+  "/member/requests": "Endorsements",
   "/member/notifications": "Notifications",
   "/member/help": "Help and support",
 };
@@ -189,24 +170,24 @@ export default function MemberPortalLayout() {
             >
               {item.icon}
               <span>{item.label}</span>
-              {item.label === "Notifications" && unreadCount > 0 && (
-                <span
-                  className="ml-auto rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold"
-                  style={{ color: settings.primaryColor }}
-                >
-                  {unreadCount}
-                </span>
-              )}
             </NavLink>
           ))}
         </nav>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="m-3 min-h-10 rounded-[9px] border border-white/14 px-3 text-left text-[12px] font-semibold text-white/72 hover:bg-white/7 hover:text-white"
-        >
-          Sign out
-        </button>
+        <div className="m-3 space-y-1.5">
+          {SECONDARY_LINKS.map((item) => (
+            <NavLink key={item.to} to={item.to} className={desktopLink}>
+              {item.icon}
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="min-h-10 w-full rounded-[9px] border border-white/14 px-3 text-left text-[12px] font-semibold text-white/72 hover:bg-white/7 hover:text-white"
+          >
+            Sign out
+          </button>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -233,7 +214,7 @@ export default function MemberPortalLayout() {
               aria-label={`${unreadCount} unread notifications`}
               className="relative grid size-10 place-items-center rounded-[9px] border border-(--border-default) text-(--text-muted) no-underline hover:bg-(--surface-subtle)"
             >
-              {NAV_ITEMS[6].icon}
+              {bellIcon}
               {unreadCount > 0 && (
                 <span className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-(--danger) px-1 text-center text-[8px] font-bold leading-4 text-white">
                   {Math.min(unreadCount, 99)}
@@ -258,24 +239,22 @@ export default function MemberPortalLayout() {
         </main>
 
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-(--border-default) bg-(--surface-raised) px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-(--border-default) bg-(--surface-raised) px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
           aria-label="Primary member navigation"
         >
-          {NAV_ITEMS.slice(0, 1)
-            .concat(NAV_ITEMS.slice(3, 5))
-            .map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[8px] text-[10px] font-semibold no-underline ${isActive ? "text-(--action-primary)" : "text-(--text-muted)"}`
-                }
-              >
-                {item.icon}
-                <span>{item.label === "Overview" ? "Home" : item.label}</span>
-              </NavLink>
-            ))}
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                `flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[8px] text-[10px] font-semibold no-underline ${isActive ? "text-(--action-primary)" : "text-(--text-muted)"}`
+              }
+            >
+              {item.icon}
+              <span>{item.label === "Member Details" ? "Details" : item.label}</span>
+            </NavLink>
+          ))}
           <button
             type="button"
             aria-expanded={moreOpen}
@@ -316,7 +295,7 @@ export default function MemberPortalLayout() {
               </span>
             </div>
             <nav className="grid grid-cols-2 gap-2">
-              {NAV_ITEMS.slice(1).map((item) => (
+              {SECONDARY_LINKS.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

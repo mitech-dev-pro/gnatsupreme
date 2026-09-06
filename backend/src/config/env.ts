@@ -3,33 +3,61 @@ import "dotenv/config";
 import { z } from "zod";
 
 const environmentSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   DATABASE_URL: z
     .string()
     .url()
     .refine(
-      (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+      (value) =>
+        value.startsWith("postgresql://") || value.startsWith("postgres://"),
       "DATABASE_URL must be a PostgreSQL connection URL",
     ),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(5),
-  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(250).max(60_000).default(5_000),
-  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
-  JWT_ACCESS_SECRET: z.string().min(64, "JWT_ACCESS_SECRET must contain at least 64 characters"),
+  DB_CONNECTION_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(250)
+    .max(60_000)
+    .default(5_000),
+  DB_IDLE_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(300_000)
+    .default(30_000),
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(64, "JWT_ACCESS_SECRET must contain at least 64 characters"),
   JWT_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   REFRESH_COOKIE_NAME: z.string().min(1).default("gnat_refresh_token"),
-  MEMBER_REFRESH_COOKIE_NAME: z.string().min(1).default("gnat_member_refresh_token"),
+  MEMBER_REFRESH_COOKIE_NAME: z
+    .string()
+    .min(1)
+    .default("gnat_member_refresh_token"),
   MEMBER_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(10),
   MEMBER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
-  MEMBER_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  MEMBER_PASSWORD_RESET_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(1440)
+    .default(60),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
-  API_DOCS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).optional(),
+  API_DOCS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
+    .optional(),
   LOG_FILE: z.string().trim().min(1).default("logs/app.log"),
   FRONTEND_ORIGIN: z.string().url(),
   UPLOAD_DIR: z.string().trim().min(1).default("uploads"),
-  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(25).default(10),
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(51).default(10),
   // Optional outside production: with it unset, the app runs background jobs (member/Report 20
   // imports) inline in the API process instead of via BullMQ+Redis+a separate worker process —
   // see queues/import.queue.ts. Caching (lib/cache.ts) already degrades to a PostgreSQL fallback
@@ -39,12 +67,21 @@ const environmentSchema = z.object({
     z
       .string()
       .url()
-      .refine((value) => value.startsWith("redis://") || value.startsWith("rediss://"), "REDIS_URL must be a redis:// or rediss:// connection URL")
+      .refine(
+        (value) =>
+          value.startsWith("redis://") || value.startsWith("rediss://"),
+        "REDIS_URL must be a redis:// or rediss:// connection URL",
+      )
       .optional(),
   ),
   AUTH_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   READ_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(3_600).default(60),
-  SLOW_REQUEST_THRESHOLD_MS: z.coerce.number().int().min(100).max(60_000).default(750),
+  SLOW_REQUEST_THRESHOLD_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(60_000)
+    .default(750),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
   MANKRADO_ENABLED: z
     .enum(["true", "false"])
@@ -73,11 +110,21 @@ if (!result.success) {
   throw new Error("Application environment validation failed");
 }
 
-if (result.success && result.data.MANKRADO_ENABLED && !result.data.MANKRADO_BASE_URL) {
-  throw new Error("MANKRADO_BASE_URL is required when the Mankrado integration is enabled");
+if (
+  result.success &&
+  result.data.MANKRADO_ENABLED &&
+  !result.data.MANKRADO_BASE_URL
+) {
+  throw new Error(
+    "MANKRADO_BASE_URL is required when the Mankrado integration is enabled",
+  );
 }
 
-if (result.success && result.data.NODE_ENV === "production" && !result.data.REDIS_URL) {
+if (
+  result.success &&
+  result.data.NODE_ENV === "production" &&
+  !result.data.REDIS_URL
+) {
   throw new Error("REDIS_URL is required in production");
 }
 

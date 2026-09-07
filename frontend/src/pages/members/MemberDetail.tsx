@@ -52,7 +52,11 @@ type MemberDetailData = {
   report20Matched: boolean;
   missingFromReport20At: string | null;
   createdAt: string;
-  district: { id: number; name: string; region: { id: number; name: string } } | null;
+  district: {
+    id: number;
+    name: string;
+    region: { id: number; name: string };
+  } | null;
   spouse: Spouse | null;
   beneficiaries: Beneficiary[];
   createdBy: { id: number; fullName: string } | null;
@@ -78,10 +82,10 @@ function formatDate(iso: string | null) {
   });
 }
 
-function toDateInput(iso: string | null) {
-  if (!iso) return "";
-  return iso.slice(0, 10);
-}
+// function toDateInput(iso: string | null) {
+//   if (!iso) return "";
+//   return iso.slice(0, 10);
+// }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -212,7 +216,9 @@ export default function MemberDetail() {
       setPasswordResult(res.data.password);
       setConfirmingPasswordReset(false);
     } catch (err: any) {
-      setPasswordError(err?.response?.data?.message || "Unable to generate a password.");
+      setPasswordError(
+        err?.response?.data?.message || "Unable to generate a password.",
+      );
     } finally {
       setPasswordBusy(false);
     }
@@ -224,12 +230,16 @@ export default function MemberDetail() {
     setAssignBusy(true);
     setAssignError("");
     try {
-      await api.patch(`/members/${id}`, { districtId: Number(assignDistrictId) });
+      await api.patch(`/members/${id}`, {
+        districtId: Number(assignDistrictId),
+      });
       setAssigningDistrict(false);
       setAssignDistrictId("");
       await load();
     } catch (err: any) {
-      setAssignError(err?.response?.data?.message || "Unable to assign a district.");
+      setAssignError(
+        err?.response?.data?.message || "Unable to assign a district.",
+      );
     } finally {
       setAssignBusy(false);
     }
@@ -506,19 +516,27 @@ export default function MemberDetail() {
                       {member.district.name}, {member.district.region.name}
                     </>
                   ) : (
-                    <span className="font-semibold text-[#b9791a]">No district assigned</span>
+                    <span className="font-semibold text-[#b9791a]">
+                      No district assigned
+                    </span>
                   )}
                 </div>
                 {!member.district && canReview && (
                   <div className="mt-2">
                     {assigningDistrict ? (
-                      <form onSubmit={submitAssignDistrict} className="flex flex-wrap items-center gap-2">
+                      <form
+                        onSubmit={submitAssignDistrict}
+                        className="flex flex-wrap items-center gap-2"
+                      >
                         <Dropdown
                           className="w-64"
                           value={assignDistrictId}
                           onChange={setAssignDistrictId}
                           placeholder="Select a district…"
-                          options={districts.map((d) => ({ value: String(d.id), label: `${d.name} · ${d.region.name}` }))}
+                          options={districts.map((d) => ({
+                            value: String(d.id),
+                            label: `${d.name} · ${d.region.name}`,
+                          }))}
                         />
                         <button
                           type="submit"
@@ -535,7 +553,9 @@ export default function MemberDetail() {
                           Cancel
                         </button>
                         {assignError && (
-                          <p className="w-full text-[11.5px] font-semibold text-[#c23b3b]">{assignError}</p>
+                          <p className="w-full text-[11.5px] font-semibold text-[#c23b3b]">
+                            {assignError}
+                          </p>
                         )}
                       </form>
                     ) : (
@@ -761,15 +781,19 @@ export default function MemberDetail() {
             {canReview && (
               <div className="member-panel">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-[15px] font-bold text-[#1e2761]">Login &amp; Password</h2>
+                  <h2 className="text-[15px] font-bold text-[#1e2761]">
+                    Login &amp; Password
+                  </h2>
                 </div>
                 <p className="mb-3 text-[12px] leading-relaxed text-[#5b6472]">
-                  Members sign in with their Controller ID and a password. Generate one here and
-                  share it with the member through a secure channel — it can't be shown again after
-                  this.
+                  Members sign in with their Controller ID and a password.
+                  Generate one here and share it with the member through a
+                  secure channel — it can't be shown again after this.
                 </p>
                 {passwordError && (
-                  <p className="mb-2 text-[11.5px] font-semibold text-[#c23b3b]">{passwordError}</p>
+                  <p className="mb-2 text-[11.5px] font-semibold text-[#c23b3b]">
+                    {passwordError}
+                  </p>
                 )}
                 {passwordResult ? (
                   <div className="rounded-[9px] border border-[#a9dfcf] bg-[#dff7ee] px-3 py-2.5">
@@ -840,7 +864,9 @@ export default function MemberDetail() {
               {editingSpouse ? (
                 <form onSubmit={saveSpouse} className="space-y-3">
                   <div>
-                    <label htmlFor="spouse-full-name" className={labelClasses}>Full Name</label>
+                    <label htmlFor="spouse-full-name" className={labelClasses}>
+                      Full Name
+                    </label>
                     <input
                       id="spouse-full-name"
                       value={spouseName}
@@ -848,19 +874,33 @@ export default function MemberDetail() {
                         setSpouseName(e.target.value);
                         clearSpouseFieldError("fullName");
                       }}
-                      aria-invalid={Boolean(spouseFieldErrors.fullName) || undefined}
-                      aria-describedby={spouseFieldErrors.fullName ? "spouse-full-name-error" : undefined}
+                      aria-invalid={
+                        Boolean(spouseFieldErrors.fullName) || undefined
+                      }
+                      aria-describedby={
+                        spouseFieldErrors.fullName
+                          ? "spouse-full-name-error"
+                          : undefined
+                      }
                       className={`${inputClasses} ${spouseFieldErrors.fullName ? "border-(--danger)" : ""}`}
                     />
                     {spouseFieldErrors.fullName && (
-                      <p id="spouse-full-name-error" className="mt-1.5 text-[11.5px] font-semibold text-(--danger)">
+                      <p
+                        id="spouse-full-name-error"
+                        className="mt-1.5 text-[11.5px] font-semibold text-(--danger)"
+                      >
                         {spouseFieldErrors.fullName}
                       </p>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="spouse-ghana-card" className={labelClasses}>Ghana Card ID</label>
+                      <label
+                        htmlFor="spouse-ghana-card"
+                        className={labelClasses}
+                      >
+                        Ghana Card ID
+                      </label>
                       <input
                         id="spouse-ghana-card"
                         value={spouseGhanaCard}
@@ -868,12 +908,21 @@ export default function MemberDetail() {
                           setSpouseGhanaCard(e.target.value);
                           clearSpouseFieldError("ghanaCardId");
                         }}
-                        aria-invalid={Boolean(spouseFieldErrors.ghanaCardId) || undefined}
-                        aria-describedby={spouseFieldErrors.ghanaCardId ? "spouse-ghana-card-error" : undefined}
+                        aria-invalid={
+                          Boolean(spouseFieldErrors.ghanaCardId) || undefined
+                        }
+                        aria-describedby={
+                          spouseFieldErrors.ghanaCardId
+                            ? "spouse-ghana-card-error"
+                            : undefined
+                        }
                         className={`${inputClasses} ${spouseFieldErrors.ghanaCardId ? "border-(--danger)" : ""}`}
                       />
                       {spouseFieldErrors.ghanaCardId && (
-                        <p id="spouse-ghana-card-error" className="mt-1.5 text-[11.5px] font-semibold text-(--danger)">
+                        <p
+                          id="spouse-ghana-card-error"
+                          className="mt-1.5 text-[11.5px] font-semibold text-(--danger)"
+                        >
                           {spouseFieldErrors.ghanaCardId}
                         </p>
                       )}
@@ -959,7 +1008,10 @@ export default function MemberDetail() {
                           relationship: value,
                         }))
                       }
-                      options={RELATIONSHIPS.map((r) => ({ value: r, label: r }))}
+                      options={RELATIONSHIPS.map((r) => ({
+                        value: r,
+                        label: r,
+                      }))}
                     />
                   </div>
                   <div>
@@ -1038,101 +1090,103 @@ export default function MemberDetail() {
                 </div>
               ) : (
                 <>
-                <div className="member-beneficiary-cards">
-                  {member.beneficiaries.map((b) => (
-                    <div key={b.id} className="member-beneficiary-card">
-                      <div>
-                        <strong>{b.fullName}</strong>
-                        <span>
-                          {b.relationship} · {formatDate(b.dateOfBirth)}
-                        </span>
-                        {b.trusteeName ? (
+                  <div className="member-beneficiary-cards">
+                    {member.beneficiaries.map((b) => (
+                      <div key={b.id} className="member-beneficiary-card">
+                        <div>
+                          <strong>{b.fullName}</strong>
                           <span>
-                            Trustee: {b.trusteeName}
-                            {b.trusteeGhanaCardId ? ` (${b.trusteeGhanaCardId})` : ""}
+                            {b.relationship} · {formatDate(b.dateOfBirth)}
                           </span>
-                        ) : (
-                          <span>No trustee required</span>
+                          {b.trusteeName ? (
+                            <span>
+                              Trustee: {b.trusteeName}
+                              {b.trusteeGhanaCardId
+                                ? ` (${b.trusteeGhanaCardId})`
+                                : ""}
+                            </span>
+                          ) : (
+                            <span>No trustee required</span>
+                          )}
+                        </div>
+                        {member.beneficiaries.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmation({
+                                type: "beneficiary",
+                                id: b.id,
+                                name: b.fullName,
+                              })
+                            }
+                            disabled={busy}
+                            className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
+                          >
+                            Remove
+                          </button>
                         )}
                       </div>
-                      {member.beneficiaries.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmation({
-                              type: "beneficiary",
-                              id: b.id,
-                              name: b.fullName,
-                            })
-                          }
-                          disabled={busy}
-                          className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <table className="member-beneficiary-table">
-                  <thead>
-                    <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
-                      <th className="py-2">Name</th>
-                      <th className="py-2">Relationship</th>
-                      <th className="py-2">Date of Birth</th>
-                      <th className="py-2">Trustee</th>
-                      <th className="py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {member.beneficiaries.map((b) => (
-                      <tr
-                        key={b.id}
-                        className="border-b border-[#e5e9f0] last:border-0"
-                      >
-                        <td className="py-2 text-[#171b26]">{b.fullName}</td>
-                        <td className="py-2 text-[#5b6472]">
-                          {b.relationship}
-                        </td>
-                        <td className="py-2 text-[#5b6472]">
-                          {formatDate(b.dateOfBirth)}
-                        </td>
-                        <td className="py-2 text-[#5b6472]">
-                          {b.trusteeName ? (
-                            <>
-                              <strong className="member-trustee-name">
-                                {b.trusteeName}
-                              </strong>
-                              <small className="member-trustee-card">
-                                {b.trusteeGhanaCardId || "No Ghana Card"}
-                              </small>
-                            </>
-                          ) : (
-                            "Not required"
-                          )}
-                        </td>
-                        <td className="py-2 text-right">
-                          {member.beneficiaries.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setConfirmation({
-                                  type: "beneficiary",
-                                  id: b.id,
-                                  name: b.fullName,
-                                })
-                              }
-                              disabled={busy}
-                              className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </td>
-                      </tr>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                  <table className="member-beneficiary-table">
+                    <thead>
+                      <tr className="border-b border-[#e5e9f0] text-[11px] font-semibold uppercase tracking-wide text-[#5b6472]">
+                        <th className="py-2">Name</th>
+                        <th className="py-2">Relationship</th>
+                        <th className="py-2">Date of Birth</th>
+                        <th className="py-2">Trustee</th>
+                        <th className="py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {member.beneficiaries.map((b) => (
+                        <tr
+                          key={b.id}
+                          className="border-b border-[#e5e9f0] last:border-0"
+                        >
+                          <td className="py-2 text-[#171b26]">{b.fullName}</td>
+                          <td className="py-2 text-[#5b6472]">
+                            {b.relationship}
+                          </td>
+                          <td className="py-2 text-[#5b6472]">
+                            {formatDate(b.dateOfBirth)}
+                          </td>
+                          <td className="py-2 text-[#5b6472]">
+                            {b.trusteeName ? (
+                              <>
+                                <strong className="member-trustee-name">
+                                  {b.trusteeName}
+                                </strong>
+                                <small className="member-trustee-card">
+                                  {b.trusteeGhanaCardId || "No Ghana Card"}
+                                </small>
+                              </>
+                            ) : (
+                              "Not required"
+                            )}
+                          </td>
+                          <td className="py-2 text-right">
+                            {member.beneficiaries.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConfirmation({
+                                    type: "beneficiary",
+                                    id: b.id,
+                                    name: b.fullName,
+                                  })
+                                }
+                                disabled={busy}
+                                className="text-[11.5px] font-semibold text-[#c23b3b] hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </>
               )}
             </div>
@@ -1298,7 +1352,10 @@ export default function MemberDetail() {
                   <Dropdown
                     value={removeReason}
                     onChange={setRemoveReason}
-                    options={REMOVAL_REASONS.map((r) => ({ value: r, label: r }))}
+                    options={REMOVAL_REASONS.map((r) => ({
+                      value: r,
+                      label: r,
+                    }))}
                   />
                   <label className={`${labelClasses} mt-3`}>
                     Note{" "}

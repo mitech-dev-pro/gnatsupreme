@@ -26,3 +26,23 @@ export function parseISODate(value: string | null | undefined): Date | null {
   if (!match) return null;
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
+
+const ADULT_AGE_YEARS = 18;
+
+// The only remaining use of date of birth anywhere in this app: computing whether a
+// beneficiary is a minor, which gates the trustee/guardian fields (previously gated on
+// relationship === "CHILD", which doesn't reliably indicate age -- an adult child is still
+// relationship CHILD). An unknown/empty date of birth is treated as "not a minor" rather than
+// blocking the form, since minority can't be asserted without a birth date.
+export function isMinor(dateOfBirth: string | null | undefined, asOf: Date = new Date()): boolean {
+  const dob = parseISODate(dateOfBirth);
+  if (!dob) return false;
+
+  let age = asOf.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear =
+    asOf.getMonth() > dob.getMonth() ||
+    (asOf.getMonth() === dob.getMonth() && asOf.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+
+  return age < ADULT_AGE_YEARS;
+}

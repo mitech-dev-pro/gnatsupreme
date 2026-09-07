@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isMinor } from "../../lib/age.js";
+
 const optionalDate = z.coerce.date().max(new Date(), "Date cannot be in the future").nullable().optional();
 const optionalText = z.string().trim().max(120).nullable().optional();
 const ghanaCard = z
@@ -12,11 +14,19 @@ const ghanaCard = z
 
 export const spouseSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
-  dateOfBirth: optionalDate,
   ghanaCardId: ghanaCard,
 });
 
-export const beneficiarySchema = z.object({
+// Date of birth is collected only here -- nowhere else in the app still asks for it -- because
+// it's the only input to the guardian-required check below. A minor beneficiary (computed from
+// dateOfBirth, not from relationship === "CHILD", since an adult child is still relationship
+// CHILD) must have trustee details on file.
+//
+// Exported separately (rather than only the refined version) so routes doing a partial update
+// can still call `.partial()` -- that's a ZodObject-only method the refined ZodEffects below
+// doesn't expose. Partial updates intentionally don't re-run the guardian refinement (a patch
+// that only changes trusteeName shouldn't be forced to resupply dateOfBirth just to pass it).
+export const beneficiaryBaseSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   relationship: z.enum(["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"]),
   dateOfBirth: optionalDate,
@@ -24,11 +34,20 @@ export const beneficiarySchema = z.object({
   trusteeGhanaCardId: ghanaCard,
 });
 
+export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) => {
+  if (!isMinor(value.dateOfBirth ?? null)) return;
+  if (!value.trusteeName) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeName"], message: "Trustee name is required for a beneficiary under 18" });
+  }
+  if (!value.trusteeGhanaCardId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeGhanaCardId"], message: "Trustee Ghana Card ID is required for a beneficiary under 18" });
+  }
+});
+
 const memberFields = {
   // Controller ID length isn't fixed — currently 4-7 digits, expected to grow over time.
   controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
   fullName: z.string().trim().min(2).max(120),
-  dateOfBirth: optionalDate,
   ghanaCardId: ghanaCard,
   phone: z.string().trim().min(7).max(30).nullable().optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address").nullable().optional(),

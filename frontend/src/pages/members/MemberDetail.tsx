@@ -8,7 +8,7 @@ import Dropdown from "@/components/ui/Dropdown";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useDistricts } from "@/lib/useDistricts";
-import { parseISODate, toISODate } from "@/lib/utils";
+import { isMinor, parseISODate, toISODate } from "@/lib/utils";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -36,7 +36,6 @@ type Beneficiary = {
 
 type Spouse = {
   fullName: string;
-  dateOfBirth: string | null;
   ghanaCardId: string | null;
 };
 
@@ -44,7 +43,6 @@ type MemberDetailData = {
   id: number;
   controllerId: string;
   fullName: string;
-  dateOfBirth: string | null;
   ghanaCardId: string | null;
   phone: string | null;
   phoneVerifiedAt: string | null;
@@ -115,7 +113,6 @@ export default function MemberDetail() {
 
   const [editing, setEditing] = useState(false);
   const [editFullName, setEditFullName] = useState("");
-  const [editDob, setEditDob] = useState("");
   const [editGhanaCard, setEditGhanaCard] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -134,10 +131,9 @@ export default function MemberDetail() {
 
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCard, setSpouseGhanaCard] = useState("");
   const [spouseFieldErrors, setSpouseFieldErrors] = useState<
-    Partial<Record<"fullName" | "dateOfBirth" | "ghanaCardId", string>>
+    Partial<Record<"fullName" | "ghanaCardId", string>>
   >({});
 
   const [addingBeneficiary, setAddingBeneficiary] = useState(false);
@@ -145,7 +141,10 @@ export default function MemberDetail() {
     fullName: "",
     relationship: "CHILD",
     dateOfBirth: "",
+    trusteeName: "",
+    trusteeGhanaCardId: "",
   });
+  const [beneficiaryError, setBeneficiaryError] = useState("");
 
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [returnNote, setReturnNote] = useState("");
@@ -177,7 +176,6 @@ export default function MemberDetail() {
   const startEditing = () => {
     if (!member) return;
     setEditFullName(member.fullName);
-    setEditDob(toDateInput(member.dateOfBirth));
     setEditGhanaCard(member.ghanaCardId ?? "");
     setEditPhone(member.phone ?? "");
     setEditEmail(member.email ?? "");
@@ -192,7 +190,6 @@ export default function MemberDetail() {
     try {
       await api.patch(`/members/${id}`, {
         fullName: editFullName.trim(),
-        dateOfBirth: editDob || null,
         ghanaCardId: editGhanaCard.trim() || null,
         phone: editPhone.trim() || null,
         email: editEmail.trim() || null,
@@ -240,16 +237,13 @@ export default function MemberDetail() {
 
   const startEditingSpouse = () => {
     setSpouseName(member?.spouse?.fullName ?? "");
-    setSpouseDob(toDateInput(member?.spouse?.dateOfBirth ?? null));
     setSpouseGhanaCard(member?.spouse?.ghanaCardId ?? "");
     setSpouseFieldErrors({});
     setActionError("");
     setEditingSpouse(true);
   };
 
-  const clearSpouseFieldError = (
-    field: "fullName" | "dateOfBirth" | "ghanaCardId",
-  ) => {
+  const clearSpouseFieldError = (field: "fullName" | "ghanaCardId") => {
     setSpouseFieldErrors((current) => {
       if (!current[field]) return current;
       const next = { ...current };
@@ -266,7 +260,6 @@ export default function MemberDetail() {
     try {
       await api.put(`/members/${id}/spouse`, {
         fullName: spouseName.trim(),
-        dateOfBirth: spouseDob || null,
         ghanaCardId: spouseGhanaCard.trim() || null,
       });
       setSpouseFieldErrors({});
@@ -276,14 +269,11 @@ export default function MemberDetail() {
       const issues = err?.response?.data?.errors as
         | Array<{ field?: string; message?: string }>
         | undefined;
-      const fieldErrors: Partial<
-        Record<"fullName" | "dateOfBirth" | "ghanaCardId", string>
-      > = {};
+      const fieldErrors: Partial<Record<"fullName" | "ghanaCardId", string>> =
+        {};
       issues?.forEach((issue) => {
         if (
-          (issue.field === "fullName" ||
-            issue.field === "dateOfBirth" ||
-            issue.field === "ghanaCardId") &&
+          (issue.field === "fullName" || issue.field === "ghanaCardId") &&
           issue.message &&
           !fieldErrors[issue.field]
         ) {
@@ -320,6 +310,17 @@ export default function MemberDetail() {
 
   const addBeneficiary = async (e: FormEvent) => {
     e.preventDefault();
+    setBeneficiaryError("");
+    if (
+      isMinor(newBeneficiary.dateOfBirth) &&
+      (!newBeneficiary.trusteeName.trim() ||
+        !newBeneficiary.trusteeGhanaCardId.trim())
+    ) {
+      setBeneficiaryError(
+        "Trustee name and Ghana Card ID are required for a beneficiary under 18.",
+      );
+      return;
+    }
     setBusy(true);
     setActionError("");
     try {
@@ -327,12 +328,16 @@ export default function MemberDetail() {
         fullName: newBeneficiary.fullName.trim(),
         relationship: newBeneficiary.relationship,
         dateOfBirth: newBeneficiary.dateOfBirth || null,
+        trusteeName: newBeneficiary.trusteeName.trim() || null,
+        trusteeGhanaCardId: newBeneficiary.trusteeGhanaCardId.trim() || null,
       });
       setAddingBeneficiary(false);
       setNewBeneficiary({
         fullName: "",
         relationship: "CHILD",
         dateOfBirth: "",
+        trusteeName: "",
+        trusteeGhanaCardId: "",
       });
       await load();
     } catch (err: any) {
@@ -669,14 +674,6 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <DatePicker
-                        label="Date of Birth"
-                        maxDate={new Date()}
-                        value={parseISODate(editDob)}
-                        onChange={(date) => setEditDob(date ? toISODate(date) : "")}
-                      />
-                    </div>
-                    <div>
                       <label className={labelClasses}>Ghana Card ID</label>
                       <input
                         value={editGhanaCard}
@@ -730,10 +727,6 @@ export default function MemberDetail() {
                 </form>
               ) : (
                 <dl className="grid grid-cols-2 gap-4">
-                  <Field
-                    label="Date of Birth"
-                    value={formatDate(member.dateOfBirth)}
-                  />
                   <Field
                     label="Ghana Card ID"
                     value={member.ghanaCardId ?? "—"}
@@ -867,18 +860,6 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <DatePicker
-                        label="Date of Birth"
-                        maxDate={new Date()}
-                        value={parseISODate(spouseDob)}
-                        error={spouseFieldErrors.dateOfBirth}
-                        onChange={(date) => {
-                          setSpouseDob(date ? toISODate(date) : "");
-                          clearSpouseFieldError("dateOfBirth");
-                        }}
-                      />
-                    </div>
-                    <div>
                       <label htmlFor="spouse-ghana-card" className={labelClasses}>Ghana Card ID</label>
                       <input
                         id="spouse-ghana-card"
@@ -922,10 +903,6 @@ export default function MemberDetail() {
               ) : member.spouse ? (
                 <dl className="grid grid-cols-2 gap-4">
                   <Field label="Name" value={member.spouse.fullName} />
-                  <Field
-                    label="Date of Birth"
-                    value={formatDate(member.spouse.dateOfBirth)}
-                  />
                   <Field
                     label="Ghana Card ID"
                     value={member.spouse.ghanaCardId ?? "—"}
@@ -998,6 +975,44 @@ export default function MemberDetail() {
                       }
                     />
                   </div>
+                  {isMinor(newBeneficiary.dateOfBirth) && (
+                    <>
+                      <div>
+                        <label className={labelClasses}>Trustee Name</label>
+                        <input
+                          value={newBeneficiary.trusteeName}
+                          onChange={(e) =>
+                            setNewBeneficiary((p) => ({
+                              ...p,
+                              trusteeName: e.target.value,
+                            }))
+                          }
+                          className={inputClasses}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClasses}>
+                          Trustee Ghana Card ID
+                        </label>
+                        <input
+                          value={newBeneficiary.trusteeGhanaCardId}
+                          onChange={(e) =>
+                            setNewBeneficiary((p) => ({
+                              ...p,
+                              trusteeGhanaCardId: e.target.value.toUpperCase(),
+                            }))
+                          }
+                          placeholder="GHA-000000000-0"
+                          className={inputClasses}
+                        />
+                      </div>
+                    </>
+                  )}
+                  {beneficiaryError && (
+                    <div className="sm:col-span-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12px] font-semibold text-[#c23b3b]">
+                      {beneficiaryError}
+                    </div>
+                  )}
                   <div className="flex items-end gap-2">
                     <button
                       type="submit"

@@ -10,7 +10,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import "./ChangeRequests.css";
 
 type RequestItem = { id: number; type: string; status: string; proposedData: Record<string, unknown> | null; targetBeneficiaryId: number | null; requestNote: string | null; reviewNote: string | null; requestedAt: string; reviewedAt: string | null; member: { id: number; controllerId: string; fullName: string; status: string }; requestedBy: { id: number; fullName: string } | null; reviewedBy: { id: number; fullName: string } | null };
-type MemberData = { id: number; fullName: string; dateOfBirth: string | null; ghanaCardId: string | null; phone: string | null; school: string; spouse: Record<string, unknown> | null; beneficiaries: Array<Record<string, unknown> & { id: number; fullName: string }> };
+type MemberData = { id: number; fullName: string; ghanaCardId: string | null; phone: string | null; school: string; spouse: Record<string, unknown> | null; beneficiaries: Array<Record<string, unknown> & { id: number; fullName: string }> };
 type Decision = "APPROVE" | "RETURN" | "REJECT";
 
 const TYPES = ["MEMBER_DETAILS", "SPOUSE", "BENEFICIARY_ADD", "BENEFICIARY_UPDATE", "BENEFICIARY_REMOVE"];

@@ -13,6 +13,7 @@ import {
   hashMemberPassword,
 } from "../member-auth/member-auth.tokens.js";
 import {
+  beneficiaryBaseSchema,
   beneficiaryIdParamsSchema,
   beneficiarySchema,
   createMemberSchema,
@@ -29,7 +30,7 @@ export const memberRouter = Router();
 
 const memberInclude = {
   district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
-  spouse: { select: { id: true, fullName: true, dateOfBirth: true, ghanaCardId: true } },
+  spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
   beneficiaries: {
     orderBy: { id: "asc" as const },
     select: { id: true, fullName: true, relationship: true, dateOfBirth: true, trusteeName: true, trusteeGhanaCardId: true },
@@ -480,10 +481,8 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     entityType: "SPOUSE",
     entityId: spouse.id,
     description: `${member.spouse ? "Updated" : "Added"} spouse for ${member.fullName}`,
-    beforeData: member.spouse
-      ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
-      : undefined,
-    afterData: { fullName: spouse.fullName, dateOfBirth: spouse.dateOfBirth },
+    beforeData: member.spouse ? { fullName: member.spouse.fullName } : undefined,
+    afterData: { fullName: spouse.fullName },
     regionId: member.district?.regionId,
     districtId: member.districtId,
   });
@@ -512,9 +511,7 @@ memberRouter.delete("/:id/spouse", async (request, response) => {
     entityType: "SPOUSE",
     entityId: member.spouse?.id,
     description: `Removed spouse from ${member.fullName}`,
-    beforeData: member.spouse
-      ? { fullName: member.spouse.fullName, dateOfBirth: member.spouse.dateOfBirth }
-      : undefined,
+    beforeData: member.spouse ? { fullName: member.spouse.fullName } : undefined,
     regionId: member.district?.regionId,
     districtId: member.districtId,
   });
@@ -554,7 +551,7 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
 
 memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response) => {
   const params = beneficiaryIdParamsSchema.safeParse(request.params);
-  const body = beneficiarySchema.partial().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
+  const body = beneficiaryBaseSchema.partial().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
   if (!params.success) return validationFailure(response, params.error);
   if (!body.success) return validationFailure(response, body.error);
   const member = await findAccessibleMember(params.data.id, currentUser(response));

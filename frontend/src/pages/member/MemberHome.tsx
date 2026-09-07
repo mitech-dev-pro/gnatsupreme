@@ -7,7 +7,7 @@ import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
-import { parseISODate, toISODate } from "@/lib/utils";
+import { isMinor, parseISODate, toISODate } from "@/lib/utils";
 
 type Beneficiary = {
   id: number;
@@ -20,7 +20,6 @@ type Beneficiary = {
 
 type Spouse = {
   fullName: string;
-  dateOfBirth: string | null;
   ghanaCardId: string | null;
 };
 
@@ -28,7 +27,6 @@ type MemberProfile = {
   id: number;
   controllerId: string;
   fullName: string;
-  dateOfBirth: string | null;
   ghanaCardId: string | null;
   phone: string | null;
   phoneVerifiedAt: string | null;
@@ -110,7 +108,7 @@ type ProfileCompletion = {
   percentage: number;
   showExpandedPrompt: boolean;
   items: Array<{
-    key: "dateOfBirth" | "ghanaCardId" | "spouse" | "beneficiary";
+    key: "ghanaCardId" | "spouse" | "beneficiary";
     label: string;
     status: "COMPLETE" | "PENDING" | "MISSING";
     requestType: "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD";
@@ -206,9 +204,6 @@ function MemberDetailsForm({
   onSubmitted: () => void;
 }) {
   const [fullName, setFullName] = useState(profile.fullName);
-  const [dateOfBirth, setDateOfBirth] = useState(
-    toDateInput(profile.dateOfBirth),
-  );
   const [ghanaCardId, setGhanaCardId] = useState(profile.ghanaCardId ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [school, setSchool] = useState(profile.school);
@@ -218,7 +213,6 @@ function MemberDetailsForm({
 
   const changed =
     fullName.trim() !== profile.fullName ||
-    dateOfBirth !== toDateInput(profile.dateOfBirth) ||
     ghanaCardId.trim() !== (profile.ghanaCardId ?? "") ||
     phone.trim() !== (profile.phone ?? "") ||
     school.trim() !== profile.school;
@@ -228,8 +222,6 @@ function MemberDetailsForm({
     const proposedData: Record<string, string | null> = {};
     if (fullName.trim() !== profile.fullName)
       proposedData.fullName = fullName.trim();
-    if (dateOfBirth !== toDateInput(profile.dateOfBirth))
-      proposedData.dateOfBirth = dateOfBirth || null;
     if (ghanaCardId.trim() !== (profile.ghanaCardId ?? ""))
       proposedData.ghanaCardId = ghanaCardId.trim() || null;
     if (phone.trim() !== (profile.phone ?? ""))
@@ -280,14 +272,6 @@ function MemberDetailsForm({
             className={inputClasses}
             minLength={2}
             required
-          />
-        </div>
-        <div>
-          <DatePicker
-            label="Date of birth"
-            maxDate={new Date()}
-            value={parseISODate(dateOfBirth)}
-            onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")}
           />
         </div>
         <div>
@@ -382,9 +366,6 @@ function SpouseForm({
   onSubmitted: () => void;
 }) {
   const [fullName, setFullName] = useState(spouse?.fullName ?? "");
-  const [dateOfBirth, setDateOfBirth] = useState(
-    toDateInput(spouse?.dateOfBirth ?? null),
-  );
   const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? "");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -399,7 +380,6 @@ function SpouseForm({
         type: "SPOUSE",
         proposedData: {
           fullName: fullName.trim(),
-          dateOfBirth: dateOfBirth || null,
           ghanaCardId: ghanaCardId.trim() || null,
         },
         requestNote: note.trim() || undefined,
@@ -430,24 +410,14 @@ function SpouseForm({
           minLength={2}
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <DatePicker
-            label="Date of Birth"
-            maxDate={new Date()}
-            value={parseISODate(dateOfBirth)}
-            onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")}
-          />
-        </div>
-        <div>
-          <label className={labelClasses}>Ghana Card ID</label>
-          <input
-            value={ghanaCardId}
-            onChange={(e) => setGhanaCardId(e.target.value.toUpperCase())}
-            placeholder="GHA-000000000-0"
-            className={inputClasses}
-          />
-        </div>
+      <div>
+        <label className={labelClasses}>Ghana Card ID</label>
+        <input
+          value={ghanaCardId}
+          onChange={(e) => setGhanaCardId(e.target.value.toUpperCase())}
+          placeholder="GHA-000000000-0"
+          className={inputClasses}
+        />
       </div>
       <div>
         <label className={labelClasses}>Note (optional)</label>
@@ -510,8 +480,14 @@ function BeneficiaryForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const minor = isMinor(dateOfBirth);
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (minor && (!trusteeName.trim() || !trusteeGhanaCardId.trim())) {
+      setError("Trustee name and Ghana Card ID are required for a beneficiary under 18.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -574,18 +550,26 @@ function BeneficiaryForm({
           onChange={(date) => setDateOfBirth(date ? toISODate(date) : "")}
         />
       </div>
+      {minor && (
+        <p className="rounded-lg bg-[#fbf0dd] px-3 py-2 text-[11.5px] font-semibold text-[#b9791a]">
+          This beneficiary is under 18 — trustee details are required.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className={labelClasses}>Trustee Name (optional)</label>
+          <label className={labelClasses}>
+            Trustee Name {minor ? "" : "(optional)"}
+          </label>
           <input
             value={trusteeName}
             onChange={(e) => setTrusteeName(e.target.value)}
             className={inputClasses}
+            required={minor}
           />
         </div>
         <div>
           <label className={labelClasses}>
-            Trustee Ghana Card ID (optional)
+            Trustee Ghana Card ID {minor ? "" : "(optional)"}
           </label>
           <input
             value={trusteeGhanaCardId}
@@ -594,6 +578,7 @@ function BeneficiaryForm({
             }
             placeholder="GHA-000000000-0"
             className={inputClasses}
+            required={minor}
           />
         </div>
       </div>
@@ -1032,8 +1017,7 @@ export default function MemberHome({
                             </div>
                             {item.status === "MISSING" && (
                               <div className="flex shrink-0 flex-wrap gap-2">
-                                {(item.key === "dateOfBirth" ||
-                                  item.key === "ghanaCardId") && (
+                                {item.key === "ghanaCardId" && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -1228,7 +1212,6 @@ export default function MemberHome({
                     <dl className="mt-3 divide-y divide-(--border-default)">
                       {[
                         ["Full legal name", profile.fullName],
-                        ["Date of birth", formatDate(profile.dateOfBirth)],
                         [
                           "Ghana Card ID",
                           profile.ghanaCardId ?? "Not provided",
@@ -1420,12 +1403,6 @@ export default function MemberHome({
                     </dd>
                   </div>
                   <div className="py-2.5">
-                    <dt className="text-[#5b6472]">Date of Birth</dt>
-                    <dd className="mt-0.5 font-semibold text-[#171b26]">
-                      {formatDate(profile.spouse.dateOfBirth)}
-                    </dd>
-                  </div>
-                  <div className="py-2.5">
                     <dt className="text-[#5b6472]">Ghana Card ID</dt>
                     <dd className="mt-0.5 break-words font-semibold text-[#171b26]">
                       {profile.spouse.ghanaCardId ?? "Not provided"}
@@ -1521,8 +1498,8 @@ export default function MemberHome({
                             </span>
                             <span className="mt-0.5 block text-[11px] text-[#5b6472]">
                               {b.relationship.charAt(0) +
-                                b.relationship.slice(1).toLowerCase()}{" "}
-                              · Born {formatDate(b.dateOfBirth)}
+                                b.relationship.slice(1).toLowerCase()}
+                              {isMinor(b.dateOfBirth) && " · Minor"}
                             </span>
                             {b.trusteeName && (
                               <span className="mt-0.5 block text-[10.5px] text-[#5b6472]">

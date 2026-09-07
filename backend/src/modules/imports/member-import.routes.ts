@@ -244,8 +244,8 @@ function runMemberImportCommit(jobId: number, currentUser: AuthenticatedUser, au
         const member = await prisma.$transaction(async (transaction) => {
           const created = await transaction.member.create({
             data: {
-              controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, dateOfBirth: row.dateOfBirth, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
-              ...(extra.spouseName ? { spouseDeclarationStatus: "HAS_SPOUSE", spouse: { create: { fullName: extra.spouseName, dateOfBirth: optionalDate(extra.spouseDateOfBirth), ghanaCardId: extra.spouseGhanaCardId } } } : {}),
+              controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
+              ...(extra.spouseName ? { spouseDeclarationStatus: "HAS_SPOUSE", spouse: { create: { fullName: extra.spouseName, ghanaCardId: extra.spouseGhanaCardId } } } : {}),
               beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName, trusteeGhanaCardId: extra.trusteeGhanaCardId } },
             },
           });

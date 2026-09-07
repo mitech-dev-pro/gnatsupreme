@@ -1,10 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 
-export type ProfileCompletionItemKey =
-  | "dateOfBirth"
-  | "ghanaCardId"
-  | "spouse"
-  | "beneficiary";
+export type ProfileCompletionItemKey = "ghanaCardId" | "spouse" | "beneficiary";
 
 export type ProfileCompletionItemStatus = "COMPLETE" | "PENDING" | "MISSING";
 
@@ -27,7 +23,6 @@ function proposedObject(value: unknown) {
 }
 
 type CompletionSnapshot = {
-  dateOfBirth: Date | null;
   ghanaCardId: string | null;
   spouseDeclarationStatus: "UNKNOWN" | "NONE" | "HAS_SPOUSE";
   profileCompletionDismissedAt: Date | null;
@@ -51,16 +46,6 @@ export function calculateProfileCompletion(
   );
 
   const items: ProfileCompletion["items"] = [
-    {
-      key: "dateOfBirth",
-      label: "Date of birth",
-      status: member.dateOfBirth
-        ? "COMPLETE"
-        : Object.prototype.hasOwnProperty.call(pendingDetails, "dateOfBirth")
-          ? "PENDING"
-          : "MISSING",
-      requestType: "MEMBER_DETAILS",
-    },
     {
       key: "ghanaCardId",
       label: "Ghana Card ID",
@@ -111,7 +96,6 @@ export async function getMemberProfileCompletion(
   const member = await prisma.member.findUniqueOrThrow({
     where: { id: memberId },
     select: {
-      dateOfBirth: true,
       ghanaCardId: true,
       spouseDeclarationStatus: true,
       profileCompletionDismissedAt: true,
@@ -125,7 +109,6 @@ export async function getMemberProfileCompletion(
   });
 
   return calculateProfileCompletion({
-    dateOfBirth: member.dateOfBirth,
     ghanaCardId: member.ghanaCardId,
     spouseDeclarationStatus: member.spouseDeclarationStatus,
     profileCompletionDismissedAt: member.profileCompletionDismissedAt,

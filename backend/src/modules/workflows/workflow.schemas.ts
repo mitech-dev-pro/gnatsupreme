@@ -27,7 +27,6 @@ export const reactivateSchema = z.object({
 export const memberDetailsChangeSchema = z
   .object({
     fullName: z.string().trim().min(2).max(120).optional(),
-    dateOfBirth: z.coerce.date().max(new Date()).nullable().optional(),
     ghanaCardId: z.string().trim().toUpperCase().regex(/^GHA-\d{9}-\d$/).nullable().optional(),
     phone: z.string().trim().min(7).max(30).nullable().optional(),
     school: z.string().trim().min(2).max(160).optional(),

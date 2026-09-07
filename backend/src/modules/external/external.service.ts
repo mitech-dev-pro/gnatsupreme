@@ -8,14 +8,13 @@ export async function lookupMemberByControllerId(controllerId: string) {
       fullName: true,
       status: true,
       school: true,
-      dateOfBirth: true,
       ghanaCardId: true,
       phone: true,
       phoneVerifiedAt: true,
       email: true,
       district: { select: { name: true, region: { select: { name: true } } } },
       spouse: {
-        select: { fullName: true, dateOfBirth: true, ghanaCardId: true },
+        select: { fullName: true, ghanaCardId: true },
       },
     },
   });
@@ -30,7 +29,6 @@ export async function lookupMemberByControllerId(controllerId: string) {
     fullName: member.fullName,
     status: member.status,
     school: member.school,
-    dateOfBirth: member.dateOfBirth,
     ghanaCardId: member.ghanaCardId,
     phone: member.phone,
     phoneVerified: member.phoneVerifiedAt !== null,
@@ -40,7 +38,6 @@ export async function lookupMemberByControllerId(controllerId: string) {
     spouse: member.spouse
       ? {
           fullName: member.spouse.fullName,
-          dateOfBirth: member.spouse.dateOfBirth,
           ghanaCardId: member.spouse.ghanaCardId,
         }
       : null,

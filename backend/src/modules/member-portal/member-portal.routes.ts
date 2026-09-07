@@ -51,7 +51,6 @@ memberPortalRouter.get("/profile", async (_request, response) => {
         id: true,
         controllerId: true,
         fullName: true,
-        dateOfBirth: true,
         ghanaCardId: true,
         phone: true,
         phoneVerifiedAt: true,
@@ -59,7 +58,7 @@ memberPortalRouter.get("/profile", async (_request, response) => {
         status: true,
         report20Matched: true,
         district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-        spouse: true,
+        spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
         beneficiaries: { orderBy: { id: "asc" } },
       },
     }),
@@ -153,7 +152,7 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
   const currentMember = member(response);
-  const { dateOfBirth, ghanaCardId, spouse, beneficiaries } = parsed.data;
+  const { ghanaCardId, spouse, beneficiaries } = parsed.data;
 
   if (spouse?.ghanaCardId && spouse.ghanaCardId === ghanaCardId) {
     response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID." });
@@ -162,12 +161,12 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
 
   const existing = await prisma.member.findUniqueOrThrow({
     where: { id: currentMember.id },
-    select: { dateOfBirth: true, ghanaCardId: true, spouse: { select: { id: true } }, _count: { select: { beneficiaries: true } } },
+    select: { ghanaCardId: true, spouse: { select: { id: true } }, _count: { select: { beneficiaries: true } } },
   });
-  if (existing.dateOfBirth || existing.ghanaCardId) {
+  if (existing.ghanaCardId) {
     response.status(409).json({
       success: false,
-      message: "Your date of birth and Ghana Card are already on record. Submit a change request to update them.",
+      message: "Your Ghana Card is already on record. Submit a change request to update it.",
     });
     return;
   }
@@ -197,7 +196,6 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     await transaction.member.update({
       where: { id: currentMember.id },
       data: {
-        dateOfBirth,
         ghanaCardId,
         spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "NONE",
       },
@@ -207,7 +205,6 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
           data: {
             memberId: currentMember.id,
             fullName: spouse.fullName,
-            dateOfBirth: spouse.dateOfBirth ?? null,
             ghanaCardId: spouse.ghanaCardId ?? null,
           },
         })
@@ -230,8 +227,8 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     action: "MEMBER_ONBOARDING_DETAILS_SUBMITTED",
     entityType: "MEMBER",
     entityId: currentMember.id,
-    description: `Member ${currentMember.controllerId} recorded their date of birth, Ghana Card, and policy details during account setup`,
-    afterData: { dateOfBirth, ghanaCardId, hasSpouse: Boolean(spouse), beneficiaryCount: beneficiaries.length },
+    description: `Member ${currentMember.controllerId} recorded their Ghana Card and policy details during account setup`,
+    afterData: { ghanaCardId, hasSpouse: Boolean(spouse), beneficiaryCount: beneficiaries.length },
   });
   response.status(201).json({ success: true, data: { spouseId } });
 });

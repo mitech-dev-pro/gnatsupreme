@@ -12,11 +12,9 @@ const aliases = {
   school: ["school", "schoolname", "managementunit", "institution"],
   district: ["district", "districtname", "municipality", "mmda"],
   region: ["region", "regionname"],
-  dateOfBirth: ["dateofbirth", "dob"],
   ghanaCardId: ["ghanacardid", "ghanacard", "nationalid"],
   phone: ["phone", "phonenumber", "mobile"],
   spouseName: ["spousename", "spousefullname"],
-  spouseDateOfBirth: ["spousedateofbirth", "spousedob"],
   spouseGhanaCardId: ["spouseghanacardid", "spouseghanacard"],
   beneficiaryName: ["beneficiaryname", "beneficiaryfullname"],
   beneficiaryRelationship: ["beneficiaryrelationship", "relationship"],
@@ -131,8 +129,6 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     const spouseName = readField(data, aliases.spouseName);
     const spouseGhanaCardId = readField(data, aliases.spouseGhanaCardId)?.toUpperCase() ?? null;
     const trusteeGhanaCardId = readField(data, aliases.trusteeGhanaCardId)?.toUpperCase() ?? null;
-    const dateOfBirth = parseDate(readField(data, aliases.dateOfBirth), "Date of birth", issues);
-    parseDate(readField(data, aliases.spouseDateOfBirth), "Spouse date of birth", issues);
     parseDate(readField(data, aliases.beneficiaryDateOfBirth), "Beneficiary date of birth", issues);
     if (!controllerId || !/^\d{4,7}$/.test(controllerId)) issues.push("Controller ID must contain 4 to 7 digits");
     if (!fullName || fullName.length < 2) issues.push("Full name is required");
@@ -183,7 +179,6 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
       school,
       districtName,
       districtId: district?.id,
-      dateOfBirth,
       ghanaCardId,
       phone: readField(data, aliases.phone),
       report20Matched: controllerId ? reportIds.has(controllerId) : false,
@@ -207,7 +202,6 @@ export function bulkRawFields(raw: Prisma.JsonValue) {
   const data = raw as Record<string, string>;
   return {
     spouseName: readField(data, aliases.spouseName),
-    spouseDateOfBirth: readField(data, aliases.spouseDateOfBirth),
     spouseGhanaCardId: readField(data, aliases.spouseGhanaCardId)?.toUpperCase() ?? null,
     beneficiaryName: readField(data, aliases.beneficiaryName),
     beneficiaryRelationship: parseRelationship(readField(data, aliases.beneficiaryRelationship)),

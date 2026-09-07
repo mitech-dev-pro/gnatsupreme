@@ -6,7 +6,7 @@ import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
-import { isMemberPortalPath, parseISODate, toISODate } from "@/lib/utils";
+import { isMemberPortalPath, isMinor, parseISODate, toISODate } from "@/lib/utils";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -159,10 +159,8 @@ export default function Login() {
     { id: number; name: string; region: { name: string } }[]
   >([]);
 
-  const [policyDob, setPolicyDob] = useState("");
   const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
   const [spouseName, setSpouseName] = useState("");
-  const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
   const [marriageCertFile, setMarriageCertFile] = useState<File | null>(null);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([
@@ -355,10 +353,6 @@ export default function Login() {
     e.preventDefault();
     setMemberError("");
 
-    if (!policyDob) {
-      setMemberError("Enter your date of birth.");
-      return;
-    }
     if (!GHANA_CARD.test(policyGhanaCardId)) {
       setMemberError("Enter your Ghana Card ID in the format GHA-000000000-0.");
       return;
@@ -390,17 +384,24 @@ export default function Login() {
         setMemberError("Enter a full name for every beneficiary.");
         return;
       }
+      if (
+        isMinor(item.dateOfBirth) &&
+        (!item.trusteeName.trim() || !item.trusteeGhanaCardId.trim())
+      ) {
+        setMemberError(
+          "Enter trustee details for every beneficiary under 18.",
+        );
+        return;
+      }
     }
 
     setMemberSubmitting(true);
     try {
       const res = await api.post("/member-portal/onboarding", {
-        dateOfBirth: policyDob,
         ghanaCardId: policyGhanaCardId,
         spouse: hasSpouseDetails
           ? {
               fullName: spouseName.trim(),
-              dateOfBirth: spouseDob || null,
               ghanaCardId: spouseGhanaCardId || null,
             }
           : null,
@@ -470,10 +471,8 @@ export default function Login() {
     setSetupEmail("");
     setSetupPassword("");
     setSetupConfirmPassword("");
-    setPolicyDob("");
     setPolicyGhanaCardId("");
     setSpouseName("");
-    setSpouseDob("");
     setSpouseGhanaCardId("");
     setMarriageCertFile(null);
     setBeneficiaries([emptyBeneficiary()]);
@@ -1042,18 +1041,6 @@ export default function Login() {
               {memberError && <ErrorBanner message={memberError} />}
 
               <form onSubmit={handlePolicyContinue} noValidate>
-                <div className="mb-3.5">
-                  <DatePicker
-                    label="Date of birth"
-                    maxDate={new Date()}
-                    value={parseISODate(policyDob)}
-                    onChange={(date) => {
-                      setPolicyDob(date ? toISODate(date) : "");
-                      setMemberError("");
-                    }}
-                  />
-                </div>
-
                 <div className="mb-4">
                   <label
                     htmlFor="policy-ghana-card"
@@ -1092,16 +1079,6 @@ export default function Login() {
                         setMemberError("");
                       }}
                       className={inputClasses.replace("pl-9", "pl-3")}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <DatePicker
-                      label="Spouse date of birth (optional)"
-                      maxDate={new Date()}
-                      value={parseISODate(spouseDob)}
-                      onChange={(date) =>
-                        setSpouseDob(date ? toISODate(date) : "")
-                      }
                     />
                   </div>
                   <div className="mb-3">
@@ -1240,11 +1217,15 @@ export default function Login() {
                         }
                       />
                     </div>
-                    {item.relationship === "CHILD" && (
+                    {isMinor(item.dateOfBirth) && (
                       <>
+                        <p className="mb-2.5 rounded-lg bg-[#fbf0dd] px-3 py-2 text-[11px] font-semibold text-[#b9791a]">
+                          This beneficiary is under 18 — trustee details are
+                          required.
+                        </p>
                         <div className="mb-2.5">
                           <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
-                            Trustee name (optional)
+                            Trustee name
                           </label>
                           <input
                             value={item.trusteeName}
@@ -1253,12 +1234,13 @@ export default function Login() {
                                 trusteeName: e.target.value,
                               })
                             }
+                            required
                             className={inputClasses.replace("pl-9", "pl-3")}
                           />
                         </div>
                         <div>
                           <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
-                            Trustee Ghana Card (optional)
+                            Trustee Ghana Card
                           </label>
                           <input
                             value={item.trusteeGhanaCardId}
@@ -1270,6 +1252,7 @@ export default function Login() {
                               })
                             }
                             placeholder="GHA-000000000-0"
+                            required
                             className={inputClasses.replace("pl-9", "pl-3")}
                           />
                         </div>

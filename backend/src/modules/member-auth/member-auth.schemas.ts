@@ -38,7 +38,6 @@ export const memberLookupSchema = z.object({
 });
 
 export const onboardingDetailsSchema = z.object({
-  dateOfBirth: z.coerce.date().max(new Date(), "Date cannot be in the future"),
   ghanaCardId: z
     .string()
     .trim()

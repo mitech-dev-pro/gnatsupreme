@@ -67,7 +67,7 @@ const reviewSchema = z
 
 const claimMemberInclude = {
   district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-  spouse: { select: { id: true, fullName: true, dateOfBirth: true, ghanaCardId: true } },
+  spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
   beneficiaries: { select: { id: true, fullName: true, relationship: true, dateOfBirth: true } },
 } as const;
 

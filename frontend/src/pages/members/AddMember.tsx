@@ -16,7 +16,7 @@ import Dropdown from "@/components/ui/Dropdown";
 import { Alert } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { parseISODate, toISODate } from "@/lib/utils";
+import { isMinor, parseISODate, toISODate } from "@/lib/utils";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -84,7 +84,6 @@ export default function AddMember() {
   const { districts, loading: districtsLoading } = useDistricts();
   const [controllerId, setControllerId] = useState("");
   const [fullName, setFullName] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
   const [ghanaCardId, setGhanaCardId] = useState("");
   const [phone, setPhone] = useState("");
   const [school, setSchool] = useState("");
@@ -92,7 +91,6 @@ export default function AddMember() {
   const [districtSearch, setDistrictSearch] = useState("");
   const [includeSpouse, setIncludeSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseDob, setSpouseDob] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([
     emptyBeneficiary(),
@@ -115,7 +113,6 @@ export default function AddMember() {
   const isDirty = Boolean(
     controllerId ||
     fullName ||
-    dateOfBirth ||
     ghanaCardId ||
     phone ||
     school ||
@@ -184,8 +181,6 @@ export default function AddMember() {
       next.controllerId = "Enter a Controller ID containing 4 to 7 digits.";
     if (fullName.trim().length < 2)
       next.fullName = "Enter the member's full legal name.";
-    if (dateOfBirth && dateOfBirth > new Date().toISOString().slice(0, 10))
-      next.dateOfBirth = "Date of birth cannot be in the future.";
     if (ghanaCardId && !GHANA_CARD.test(ghanaCardId))
       next.ghanaCardId = "Use the format GHA-000000000-0.";
     if (phone && phone.trim().length < 7)
@@ -194,8 +189,6 @@ export default function AddMember() {
     if (!districtId) next.districtId = "Select a district.";
     if (includeSpouse && spouseName.trim().length < 2)
       next.spouseName = "Enter the spouse's full name.";
-    if (spouseDob && spouseDob > new Date().toISOString().slice(0, 10))
-      next.spouseDob = "Date of birth cannot be in the future.";
     if (spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId))
       next.spouseGhanaCardId = "Use the format GHA-000000000-0.";
     if (ghanaCardId && spouseGhanaCardId && ghanaCardId === spouseGhanaCardId)
@@ -214,6 +207,14 @@ export default function AddMember() {
       if (item.trusteeGhanaCardId && !GHANA_CARD.test(item.trusteeGhanaCardId))
         next[`beneficiaries.${index}.trusteeGhanaCardId`] =
           "Use the format GHA-000000000-0.";
+      if (isMinor(item.dateOfBirth)) {
+        if (!item.trusteeName.trim())
+          next[`beneficiaries.${index}.trusteeName`] =
+            "Trustee name is required for a beneficiary under 18.";
+        if (!item.trusteeGhanaCardId.trim())
+          next[`beneficiaries.${index}.trusteeGhanaCardId`] =
+            "Trustee Ghana Card ID is required for a beneficiary under 18.";
+      }
     });
     setErrors(next);
     if (Object.keys(next).length) {
@@ -250,7 +251,6 @@ export default function AddMember() {
       const response = await api.post("/members", {
         controllerId: controllerId.trim(),
         fullName: fullName.trim(),
-        dateOfBirth: dateOfBirth || null,
         ghanaCardId: ghanaCardId || null,
         phone: phone.trim() || null,
         school: school.trim(),
@@ -258,7 +258,6 @@ export default function AddMember() {
         spouse: includeSpouse
           ? {
               fullName: spouseName.trim(),
-              dateOfBirth: spouseDob || null,
               ghanaCardId: spouseGhanaCardId || null,
             }
           : null,
@@ -295,7 +294,6 @@ export default function AddMember() {
   const startAnother = () => {
     setControllerId("");
     setFullName("");
-    setDateOfBirth("");
     setGhanaCardId("");
     setPhone("");
     setSchool("");
@@ -303,7 +301,6 @@ export default function AddMember() {
     setDistrictSearch("");
     setIncludeSpouse(false);
     setSpouseName("");
-    setSpouseDob("");
     setSpouseGhanaCardId("");
     setBeneficiaries([emptyBeneficiary()]);
     setErrors({});
@@ -397,7 +394,6 @@ export default function AddMember() {
             else {
               setIncludeSpouse(false);
               setSpouseName("");
-              setSpouseDob("");
               setSpouseGhanaCardId("");
               setConfirmation(null);
             }
@@ -420,7 +416,6 @@ export default function AddMember() {
             <section>
               <h3>Member information</h3>
               <dl>
-                <SummaryRow label="Date of birth" value={dateOfBirth} />
                 <SummaryRow label="Ghana Card" value={ghanaCardId} />
                 <SummaryRow label="Phone" value={phone} />
               </dl>
@@ -442,7 +437,6 @@ export default function AddMember() {
                 {includeSpouse ? (
                   <>
                     <SummaryRow label="Name" value={spouseName} />
-                    <SummaryRow label="Date of birth" value={spouseDob} />
                     <SummaryRow label="Ghana Card" value={spouseGhanaCardId} />
                   </>
                 ) : (
@@ -458,7 +452,7 @@ export default function AddMember() {
                     <strong>{item.fullName}</strong>
                     <span>
                       {item.relationship.toLowerCase()}
-                      {item.dateOfBirth ? `, born ${item.dateOfBirth}` : ""}
+                      {isMinor(item.dateOfBirth) ? ", minor" : ""}
                     </span>
                   </li>
                 ))}
@@ -543,17 +537,6 @@ export default function AddMember() {
                     placeholder="As shown on official records"
                   />
                 </Field>
-                <div>
-                  <DatePicker
-                    label="Date of birth"
-                    error={errors.dateOfBirth}
-                    maxDate={new Date()}
-                    value={parseISODate(dateOfBirth)}
-                    onChange={(date) =>
-                      setDateOfBirth(date ? toISODate(date) : "")
-                    }
-                  />
-                </div>
                 <Field
                   label="Ghana Card ID"
                   help="Format: GHA-000000000-0"
@@ -657,7 +640,7 @@ export default function AddMember() {
                     onClick={() => {
                       if (
                         !includeSpouse ||
-                        (!spouseName && !spouseDob && !spouseGhanaCardId)
+                        (!spouseName && !spouseGhanaCardId)
                       )
                         setIncludeSpouse(false);
                       else setConfirmation("spouse");
@@ -686,17 +669,6 @@ export default function AddMember() {
                       onChange={(event) => setSpouseName(event.target.value)}
                     />
                   </Field>
-                  <div>
-                    <DatePicker
-                      label="Date of birth"
-                      error={errors.spouseDob}
-                      maxDate={new Date()}
-                      value={parseISODate(spouseDob)}
-                      onChange={(date) =>
-                        setSpouseDob(date ? toISODate(date) : "")
-                      }
-                    />
-                  </div>
                   <Field label="Ghana Card ID" error={errors.spouseGhanaCardId}>
                     <input
                       value={spouseGhanaCardId}
@@ -792,11 +764,15 @@ export default function AddMember() {
                           }
                         />
                       </div>
-                      {item.relationship === "CHILD" && (
+                      {isMinor(item.dateOfBirth) && (
                         <>
                           <Field
                             label="Trustee name"
-                            help="Optional when no trustee is required"
+                            required
+                            help="Required for a beneficiary under 18"
+                            error={
+                              errors[`beneficiaries.${index}.trusteeName`]
+                            }
                           >
                             <input
                               value={item.trusteeName}
@@ -809,6 +785,7 @@ export default function AddMember() {
                           </Field>
                           <Field
                             label="Trustee Ghana Card"
+                            required
                             error={
                               errors[
                                 `beneficiaries.${index}.trusteeGhanaCardId`

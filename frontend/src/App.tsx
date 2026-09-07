@@ -27,6 +27,7 @@ const Settings = lazy(() => import("@/pages/Settings"));
 // const Transfers = lazy(() => import("@/pages/Transfers"));
 const Claims = lazy(() => import("@/pages/Claims"));
 const ClaimNew = lazy(() => import("@/pages/ClaimNew"));
+const ClaimDetail = lazy(() => import("@/pages/ClaimDetail"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Setup = lazy(() => import("@/pages/Setup"));
 const System = lazy(() => import("@/pages/System"));
@@ -63,6 +64,7 @@ export default function App() {
               {/* <Route path="/transfers" element={<Transfers />} /> */}
               <Route path="/claims" element={<Claims />} />
               <Route path="/claims/new" element={<ClaimNew />} />
+              <Route path="/claims/:id" element={<ClaimDetail />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/setup" element={<RoleProtectedRoute roles={REGIONAL_ROLES}><Setup /></RoleProtectedRoute>} />
               <Route path="/system" element={<RoleProtectedRoute roles={NATIONAL_ROLES}><System /></RoleProtectedRoute>} />

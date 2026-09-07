@@ -366,5 +366,8 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
     response.status(404).json({ success: false, message: "Claim submission not found" });
     return;
   }
-  response.json({ success: true, data: submission });
+  const documents = submission.documentIds.length
+    ? await prisma.storedFile.findMany({ where: { id: { in: submission.documentIds } }, select: { id: true, slotKey: true, originalName: true, storedName: true } })
+    : [];
+  response.json({ success: true, data: { ...submission, documents } });
 });

@@ -81,7 +81,13 @@ type ClaimItem = {
   id: number;
   provider: string;
   externalClaimId: string | null;
-  status: "PENDING" | "REDIRECT_READY" | "SUBMITTED" | "RETURNED" | "FAILED" | "SYNCHRONIZED";
+  status:
+    | "PENDING"
+    | "REDIRECT_READY"
+    | "SUBMITTED"
+    | "RETURNED"
+    | "FAILED"
+    | "SYNCHRONIZED";
   source: "STAFF" | "MEMBER_PORTAL";
   claimType: string | null;
   claimantType: string | null;
@@ -891,7 +897,7 @@ export default function MemberHome({
                       id="coverage-summary-title"
                       className="text-[19px] font-extrabold"
                     >
-                      Your cover is{" "}
+                      My cover is{" "}
                       {profile.status === "ACTIVE"
                         ? "active"
                         : profile.status.toLowerCase()}
@@ -1166,130 +1172,133 @@ export default function MemberHome({
               )}
 
               <section
-              className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
-              aria-labelledby="member-profile-title"
-            >
-              <div className="flex flex-col gap-4 border-b border-(--border-default) bg-(--surface-subtle) px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div className="flex min-w-0 items-center gap-4">
-                  <span
-                    className="grid size-14 shrink-0 place-items-center rounded-full text-[16px] font-extrabold text-white"
-                    style={{ backgroundColor: settings.primaryColor }}
-                  >
-                    {profile.fullName
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((part) => part[0])
-                      .join("")}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <h2
-                        id="member-profile-title"
-                        className="truncate text-[18px] font-extrabold text-(--text-strong)"
-                      >
-                        {profile.fullName}
-                      </h2>
-                      <span className="rounded-full bg-(--success-soft) px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-(--success)">
-                        {profile.status}
-                      </span>
+                className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
+                aria-labelledby="member-profile-title"
+              >
+                <div className="flex flex-col gap-4 border-b border-(--border-default) bg-(--surface-subtle) px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <span
+                      className="grid size-14 shrink-0 place-items-center rounded-full text-[16px] font-extrabold text-white"
+                      style={{ backgroundColor: settings.primaryColor }}
+                    >
+                      {profile.fullName
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map((part) => part[0])
+                        .join("")}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <h2
+                          id="member-profile-title"
+                          className="truncate text-[18px] font-extrabold text-(--text-strong)"
+                        >
+                          {profile.fullName}
+                        </h2>
+                        <span className="rounded-full bg-(--success-soft) px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-(--success)">
+                          {profile.status}
+                        </span>
+                      </div>
+                      <p className="text-[11.5px] text-(--text-muted)">
+                        {settings.memberIdLabel} {profile.controllerId}
+                      </p>
                     </div>
-                    <p className="text-[11.5px] text-(--text-muted)">
-                      {settings.memberIdLabel} {profile.controllerId}
+                  </div>
+                  {!editingProfile &&
+                    (profilePending ? (
+                      <span className="rounded-full bg-(--warning-soft) px-3 py-1.5 text-[10.5px] font-bold text-(--warning)">
+                        Update awaiting review
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingProfile(true)}
+                        className="min-h-10 shrink-0 rounded-[9px] bg-(--action-primary) px-4 text-[12px] font-bold text-white"
+                      >
+                        Request an update
+                      </button>
+                    ))}
+                </div>
+
+                <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
+                  <div className="px-5 py-5 sm:px-6 lg:border-r lg:border-(--border-default)">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">
+                      Personal and contact details
+                    </h3>
+                    <dl className="mt-3 divide-y divide-(--border-default)">
+                      {[
+                        ["Full legal name", profile.fullName],
+                        ["Date of birth", formatDate(profile.dateOfBirth)],
+                        [
+                          "Ghana Card ID",
+                          profile.ghanaCardId ?? "Not provided",
+                        ],
+                        ["Phone number", profile.phone ?? "Not provided"],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="grid gap-1 py-3 sm:grid-cols-[150px_1fr]"
+                        >
+                          <dt className="text-[11.5px] text-(--text-muted)">
+                            {label}
+                          </dt>
+                          <dd className="break-words text-[12.5px] font-semibold text-(--ink)">
+                            {value}
+                            {label === "Phone number" &&
+                              profile.phoneVerifiedAt && (
+                                <span className="ml-2 rounded-full bg-(--success-soft) px-2 py-0.5 text-[9px] font-bold text-(--success)">
+                                  Verified
+                                </span>
+                              )}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                  <div className="px-5 py-5 sm:px-6">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">
+                      Membership context
+                    </h3>
+                    <dl className="mt-3 divide-y divide-(--border-default)">
+                      {[
+                        ["School or institution", profile.school],
+                        [
+                          settings.subRegionLabel,
+                          profile.district?.name ?? "Not yet assigned",
+                        ],
+                        [
+                          "Region",
+                          profile.district?.region.name ?? "Not yet assigned",
+                        ],
+                        [
+                          settings.reconciliationSource,
+                          profile.report20Matched ? "Matched" : "Needs review",
+                        ],
+                      ].map(([label, value]) => (
+                        <div key={label} className="py-3">
+                          <dt className="text-[10.5px] text-(--text-muted)">
+                            {label}
+                          </dt>
+                          <dd className="mt-0.5 text-[12.5px] font-semibold text-(--ink)">
+                            {value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <p className="mt-3 rounded-[9px] bg-(--info-soft) px-3 py-2 text-[10.5px] leading-relaxed text-(--text-muted)">
+                      Changes to these records are reviewed before they become
+                      active.
                     </p>
                   </div>
                 </div>
-                {!editingProfile &&
-                  (profilePending ? (
-                    <span className="rounded-full bg-(--warning-soft) px-3 py-1.5 text-[10.5px] font-bold text-(--warning)">
-                      Update awaiting review
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setEditingProfile(true)}
-                      className="min-h-10 shrink-0 rounded-[9px] bg-(--action-primary) px-4 text-[12px] font-bold text-white"
-                    >
-                      Request an update
-                    </button>
-                  ))}
-              </div>
-
-              <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
-                <div className="px-5 py-5 sm:px-6 lg:border-r lg:border-(--border-default)">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">
-                    Personal and contact details
-                  </h3>
-                  <dl className="mt-3 divide-y divide-(--border-default)">
-                    {[
-                      ["Full legal name", profile.fullName],
-                      ["Date of birth", formatDate(profile.dateOfBirth)],
-                      ["Ghana Card ID", profile.ghanaCardId ?? "Not provided"],
-                      ["Phone number", profile.phone ?? "Not provided"],
-                    ].map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="grid gap-1 py-3 sm:grid-cols-[150px_1fr]"
-                      >
-                        <dt className="text-[11.5px] text-(--text-muted)">
-                          {label}
-                        </dt>
-                        <dd className="break-words text-[12.5px] font-semibold text-(--ink)">
-                          {value}
-                          {label === "Phone number" &&
-                            profile.phoneVerifiedAt && (
-                              <span className="ml-2 rounded-full bg-(--success-soft) px-2 py-0.5 text-[9px] font-bold text-(--success)">
-                                Verified
-                              </span>
-                            )}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-                <div className="px-5 py-5 sm:px-6">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-(--text-muted)">
-                    Membership context
-                  </h3>
-                  <dl className="mt-3 divide-y divide-(--border-default)">
-                    {[
-                      ["School or institution", profile.school],
-                      [
-                        settings.subRegionLabel,
-                        profile.district?.name ?? "Not yet assigned",
-                      ],
-                      [
-                        "Region",
-                        profile.district?.region.name ?? "Not yet assigned",
-                      ],
-                      [
-                        settings.reconciliationSource,
-                        profile.report20Matched ? "Matched" : "Needs review",
-                      ],
-                    ].map(([label, value]) => (
-                      <div key={label} className="py-3">
-                        <dt className="text-[10.5px] text-(--text-muted)">
-                          {label}
-                        </dt>
-                        <dd className="mt-0.5 text-[12.5px] font-semibold text-(--ink)">
-                          {value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <p className="mt-3 rounded-[9px] bg-(--info-soft) px-3 py-2 text-[10.5px] leading-relaxed text-(--text-muted)">
-                    Changes to these records are reviewed before they become
-                    active.
-                  </p>
-                </div>
-              </div>
-              {editingProfile && (
-                <MemberDetailsForm
-                  profile={profile}
-                  onClose={() => setEditingProfile(false)}
-                  onSubmitted={afterRequestSubmitted}
-                />
-              )}
-            </section>
+                {editingProfile && (
+                  <MemberDetailsForm
+                    profile={profile}
+                    onClose={() => setEditingProfile(false)}
+                    onSubmitted={afterRequestSubmitted}
+                  />
+                )}
+              </section>
             </>
           )}
 
@@ -1587,7 +1596,7 @@ export default function MemberHome({
                     id="coverage-heading"
                     className="text-[15px] font-bold text-(--brand-primary)"
                   >
-                    Your benefit plan
+                    My benefit plan
                   </h2>
                   <div className="flex flex-wrap gap-2">
                     <a
@@ -1836,215 +1845,222 @@ export default function MemberHome({
             </section>
           )}
 
-          {section === "requests" && endorsementsTab === "requests" && requests.length > 0 && (
-            <section
-              className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
-              aria-labelledby="requests-heading"
-            >
-              <header className="flex flex-col gap-3 border-b border-(--border-default) px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
-                <div>
-                  <h2
-                    id="requests-heading"
-                    className="text-[15px] font-bold text-(--brand-primary)"
-                  >
-                    My requests
-                  </h2>
-                  <p className="mt-1 text-[11.5px] text-(--text-muted)">
-                    {
-                      requests.filter((request) => request.status === "PENDING")
-                        .length
-                    }{" "}
-                    awaiting review,{" "}
-                    {
-                      requests.filter((request) => request.status !== "PENDING")
-                        .length
-                    }{" "}
-                    completed
-                  </p>
-                </div>
-                <div
-                  className="flex gap-1 rounded-[9px] bg-(--surface-subtle) p-1"
-                  role="group"
-                  aria-label="Filter requests"
-                >
-                  {(["ALL", "PENDING", "COMPLETED"] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      aria-pressed={requestFilter === filter}
-                      onClick={() => setRequestFilter(filter)}
-                      className={`min-h-8 rounded-[7px] px-3 text-[10.5px] font-bold transition focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)] ${requestFilter === filter ? "bg-(--surface-raised) text-(--brand-primary) shadow-[0_1px_2px_rgba(30,39,97,0.08)]" : "text-(--text-muted) hover:text-(--ink)"}`}
+          {section === "requests" &&
+            endorsementsTab === "requests" &&
+            requests.length > 0 && (
+              <section
+                className="overflow-hidden rounded-[14px] border border-(--border-default) bg-(--surface-raised) md:col-span-2"
+                aria-labelledby="requests-heading"
+              >
+                <header className="flex flex-col gap-3 border-b border-(--border-default) px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+                  <div>
+                    <h2
+                      id="requests-heading"
+                      className="text-[15px] font-bold text-(--brand-primary)"
                     >
-                      {filter === "ALL"
-                        ? "All"
-                        : filter === "PENDING"
-                          ? "Pending"
-                          : "Completed"}
-                    </button>
-                  ))}
-                </div>
-              </header>
-
-              {requestToCancel && (
-                <div className="border-b border-(--border-default) p-4 sm:p-5">
-                  <ConfirmationPanel
-                    title={`Cancel ${REQUEST_TYPE_LABELS[requestToCancel.type].toLowerCase()} request?`}
-                    description="This removes the request from the review queue. Your current member record will not be changed."
-                    confirmLabel="Cancel request"
-                    busyLabel="Cancelling…"
-                    tone="warning"
-                    busy={cancellingRequest}
-                    onConfirm={cancelChangeRequest}
-                    onCancel={() => {
-                      setRequestToCancel(null);
-                      setCancelRequestError("");
-                    }}
+                      My requests
+                    </h2>
+                    <p className="mt-1 text-[11.5px] text-(--text-muted)">
+                      {
+                        requests.filter(
+                          (request) => request.status === "PENDING",
+                        ).length
+                      }{" "}
+                      awaiting review,{" "}
+                      {
+                        requests.filter(
+                          (request) => request.status !== "PENDING",
+                        ).length
+                      }{" "}
+                      completed
+                    </p>
+                  </div>
+                  <div
+                    className="flex gap-1 rounded-[9px] bg-(--surface-subtle) p-1"
+                    role="group"
+                    aria-label="Filter requests"
                   >
-                    {cancelRequestError && (
-                      <p
-                        role="alert"
-                        className="mt-2 text-[12px] font-semibold text-(--danger)"
-                      >
-                        {cancelRequestError}
-                      </p>
+                    {(["ALL", "PENDING", "COMPLETED"] as const).map(
+                      (filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          aria-pressed={requestFilter === filter}
+                          onClick={() => setRequestFilter(filter)}
+                          className={`min-h-8 rounded-[7px] px-3 text-[10.5px] font-bold transition focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)] ${requestFilter === filter ? "bg-(--surface-raised) text-(--brand-primary) shadow-[0_1px_2px_rgba(30,39,97,0.08)]" : "text-(--text-muted) hover:text-(--ink)"}`}
+                        >
+                          {filter === "ALL"
+                            ? "All"
+                            : filter === "PENDING"
+                              ? "Pending"
+                              : "Completed"}
+                        </button>
+                      ),
                     )}
-                  </ConfirmationPanel>
-                </div>
-              )}
+                  </div>
+                </header>
 
-              {visibleRequests.length === 0 ? (
-                <p className="px-4 py-8 text-center text-[12.5px] text-(--text-muted) sm:px-5">
-                  No requests match this filter.
-                </p>
-              ) : (
-                <ol className="divide-y divide-(--border-default)">
-                  {visibleRequests.map((request) => (
-                    <li key={request.id}>
-                      <details className="group">
-                        <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-4 hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] sm:px-5">
-                          <span
-                            aria-hidden="true"
-                            className={`mt-1 size-2 shrink-0 rounded-full ${request.status === "PENDING" ? "bg-(--warning)" : request.status === "APPROVED" ? "bg-(--success)" : "bg-(--text-muted)"}`}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-2">
-                              <strong className="text-[13px] text-(--ink)">
-                                {REQUEST_TYPE_LABELS[request.type]}
-                              </strong>
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${REQUEST_STATUS_STYLES[request.status]}`}
-                              >
-                                {request.status.charAt(0) +
-                                  request.status.slice(1).toLowerCase()}
+                {requestToCancel && (
+                  <div className="border-b border-(--border-default) p-4 sm:p-5">
+                    <ConfirmationPanel
+                      title={`Cancel ${REQUEST_TYPE_LABELS[requestToCancel.type].toLowerCase()} request?`}
+                      description="This removes the request from the review queue. Your current member record will not be changed."
+                      confirmLabel="Cancel request"
+                      busyLabel="Cancelling…"
+                      tone="warning"
+                      busy={cancellingRequest}
+                      onConfirm={cancelChangeRequest}
+                      onCancel={() => {
+                        setRequestToCancel(null);
+                        setCancelRequestError("");
+                      }}
+                    >
+                      {cancelRequestError && (
+                        <p
+                          role="alert"
+                          className="mt-2 text-[12px] font-semibold text-(--danger)"
+                        >
+                          {cancelRequestError}
+                        </p>
+                      )}
+                    </ConfirmationPanel>
+                  </div>
+                )}
+
+                {visibleRequests.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-[12.5px] text-(--text-muted) sm:px-5">
+                    No requests match this filter.
+                  </p>
+                ) : (
+                  <ol className="divide-y divide-(--border-default)">
+                    {visibleRequests.map((request) => (
+                      <li key={request.id}>
+                        <details className="group">
+                          <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-4 hover:bg-(--surface-subtle) focus:outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--focus-ring)] sm:px-5">
+                            <span
+                              aria-hidden="true"
+                              className={`mt-1 size-2 shrink-0 rounded-full ${request.status === "PENDING" ? "bg-(--warning)" : request.status === "APPROVED" ? "bg-(--success)" : "bg-(--text-muted)"}`}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <strong className="text-[13px] text-(--ink)">
+                                  {REQUEST_TYPE_LABELS[request.type]}
+                                </strong>
+                                <span
+                                  className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${REQUEST_STATUS_STYLES[request.status]}`}
+                                >
+                                  {request.status.charAt(0) +
+                                    request.status.slice(1).toLowerCase()}
+                                </span>
                               </span>
-                            </span>
-                            <span className="mt-1 block text-[11.5px] text-(--text-muted)">
-                              Submitted{" "}
-                              {new Date(request.requestedAt).toLocaleDateString(
-                                undefined,
-                                {
+                              <span className="mt-1 block text-[11.5px] text-(--text-muted)">
+                                Submitted{" "}
+                                {new Date(
+                                  request.requestedAt,
+                                ).toLocaleDateString(undefined, {
                                   year: "numeric",
                                   month: "short",
                                   day: "numeric",
-                                },
-                              )}{" "}
-                              ({timeAgo(request.requestedAt)})
+                                })}{" "}
+                                ({timeAgo(request.requestedAt)})
+                              </span>
                             </span>
-                          </span>
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            className="mt-1 size-4 shrink-0 text-(--text-muted) transition-transform duration-200 group-open:rotate-180"
-                          >
-                            <path
-                              d="m5 7.5 5 5 5-5"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </summary>
-                        <div className="px-4 pb-5 pl-9 sm:px-5 sm:pl-10">
-                          {request.proposedData &&
-                          Object.keys(request.proposedData).length > 0 ? (
-                            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-(--border-default) pt-4 sm:grid-cols-2">
-                              {Object.entries(request.proposedData).map(
-                                ([field, value]) => (
-                                  <div key={field}>
-                                    <dt className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
-                                      {REQUEST_FIELD_LABELS[field] ??
-                                        field.replaceAll(/([A-Z])/g, " $1")}
-                                    </dt>
-                                    <dd className="mt-0.5 break-words text-[12.5px] font-semibold text-(--ink)">
-                                      {requestValue(value)}
-                                    </dd>
-                                  </div>
-                                ),
-                              )}
-                            </dl>
-                          ) : (
-                            <p className="border-t border-(--border-default) pt-4 text-[12px] text-(--text-muted)">
-                              This request does not include replacement field
-                              values.
-                            </p>
-                          )}
-                          {request.requestNote && (
-                            <div className="mt-4">
-                              <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
-                                Your note
-                              </h3>
-                              <p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">
-                                {request.requestNote}
-                              </p>
-                            </div>
-                          )}
-                          {request.reviewNote && (
-                            <div className="mt-4 rounded-[9px] bg-(--surface-subtle) p-3">
-                              <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
-                                Review note
-                              </h3>
-                              <p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">
-                                {request.reviewNote}
-                              </p>
-                            </div>
-                          )}
-                          {request.status === "PENDING" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRequestToCancel(request);
-                                setCancelRequestError("");
-                              }}
-                              className="mt-4 min-h-9 rounded-[9px] border border-(--danger-border) px-3 text-[11.5px] font-bold text-(--danger) hover:bg-(--danger-soft) focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)]"
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              className="mt-1 size-4 shrink-0 text-(--text-muted) transition-transform duration-200 group-open:rotate-180"
                             >
-                              Cancel request
-                            </button>
-                          )}
-                        </div>
-                      </details>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-          )}
+                              <path
+                                d="m5 7.5 5 5 5-5"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </summary>
+                          <div className="px-4 pb-5 pl-9 sm:px-5 sm:pl-10">
+                            {request.proposedData &&
+                            Object.keys(request.proposedData).length > 0 ? (
+                              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-(--border-default) pt-4 sm:grid-cols-2">
+                                {Object.entries(request.proposedData).map(
+                                  ([field, value]) => (
+                                    <div key={field}>
+                                      <dt className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
+                                        {REQUEST_FIELD_LABELS[field] ??
+                                          field.replaceAll(/([A-Z])/g, " $1")}
+                                      </dt>
+                                      <dd className="mt-0.5 break-words text-[12.5px] font-semibold text-(--ink)">
+                                        {requestValue(value)}
+                                      </dd>
+                                    </div>
+                                  ),
+                                )}
+                              </dl>
+                            ) : (
+                              <p className="border-t border-(--border-default) pt-4 text-[12px] text-(--text-muted)">
+                                This request does not include replacement field
+                                values.
+                              </p>
+                            )}
+                            {request.requestNote && (
+                              <div className="mt-4">
+                                <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
+                                  Your note
+                                </h3>
+                                <p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">
+                                  {request.requestNote}
+                                </p>
+                              </div>
+                            )}
+                            {request.reviewNote && (
+                              <div className="mt-4 rounded-[9px] bg-(--surface-subtle) p-3">
+                                <h3 className="text-[10.5px] font-semibold uppercase tracking-wide text-(--text-muted)">
+                                  Review note
+                                </h3>
+                                <p className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed text-(--ink)">
+                                  {request.reviewNote}
+                                </p>
+                              </div>
+                            )}
+                            {request.status === "PENDING" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRequestToCancel(request);
+                                  setCancelRequestError("");
+                                }}
+                                className="mt-4 min-h-9 rounded-[9px] border border-(--danger-border) px-3 text-[11.5px] font-bold text-(--danger) hover:bg-(--danger-soft) focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--focus-ring)]"
+                              >
+                                Cancel request
+                              </button>
+                            )}
+                          </div>
+                        </details>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            )}
           {section === "coverage" && !benefitPlan && (
             <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) p-6 text-[12.5px] text-(--text-muted) md:col-span-2">
               No active benefit plan is available yet.
             </div>
           )}
-          {section === "requests" && endorsementsTab === "requests" && requests.length === 0 && (
-            <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) px-5 py-6 text-center md:col-span-2">
-              <h2 className="text-[14px] font-bold text-(--brand-primary)">
-                No request history yet
-              </h2>
-              <p className="mt-1 text-[12px] text-(--text-muted)">
-                Choose an option above to submit your first change request.
-              </p>
-            </div>
-          )}
+          {section === "requests" &&
+            endorsementsTab === "requests" &&
+            requests.length === 0 && (
+              <div className="rounded-[14px] border border-(--border-default) bg-(--surface-raised) px-5 py-6 text-center md:col-span-2">
+                <h2 className="text-[14px] font-bold text-(--brand-primary)">
+                  No request history yet
+                </h2>
+                <p className="mt-1 text-[12px] text-(--text-muted)">
+                  Choose an option above to submit your first change request.
+                </p>
+              </div>
+            )}
 
           {section === "notifications" && (
             <div className="rounded-[14px] border border-[#e5e9f0] bg-white p-5 md:col-span-2">
@@ -2109,7 +2125,10 @@ export default function MemberHome({
             >
               <header className="flex flex-col gap-3 border-b border-(--border-default) px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
-                  <h2 id="member-claims-heading" className="text-[15px] font-bold text-(--text-strong)">
+                  <h2
+                    id="member-claims-heading"
+                    className="text-[15px] font-bold text-(--text-strong)"
+                  >
                     Claims
                   </h2>
                   <p className="mt-1 max-w-[65ch] text-[11.5px] text-(--text-muted)">
@@ -2134,37 +2153,59 @@ export default function MemberHome({
                 <ul className="divide-y divide-(--border-default)">
                   {claims.map((claim) => {
                     const statusLabel =
-                      claim.status === "PENDING" && claim.source === "MEMBER_PORTAL"
+                      claim.status === "PENDING" &&
+                      claim.source === "MEMBER_PORTAL"
                         ? "Submitted — awaiting staff review"
                         : claim.status === "RETURNED"
                           ? "Returned — needs your attention"
-                          : claim.status.charAt(0) + claim.status.slice(1).toLowerCase();
+                          : claim.status.charAt(0) +
+                            claim.status.slice(1).toLowerCase();
                     const tone =
-                      claim.status === "SUBMITTED" || claim.status === "SYNCHRONIZED"
+                      claim.status === "SUBMITTED" ||
+                      claim.status === "SYNCHRONIZED"
                         ? "text-(--success)"
                         : claim.status === "FAILED"
                           ? "text-(--danger)"
                           : "text-(--warning)";
                     return (
-                      <li key={claim.id} className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                      <li
+                        key={claim.id}
+                        className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                      >
                         <div>
                           <div className="text-[13px] font-bold text-(--ink)">
-                            {claim.claimType ? CLAIM_TYPE_LABELS[claim.claimType] ?? claim.claimType : "Claim"}
+                            {claim.claimType
+                              ? (CLAIM_TYPE_LABELS[claim.claimType] ??
+                                claim.claimType)
+                              : "Claim"}
                           </div>
-                          <div className={`mt-0.5 text-[11.5px] font-semibold ${tone}`}>{statusLabel}</div>
+                          <div
+                            className={`mt-0.5 text-[11.5px] font-semibold ${tone}`}
+                          >
+                            {statusLabel}
+                          </div>
                           {claim.status === "RETURNED" && claim.reviewNote && (
-                            <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">{claim.reviewNote}</p>
+                            <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">
+                              {claim.reviewNote}
+                            </p>
                           )}
-                          {claim.status === "FAILED" && (claim.reviewNote || claim.errorMessage) && (
-                            <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">{claim.reviewNote || claim.errorMessage}</p>
-                          )}
+                          {claim.status === "FAILED" &&
+                            (claim.reviewNote || claim.errorMessage) && (
+                              <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">
+                                {claim.reviewNote || claim.errorMessage}
+                              </p>
+                            )}
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-(--text-muted)">{timeAgo(claim.createdAt)}</span>
+                          <span className="text-[11px] text-(--text-muted)">
+                            {timeAgo(claim.createdAt)}
+                          </span>
                           {claim.status === "RETURNED" && (
                             <button
                               type="button"
-                              onClick={() => navigate(`/member/claims/${claim.id}/resubmit`)}
+                              onClick={() =>
+                                navigate(`/member/claims/${claim.id}/resubmit`)
+                              }
                               className="rounded-[7px] border border-(--action-primary) px-2.5 py-1 text-[11px] font-bold text-(--action-primary) hover:bg-(--info-soft)"
                             >
                               Edit &amp; resubmit

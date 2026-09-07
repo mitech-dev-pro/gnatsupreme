@@ -148,7 +148,10 @@ export default function ClaimNew() {
     residentialAddress: "",
     nationality: "Ghanaian",
   });
-  const [paymentMethod, setPaymentMethod] = useState("MOBILE_MONEY");
+  // Mode of payment is always cheque in practice, so this isn't a user choice -- keeping it as a
+  // named constant (rather than inlining "CHEQUE" everywhere below) documents that intent and
+  // keeps the submit payload/paymentComplete check unchanged in shape.
+  const paymentMethod = "CHEQUE";
   const [paymentDetails, setPaymentDetails] = useState<Record<string, string>>(
     {},
   );
@@ -398,17 +401,7 @@ export default function ClaimNew() {
     )
       navigate("/claims");
   };
-  const paymentComplete =
-    paymentMethod === "NO_PAYMENT" ||
-    (paymentMethod === "MOBILE_MONEY" &&
-      paymentDetails.network &&
-      paymentDetails.mobileNumber &&
-      paymentDetails.accountName) ||
-    (paymentMethod === "BANK_ACCOUNT" &&
-      paymentDetails.bankName &&
-      paymentDetails.accountNumber &&
-      paymentDetails.accountName) ||
-    (paymentMethod === "CHEQUE" && paymentDetails.payeeName);
+  const paymentComplete = Boolean(paymentDetails.payeeName);
   const page0Complete =
     Boolean(claimType) &&
     nightsEligible &&
@@ -753,11 +746,11 @@ export default function ClaimNew() {
                             Named critical illness diagnosed{" "}
                             <span className="text-(--danger)">*</span>
                           </legend>
-                          <div className="grid gap-1 sm:grid-cols-2">
+                          <div className="grid gap-2 sm:grid-cols-2">
                             {illnesses.map((item) => (
                               <label
                                 key={item}
-                                className="flex min-h-8 cursor-pointer items-center gap-2 text-[12px] text-(--ink)"
+                                className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === item ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}
                               >
                                 <input
                                   type="radio"
@@ -769,7 +762,9 @@ export default function ClaimNew() {
                                 {item}
                               </label>
                             ))}
-                            <label className="flex min-h-8 cursor-pointer items-center gap-2 text-[12px] text-(--ink)">
+                            <label
+                              className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === "Others" ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}
+                            >
                               <input
                                 type="radio"
                                 name="illness"
@@ -1015,119 +1010,17 @@ export default function ClaimNew() {
               <form onSubmit={submit}>
                 <SectionTitle>Payment option</SectionTitle>
                 <p className="mb-4 text-[12.5px] font-semibold text-(--ink)">
-                  Select how an approved claim should be paid, if applicable.
+                  Approved claims are paid by cheque.
                 </p>
-                <fieldset>
-                  <legend className="mb-2 text-[11.5px] font-bold text-(--text-strong)">
-                    Mode of payment <span className="text-(--danger)">*</span>
-                  </legend>
-                  <div className="space-y-1">
-                    {[
-                      ["BANK_ACCOUNT", "Bank account"],
-                      ["MOBILE_MONEY", "Mobile money"],
-                      ["CHEQUE", "Cheque"],
-                      ["NO_PAYMENT", "No payment details yet"],
-                    ].map(([value, label]) => (
-                      <label
-                        key={value}
-                        className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-[9px] px-3 text-[12.5px] ${paymentMethod === value ? "bg-(--info-soft) font-semibold text-(--text-strong)" : "hover:bg-(--surface-subtle)"}`}
-                      >
-                        <input
-                          type="radio"
-                          name="paymentMethod"
-                          value={value}
-                          checked={paymentMethod === value}
-                          onChange={() => {
-                            setPaymentMethod(value);
-                            setPaymentDetails({});
-                          }}
-                          className="size-4 accent-(--action-primary)"
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {paymentMethod === "MOBILE_MONEY" && (
-                    <>
-                      <SelectField
-                        label="Mobile network"
-                        required
-                        value={paymentDetails.network ?? ""}
-                        onChange={(event) =>
-                          updatePayment("network", event.target.value)
-                        }
-                      >
-                        <option value="">Choose network</option>
-                        <option>MTN</option>
-                        <option>Telecel</option>
-                        <option>AirtelTigo</option>
-                      </SelectField>
-                      <InputField
-                        label="Mobile number"
-                        required
-                        inputMode="tel"
-                        value={paymentDetails.mobileNumber ?? ""}
-                        onChange={(event) =>
-                          updatePayment("mobileNumber", event.target.value)
-                        }
-                      />
-                      <InputField
-                        label="Account name"
-                        required
-                        value={paymentDetails.accountName ?? ""}
-                        onChange={(event) =>
-                          updatePayment("accountName", event.target.value)
-                        }
-                      />
-                    </>
-                  )}
-                  {paymentMethod === "BANK_ACCOUNT" && (
-                    <>
-                      <InputField
-                        label="Bank name"
-                        required
-                        value={paymentDetails.bankName ?? ""}
-                        onChange={(event) =>
-                          updatePayment("bankName", event.target.value)
-                        }
-                      />
-                      <InputField
-                        label="Account number"
-                        required
-                        value={paymentDetails.accountNumber ?? ""}
-                        onChange={(event) =>
-                          updatePayment("accountNumber", event.target.value)
-                        }
-                      />
-                      <InputField
-                        label="Account name"
-                        required
-                        value={paymentDetails.accountName ?? ""}
-                        onChange={(event) =>
-                          updatePayment("accountName", event.target.value)
-                        }
-                      />
-                      <InputField
-                        label="Branch"
-                        value={paymentDetails.branch ?? ""}
-                        onChange={(event) =>
-                          updatePayment("branch", event.target.value)
-                        }
-                      />
-                    </>
-                  )}
-                  {paymentMethod === "CHEQUE" && (
-                    <InputField
-                      label="Payee name"
-                      required
-                      value={paymentDetails.payeeName ?? ""}
-                      onChange={(event) =>
-                        updatePayment("payeeName", event.target.value)
-                      }
-                    />
-                  )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <InputField
+                    label="Payee name"
+                    required
+                    value={paymentDetails.payeeName ?? ""}
+                    onChange={(event) =>
+                      updatePayment("payeeName", event.target.value)
+                    }
+                  />
                 </div>
                 <div className="mt-8">
                   <SectionTitle>Declaration</SectionTitle>

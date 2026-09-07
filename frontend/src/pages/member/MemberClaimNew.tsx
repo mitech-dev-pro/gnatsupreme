@@ -64,7 +64,8 @@ export default function MemberClaimNew() {
   const [reason, setReason] = useState("");
 
   const [contact, setContact] = useState<ContactDetails>({ fullName: "", primaryPhone: "", additionalPhone: "", email: "", gpsAddress: "", residentialAddress: "", nationality: "Ghanaian" });
-  const [paymentMethod, setPaymentMethod] = useState("MOBILE_MONEY");
+  // Mode of payment is always cheque in practice, so this isn't a user choice.
+  const paymentMethod = "CHEQUE";
   const [paymentDetails, setPaymentDetails] = useState<Record<string, string>>({});
   const [declaration, setDeclaration] = useState(false);
   const [notes, setNotes] = useState("");
@@ -90,7 +91,6 @@ export default function MemberClaimNew() {
           setClaimantType(claim.claimantType ?? "MEMBER");
           setClaimantIdNumber(claim.claimantIdNumber ?? "");
           if (claim.claimantContact) setContact(claim.claimantContact);
-          setPaymentMethod(claim.paymentMethod ?? "MOBILE_MONEY");
           setPaymentDetails(claim.paymentDetails ?? {});
           setNotes(claim.notes ?? "");
           setDocuments((claim.documents ?? []).map((doc: { id: number; slotKey: string | null; originalName: string }) => doc));
@@ -175,7 +175,7 @@ export default function MemberClaimNew() {
   };
 
   const leave = () => { if (window.confirm("Leave this claim? Information entered here will be lost.")) navigate("/member/claims"); };
-  const paymentComplete = paymentMethod === "NO_PAYMENT" || (paymentMethod === "MOBILE_MONEY" && paymentDetails.network && paymentDetails.mobileNumber && paymentDetails.accountName) || (paymentMethod === "BANK_ACCOUNT" && paymentDetails.bankName && paymentDetails.accountNumber && paymentDetails.accountName) || (paymentMethod === "CHEQUE" && paymentDetails.payeeName);
+  const paymentComplete = Boolean(paymentDetails.payeeName);
   const page0Complete = Boolean(claimType) && nightsEligible && documentsComplete && claimantIdNumber.trim().length >= 3;
 
   if (loading) return <div className="mx-auto max-w-[1180px] py-12 text-center text-[12.5px] text-(--text-muted)">Loading…</div>;
@@ -221,9 +221,9 @@ export default function MemberClaimNew() {
               <div className="grid gap-4 sm:grid-cols-2"><InputField label="Date of diagnosis" type="date" required max={new Date().toISOString().slice(0, 10)} value={diagnosisDate} onChange={(event) => setDiagnosisDate(event.target.value)}/><InputField label="Diagnosing hospital" required value={diagnosingHospital} onChange={(event) => setDiagnosingHospital(event.target.value)} placeholder="e.g. Komfo Anokye Teaching Hospital"/></div>
               <div className="mt-4"><InputField label="Diagnosing physician" required value={diagnosingPhysician} onChange={(event) => setDiagnosingPhysician(event.target.value)}/></div>
               <fieldset className="mt-4"><legend className="mb-2 text-[11.5px] font-bold text-(--text-strong)">Named critical illness diagnosed <span className="text-(--danger)">*</span></legend>
-                <div className="grid gap-1 sm:grid-cols-2">
-                  {illnesses.map((item) => <label key={item} className="flex min-h-8 cursor-pointer items-center gap-2 text-[12px] text-(--ink)"><input type="radio" name="illness" checked={illness === item} onChange={() => setIllness(item)} className="size-4 accent-(--action-primary)"/>{item}</label>)}
-                  <label className="flex min-h-8 cursor-pointer items-center gap-2 text-[12px] text-(--ink)"><input type="radio" name="illness" checked={illness === "Others"} onChange={() => setIllness("Others")} className="size-4 accent-(--action-primary)"/>Others (specify)</label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {illnesses.map((item) => <label key={item} className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === item ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === item} onChange={() => setIllness(item)} className="size-4 accent-(--action-primary)"/>{item}</label>)}
+                  <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === "Others" ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === "Others"} onChange={() => setIllness("Others")} className="size-4 accent-(--action-primary)"/>Others (specify)</label>
                 </div>
                 {illness === "Others" && <div className="mt-2"><InputField label="Specify illness" required value={illnessOther} onChange={(event) => setIllnessOther(event.target.value)} hint="Subject to approval by miLife"/></div>}
               </fieldset>
@@ -250,9 +250,8 @@ export default function MemberClaimNew() {
         </form>}
 
         {page === 2 && <form onSubmit={submit}>
-          <SectionTitle>Payment option</SectionTitle><p className="mb-4 text-[12.5px] font-semibold text-(--ink)">Select how an approved claim should be paid, if applicable.</p>
-          <fieldset><legend className="mb-2 text-[11.5px] font-bold text-(--text-strong)">Mode of payment <span className="text-(--danger)">*</span></legend><div className="space-y-1">{[["BANK_ACCOUNT", "Bank account"], ["MOBILE_MONEY", "Mobile money"], ["CHEQUE", "Cheque"], ["NO_PAYMENT", "No payment details yet"]].map(([value, label]) => <label key={value} className={`flex min-h-10 cursor-pointer items-center gap-3 rounded-[9px] px-3 text-[12.5px] ${paymentMethod === value ? "bg-(--info-soft) font-semibold text-(--text-strong)" : "hover:bg-(--surface-subtle)"}`}><input type="radio" name="paymentMethod" value={value} checked={paymentMethod === value} onChange={() => { setPaymentMethod(value); setPaymentDetails({}); }} className="size-4 accent-(--action-primary)"/>{label}</label>)}</div></fieldset>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">{paymentMethod === "MOBILE_MONEY" && <><SelectField label="Mobile network" required value={paymentDetails.network ?? ""} onChange={(event) => updatePayment("network", event.target.value)}><option value="">Choose network</option><option>MTN</option><option>Telecel</option><option>AirtelTigo</option></SelectField><InputField label="Mobile number" required inputMode="tel" value={paymentDetails.mobileNumber ?? ""} onChange={(event) => updatePayment("mobileNumber", event.target.value)}/><InputField label="Account name" required value={paymentDetails.accountName ?? ""} onChange={(event) => updatePayment("accountName", event.target.value)}/></>}{paymentMethod === "BANK_ACCOUNT" && <><InputField label="Bank name" required value={paymentDetails.bankName ?? ""} onChange={(event) => updatePayment("bankName", event.target.value)}/><InputField label="Account number" required value={paymentDetails.accountNumber ?? ""} onChange={(event) => updatePayment("accountNumber", event.target.value)}/><InputField label="Account name" required value={paymentDetails.accountName ?? ""} onChange={(event) => updatePayment("accountName", event.target.value)}/><InputField label="Branch" value={paymentDetails.branch ?? ""} onChange={(event) => updatePayment("branch", event.target.value)}/></>}{paymentMethod === "CHEQUE" && <InputField label="Payee name" required value={paymentDetails.payeeName ?? ""} onChange={(event) => updatePayment("payeeName", event.target.value)}/>}</div>
+          <SectionTitle>Payment option</SectionTitle><p className="mb-4 text-[12.5px] font-semibold text-(--ink)">Approved claims are paid by cheque.</p>
+          <div className="grid gap-4 sm:grid-cols-2"><InputField label="Payee name" required value={paymentDetails.payeeName ?? ""} onChange={(event) => updatePayment("payeeName", event.target.value)}/></div>
           <div className="mt-8"><SectionTitle>Declaration</SectionTitle><div className="max-w-[75ch] space-y-3 text-[12px] leading-relaxed text-(--ink)"><p>Submitting false or altered information may delay payment or result in rejection of the claim.</p><p>I confirm that the information supplied is accurate and that all attached documents are genuine. I understand this claim will be reviewed by staff before it is sent for processing.</p></div><label className="mt-5 flex cursor-pointer items-start gap-3 text-[12.5px] font-semibold text-(--ink)"><input type="checkbox" required checked={declaration} onChange={(event) => setDeclaration(event.target.checked)} className="mt-0.5 size-4 accent-(--action-primary)"/><span>I accept this declaration and confirm the claim details.</span></label><div className="mt-5"><TextareaField label="Comment" value={notes} maxLength={1000} onChange={(event) => setNotes(event.target.value)} placeholder="Add an optional comment"/></div></div>
           <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between"><Button variant="secondary" onClick={() => setPage(1)}>Back</Button><Button type="submit" loading={busy} loadingLabel="Submitting claim..." disabled={!paymentComplete || !declaration}>{resubmitId ? "Resubmit claim" : "Submit claim"}</Button></div><Progress page={page}/>
         </form>}

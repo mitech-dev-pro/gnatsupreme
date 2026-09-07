@@ -20,7 +20,7 @@ export default function AppLayout() {
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Navbar isSidebarOpen={isSidebarOpen} onToggleSidebar={() => setIsSidebarOpen((v) => !v)} />
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
+        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 [scrollbar-gutter:stable] sm:px-7 sm:py-6">
           <Outlet />
         </main>
       </div>

@@ -232,7 +232,7 @@ export default function MemberPortalLayout() {
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 sm:px-6 lg:pb-8 lg:pt-6">
+        <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 [scrollbar-gutter:stable] sm:px-6 lg:pb-8 lg:pt-6">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>

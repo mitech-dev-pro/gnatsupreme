@@ -6,7 +6,12 @@ import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
-import { isMemberPortalPath, isMinor, parseISODate, toISODate } from "@/lib/utils";
+import {
+  isMemberPortalPath,
+  isMinor,
+  parseISODate,
+  toISODate,
+} from "@/lib/utils";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -111,7 +116,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedMode =
-    searchParams.get("mode") === "member" ? "member" : "staff";
+    searchParams.get("mode") === "staff" ? "staff" : "member";
   const requestedRedirect = searchParams.get("redirect");
   const safeStaffRedirect =
     requestedRedirect &&
@@ -388,9 +393,7 @@ export default function Login() {
         isMinor(item.dateOfBirth) &&
         (!item.trusteeName.trim() || !item.trusteeGhanaCardId.trim())
       ) {
-        setMemberError(
-          "Enter trustee details for every beneficiary under 18.",
-        );
+        setMemberError("Enter trustee details for every beneficiary under 18.");
         return;
       }
     }
@@ -569,27 +572,6 @@ export default function Login() {
           <div className="mb-5.5 flex gap-1 rounded-[11px] bg-[#eef0fa] p-1">
             <button
               type="button"
-              onClick={() => handleMemberModeChange("staff")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
-                mode === "staff"
-                  ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]"
-                  : "bg-transparent text-[#5b6472]"
-              }`}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                className={`h-3.5 w-3.5 ${mode === "staff" ? "text-[#17805f] opacity-100" : "opacity-75"}`}
-              >
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <path d="M3 9h18M8 4v5" />
-              </svg>
-              Administrators
-            </button>
-            <button
-              type="button"
               onClick={() => handleMemberModeChange("member")}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
                 mode === "member"
@@ -608,6 +590,27 @@ export default function Login() {
                 <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" />
               </svg>
               Member Access
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMemberModeChange("staff")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
+                mode === "staff"
+                  ? "bg-white text-[#1e2761] shadow-[0_1px_3px_rgba(30,39,97,0.15)]"
+                  : "bg-transparent text-[#5b6472]"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                className={`h-3.5 w-3.5 ${mode === "staff" ? "text-[#17805f] opacity-100" : "opacity-75"}`}
+              >
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M3 9h18M8 4v5" />
+              </svg>
+              Administrators
             </button>
           </div>
 

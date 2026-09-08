@@ -34,6 +34,8 @@ function Progress({ page }: { page: number }) {
 
 export default function MemberClaimNew() {
   const navigate = useNavigate();
+  const submissionKey = useRef(crypto.randomUUID());
+  const submitting = useRef(false);
   const { id: resubmitId } = useParams();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [loading, setLoading] = useState(true);
@@ -163,16 +165,16 @@ export default function MemberClaimNew() {
   };
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); if (!declaration || !claimType) return; setBusy(true); setError("");
+    event.preventDefault(); if (!declaration || !claimType || submitting.current) return; submitting.current = true; setBusy(true); setError("");
     const payload = { claimType, claimDetails: buildClaimDetails(), claimantType, claimantIdType, claimantIdNumber, claimantContact: contact, paymentMethod, paymentDetails, documentIds: documents.map((file) => file.id), notes };
     try {
       if (resubmitId) await api.patch(`/member-portal/claims/${resubmitId}/resubmit`, payload);
-      else await api.post("/member-portal/claims", payload);
+      else await api.post("/member-portal/claims", payload, { headers: { "Idempotency-Key": submissionKey.current } });
       navigate("/member/claims", { replace: true, state: { success: "Your claim was submitted and is awaiting staff review." } });
     } catch (caught: any) {
       const issues = caught?.response?.data?.errors as Array<{ message?: string }> | undefined;
       setError(issues?.map((issue) => issue.message).filter(Boolean).join(" ") || caught?.response?.data?.message || "The claim could not be submitted.");
-    } finally { setBusy(false); }
+    } finally { submitting.current = false; setBusy(false); }
   };
 
   const leave = () => { if (window.confirm("Leave this claim? Information entered here will be lost.")) navigate("/member/claims"); };

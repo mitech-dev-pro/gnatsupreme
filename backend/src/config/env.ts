@@ -90,11 +90,11 @@ const environmentSchema = z.object({
   MANKRADO_MODE: z.enum(["HOSTED_FORM", "API"]).default("API"),
   MANKRADO_BASE_URL: z.preprocess(
     (value) => (value === "" ? undefined : value),
-    z.string().url().optional(),
+    z.string().url().default("https://mankradotest.milifeghana.com/gnatsupreme/"),
   ),
   MANKRADO_API_KEY: z.preprocess(
     (value) => (value === "" ? undefined : value),
-    z.string().min(16).optional(),
+    z.string().trim().min(1).optional(),
   ),
   // Gates the external, API-key-authenticated member-lookup endpoint (modules/external) --
   // dark (unmounted) by default so this cross-boundary, lower-trust surface only exists once a

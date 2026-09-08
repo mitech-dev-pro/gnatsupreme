@@ -47,6 +47,19 @@ const report20Item: NavSubItem = {
   to: "/imports/report20",
 };
 
+const claimsGroupIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9 12.5 11 14.5 15.5 9" />
+    <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+  </svg>
+);
+
+const claimsItems: NavSubItem[] = [
+  { label: "File a Claim", target: "new", to: "/claims/new" },
+  { label: "Claim Details", target: "details", to: "/claims" },
+  { label: "Claim History", target: "history", to: "/claims/history" },
+];
+
 const mainNavItems: { label: string; to: string; icon: ReactNode }[] = [
   // {
   //   label: "Transfers",
@@ -62,21 +75,6 @@ const mainNavItems: { label: string; to: string; icon: ReactNode }[] = [
   //     </svg>
   //   ),
   // },
-  {
-    label: "Claims",
-    to: "/claims",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path d="M9 12.5 11 14.5 15.5 9" />
-        <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
-      </svg>
-    ),
-  },
   {
     label: "Reports",
     to: "/reports",
@@ -276,6 +274,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       location.pathname.startsWith("/members/upload") ||
       location.pathname.startsWith("/imports/report20"),
   );
+  const [claimsExpanded, setClaimsExpanded] = useState(() =>
+    location.pathname.startsWith("/claims"),
+  );
 
   return (
     <>
@@ -361,6 +362,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             items={importsItems}
             expanded={importsExpanded}
             onToggle={() => setImportsExpanded((v) => !v)}
+            location={location}
+            onNavigate={onClose}
+          />
+
+          <NavGroup
+            id="claims-navigation"
+            label="Claims"
+            icon={claimsGroupIcon}
+            items={claimsItems}
+            expanded={claimsExpanded}
+            onToggle={() => setClaimsExpanded((v) => !v)}
             location={location}
             onNavigate={onClose}
           />

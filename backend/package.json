@@ -24,7 +24,8 @@
     "verify:performance-runtime": "node scripts/verify-performance-runtime.mjs",
     "verify:performance": "npm run verify:performance-indexes && npm run verify:performance-runtime",
     "performance:slow-queries": "node scripts/report-slow-queries.mjs",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:claims": "tsc && node --test --test-isolation=none dist/modules/claims/*.test.js"
   },
   "keywords": [],
   "author": "",

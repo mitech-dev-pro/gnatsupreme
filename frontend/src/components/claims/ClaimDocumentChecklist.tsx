@@ -1,4 +1,5 @@
-import { CLAIM_DOCUMENT_MANIFEST, type ClaimType } from "@/lib/claimDocuments";
+import { useState } from "react";
+import { MANKRADO_DOCUMENT_SLOTS, CLAIM_DOCUMENT_MANIFEST, type ClaimType } from "@/lib/claimDocuments";
 import FileUploadField from "@/components/ui/FileUploadField";
 import StatusBadge from "@/components/ui/StatusBadge";
 
@@ -14,7 +15,8 @@ type ClaimDocumentChecklistProps = {
 };
 
 export default function ClaimDocumentChecklist({ claimType, documents, uploadingSlot, error, onUpload, onRemove }: ClaimDocumentChecklistProps) {
-  const manifest = CLAIM_DOCUMENT_MANIFEST[claimType] ?? [];
+  const [fileError, setFileError] = useState("");
+  const manifest = (CLAIM_DOCUMENT_MANIFEST[claimType] ?? []).filter((slot) => MANKRADO_DOCUMENT_SLOTS[claimType].includes(slot.key) || documents.some((doc) => doc.slotKey === slot.key));
   const requiredSlots = manifest.filter((d) => d.tag === "REQUIRED");
   const anyOneSlots = manifest.filter((d) => d.tag === "ANY_ONE_REQUIRED");
   const docsBySlot = (slotKey: string) => documents.filter((doc) => doc.slotKey === slotKey);
@@ -25,6 +27,7 @@ export default function ClaimDocumentChecklist({ claimType, documents, uploading
 
   return (
     <div>
+      <p className="mb-2 text-[11.5px] text-(--text-muted)">PDF, Word (.doc, .docx), JPEG or JPG. Maximum 1 MB per file; one file per category.</p>
       {claimType === "DEATH" && (
         <p className="mb-2 text-[11.5px] italic text-(--text-muted)">Provide any ONE of the death-proof documents below.</p>
       )}
@@ -45,12 +48,17 @@ export default function ClaimDocumentChecklist({ claimType, documents, uploading
                   </span>
                 ))
               ) : (
-                <FileUploadField label="Upload" busy={uploadingSlot === slot.key} onSelect={(file) => onUpload(slot.key, file)} />
+                <FileUploadField label="Upload" accept=".pdf,.doc,.docx,.jpg,.jpeg" disabled={Boolean(uploadingSlot)} busy={uploadingSlot === slot.key} onSelect={(file) => {
+                  setFileError("");
+                  if (!/\.(pdf|docx?|jpe?g)$/i.test(file.name) || file.size === 0 || file.size > 1_000_000) { setFileError("Choose a PDF, Word or JPEG file no larger than 1 MB (1,000,000 bytes)."); return; }
+                  onUpload(slot.key, file);
+                }} />
               )}
             </div>
           );
         })}
       </div>
+      {fileError && <p role="alert" className="mt-2 text-[12px] text-(--danger)">{fileError}</p>}
       {error && <p className="mt-1.5 text-[11.5px] font-semibold text-(--danger)">{error}</p>}
       <div className="mt-2 flex justify-between rounded-[8px] bg-(--surface-subtle) px-3 py-2 text-[11.5px] font-bold text-(--text-strong)">
         <span>Documents attached</span>

@@ -1,11 +1,13 @@
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { prisma } from "../../lib/prisma.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
+import { ClaimDocumentError, loadClaimDocuments } from "./claims.documents.js";
+import { deliverClaim, expireStaleDeliveries } from "./claims.delivery.js";
+import { ClaimsProviderUnavailableError } from "./claims.provider.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
@@ -50,7 +52,7 @@ const submissionSchema = claimSubmissionUnion({
     residentialAddress: z.string().trim().max(240).optional(),
     nationality: z.string().trim().min(2).max(80),
   }),
-  paymentMethod: z.enum(["MOBILE_MONEY", "BANK_ACCOUNT", "CHEQUE", "NO_PAYMENT"]),
+  paymentMethod: z.literal("CHEQUE"),
   paymentDetails: z.record(z.string(), z.string().trim().max(150)).default({}),
   documentIds: z.array(z.number().int().positive()).max(10).default([]),
   notes: z.string().trim().max(1000).optional(),
@@ -92,6 +94,8 @@ const submissionSelect = {
   id: true,
   externalClaimId: true,
   provider: true,
+  deliveryState: true,
+  externalStatus: true,
   status: true,
   source: true,
   claimType: true,
@@ -118,8 +122,8 @@ claimsRouter.get("/provider", (_request, response) => {
       provider: claimsProvider.name,
       mode: claimsProvider.mode,
       configured: claimsProvider.isConfigured(),
-      submissionsEnabled: true,
-      simulation: true,
+      submissionsEnabled: claimsProvider.isConfigured(),
+      simulation: false,
     },
   });
 });
@@ -193,10 +197,7 @@ claimsRouter.post("/submissions", async (request, response) => {
     return;
   }
   const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
     CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
   };
   const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter(
     (key) => !parsed.data.paymentDetails[key],
@@ -226,21 +227,28 @@ claimsRouter.post("/submissions", async (request, response) => {
   }
 
   const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType);
-  const simulationId = `SIM-${new Date().getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  if (!claimsProvider.isConfigured()) {
+    response.status(503).json({ success: false, message: "Mankrado submissions are not configured." }); return;
+  }
+  try { await loadClaimDocuments(parsed.data.claimType, uniqueDocumentIds, member.id); }
+  catch (error) { if (!(error instanceof ClaimDocumentError)) throw error; response.status(400).json({ success: false, message: error.message }); return; }
+  const token = z.string().uuid().safeParse(request.get("Idempotency-Key"));
+  if (!token.success) { response.status(400).json({ success: false, message: "Provide a UUID Idempotency-Key header." }); return; }
+  const idempotencyKey = `staff:${user.id}:${token.data}`;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
       : parsed.data.claimDetails;
-  const claim = await prisma.externalClaimSubmission.create({
-    data: {
+  const claim = await prisma.externalClaimSubmission.upsert({
+    where: { idempotencyKey },
+    update: {},
+    create: {
       memberId: member.id,
       submittedById: user.id,
       source: "STAFF",
-      provider: "SIMULATION",
-      idempotencyKey: `simulation:${randomUUID()}`,
-      externalClaimId: simulationId,
-      status: "SUBMITTED",
-      submittedAt: new Date(),
+      provider: "MANKRADO",
+      idempotencyKey,
+      status: "PENDING",
       claimType: parsed.data.claimType,
       claimantType: parsed.data.claimantType,
       claimantName: parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
@@ -256,8 +264,11 @@ claimsRouter.post("/submissions", async (request, response) => {
       notes: parsed.data.notes || null,
     },
   });
-  await recordAudit({ request, actor: user, action: "CLAIM_SIMULATION_SUBMITTED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id, description: `Submitted simulated ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for ${member.fullName}`, afterData: { reference: simulationId, claimType: parsed.data.claimType, claimantType: parsed.data.claimantType, estimatedAmount: estimate.amount?.toString() ?? null }, regionId: member.district?.regionId, districtId: member.districtId });
-  response.status(201).json({ success: true, data: claim });
+  if (claim.memberId !== member.id) { response.status(409).json({ success: false, message: "This submission key belongs to another claim." }); return; }
+  const delivered = await deliverClaim(claim.id);
+  await recordAudit({ request, actor: user, action: "CLAIM_DELIVERY_RECORDED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id,
+    description: "Recorded Mankrado claim delivery outcome", afterData: { deliveryState: delivered.deliveryState }, regionId: member.district?.regionId, districtId: member.districtId });
+  response.status(delivered.deliveryState === "ACCEPTED" ? 201 : 202).json({ success: true, data: delivered });
 });
 
 claimsRouter.patch("/submissions/:id/review", async (request, response) => {
@@ -279,22 +290,21 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
 
   const { action, note } = body.data;
   const reviewedAt = new Date();
-  const data =
-    action === "APPROVE"
-      ? {
-          status: "SUBMITTED" as const,
-          submittedAt: reviewedAt,
-          externalClaimId: `SIM-${reviewedAt.getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
-        }
-      : action === "RETURN"
-        ? { status: "RETURNED" as const, errorMessage: null }
-        : { status: "FAILED" as const, errorMessage: note ?? null };
-
-  const updated = await prisma.externalClaimSubmission.update({
-    where: { id: claim.id },
-    data: { ...data, reviewedById: user.id, reviewNote: note ?? null, reviewedAt },
-    select: submissionSelect,
+  if (action === "APPROVE") {
+    const record = await prisma.externalClaimSubmission.findUniqueOrThrow({ where: { id: claim.id } });
+    if (record.provider !== "MANKRADO") { response.status(409).json({ success: false, message: "Historical simulated claims cannot be sent to Mankrado. File a new claim." }); return; }
+    if (!claimsProvider.isConfigured()) { response.status(503).json({ success: false, message: "Mankrado submissions are not configured." }); return; }
+    try { await loadClaimDocuments(record.claimType!, record.documentIds, record.memberId, record.submittedByMemberId ?? undefined); }
+    catch (error) { if (!(error instanceof ClaimDocumentError)) throw error; response.status(400).json({ success: false, message: error.message }); return; }
+  }
+  const changed = await prisma.externalClaimSubmission.updateMany({
+    where: { id: claim.id, status: "PENDING", reviewedAt: null, deliveryState: "NOT_SENT" },
+    data: { status: action === "RETURN" ? "RETURNED" : action === "REJECT" ? "FAILED" : "PENDING",
+      reviewedById: user.id, reviewNote: note ?? null, reviewedAt, errorMessage: action === "REJECT" ? note : null },
   });
+  if (!changed.count) { response.status(409).json({ success: false, message: "This claim has already been reviewed. Refresh to see its status." }); return; }
+  if (action === "APPROVE") await deliverClaim(claim.id);
+  const updated = await prisma.externalClaimSubmission.findUniqueOrThrow({ where: { id: claim.id }, select: submissionSelect });
   await recordAudit({
     request,
     actor: user,
@@ -309,7 +319,25 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   response.json({ success: true, data: updated });
 });
 
+// Recovery only for saved claims for which no external attempt has started.
+claimsRouter.post("/submissions/:id/send", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  if (!params.success) { response.status(400).json({ success: false, message: "Invalid claim ID" }); return; }
+  const user = response.locals.user as AuthenticatedUser;
+  const claim = await prisma.externalClaimSubmission.findFirst({ where: {
+    id: params.data.id, provider: "MANKRADO", status: "PENDING", deliveryState: "NOT_SENT",
+    member: { is: memberScope(user) }, OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
+  }, select: { id: true } });
+  if (!claim) { response.status(409).json({ success: false, message: "No accessible unsent claim is ready for delivery. Refresh its status." }); return; }
+  if (!claimsProvider.isConfigured()) { response.status(503).json({ success: false, message: "Mankrado submissions are not configured." }); return; }
+  const delivered = await deliverClaim(claim.id);
+  await recordAudit({ request, actor: user, action: "CLAIM_DELIVERY_RECORDED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id,
+    description: "Recorded delivery of a previously unsent claim", afterData: { deliveryState: delivered.deliveryState } });
+  response.json({ success: true, data: delivered });
+});
+
 claimsRouter.get("/submissions", async (request, response) => {
+  await expireStaleDeliveries();
   const parsed = querySchema.safeParse(request.query);
   if (!parsed.success) {
     response.status(400).json({ success: false, message: "Invalid request" });
@@ -340,6 +368,7 @@ claimsRouter.get("/submissions", async (request, response) => {
 });
 
 claimsRouter.get("/submissions/:id", async (request, response) => {
+  await expireStaleDeliveries();
   const params = idSchema.safeParse(request.params);
   if (!params.success) {
     response.status(400).json({ success: false, message: "Invalid submission ID" });
@@ -370,4 +399,32 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
     ? await prisma.storedFile.findMany({ where: { id: { in: submission.documentIds } }, select: { id: true, slotKey: true, originalName: true, storedName: true } })
     : [];
   response.json({ success: true, data: { ...submission, documents } });
+});
+
+// Proxy reads are scoped to locally accessible members before any external request.
+claimsRouter.get("/history/:staffId", async (request, response) => {
+  const parsed = lookupSchema.safeParse({ staffId: request.params.staffId });
+  if (!parsed.success) { response.status(400).json({ success: false, message: "Invalid Staff ID" }); return; }
+  const user = response.locals.user as AuthenticatedUser;
+  const member = await prisma.member.findFirst({ where: { controllerId: parsed.data.staffId, ...memberScope(user) }, select: { id: true } });
+  if (!member) { response.status(404).json({ success: false, message: "Member not found" }); return; }
+  try {
+    const history = await claimsProvider.history(parsed.data.staffId);
+    if (history.some((item) => item.staffId && item.staffId !== parsed.data.staffId)) throw new Error("History member mismatch");
+    response.json({ success: true, data: history });
+  } catch (error) { response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({ success: false, message: "Mankrado history is unavailable. Local claims remain saved." }); }
+});
+
+claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
+  const externalId = z.string().trim().min(1).max(200).safeParse(request.params.externalId);
+  if (!externalId.success) { response.status(400).json({ success: false, message: "Invalid claim reference" }); return; }
+  const user = response.locals.user as AuthenticatedUser;
+  const claim = await prisma.externalClaimSubmission.findFirst({ where: { externalClaimId: externalId.data, provider: "MANKRADO", member: { is: memberScope(user) } }, select: { id: true, member: { select: { controllerId: true } } } });
+  if (!claim) { response.status(404).json({ success: false, message: "Claim not found" }); return; }
+  try {
+    const details = await claimsProvider.details(externalId.data);
+    if (details.id !== externalId.data || (details.staffId && details.staffId !== claim.member.controllerId)) throw new Error("Claim mismatch");
+    await prisma.externalClaimSubmission.update({ where: { id: claim.id }, data: { externalStatus: details.status, lastSyncedAt: new Date() } });
+    response.json({ success: true, data: details });
+  } catch (error) { response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({ success: false, message: "Mankrado claim details are unavailable. Local details remain saved." }); }
 });

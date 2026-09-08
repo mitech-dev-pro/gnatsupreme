@@ -93,6 +93,8 @@ function Progress({ page }: { page: number }) {
 
 export default function ClaimNew() {
   const navigate = useNavigate();
+  const submissionKey = useRef(crypto.randomUUID());
+  const submitting = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [page, setPage] = useState(-1);
   const [staffId, setStaffId] = useState("");
@@ -347,7 +349,8 @@ export default function ClaimNew() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!member || !declaration || !claimType) return;
+    if (!member || !declaration || !claimType || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError("");
     try {
@@ -363,7 +366,8 @@ export default function ClaimNew() {
         paymentDetails,
         documentIds: documents.map((file) => file.id),
         notes,
-      });
+      }, { headers: { "Idempotency-Key": submissionKey.current } });
+      if (response.data.data.deliveryState !== "ACCEPTED") { navigate(`/claims/${response.data.data.id}`, { replace: true }); return; }
       navigate("/claims", {
         replace: true,
         state: {
@@ -380,9 +384,10 @@ export default function ClaimNew() {
           .filter(Boolean)
           .join(" ") ||
           caught?.response?.data?.message ||
-          "The claim could not be submitted.",
+          "The submission outcome is unknown. Check claim history before starting another claim.",
       );
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };

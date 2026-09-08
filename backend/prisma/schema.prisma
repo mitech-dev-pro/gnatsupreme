@@ -82,20 +82,9 @@ enum TransferStatus {
 }
 
 enum ExternalClaimStatus {
-  // PENDING is reused as "awaiting staff review" for a member-submitted claim (source =
-  // MEMBER_PORTAL). Two other things already touch PENDING and must stay disjoint from that
-  // meaning by `source`, not by status alone:
-  //   1. The real Mankrado provider integration is a stub that always throws (see
-  //      claims/mankrado.provider.ts) — no live path uses PENDING/REDIRECT_READY as "awaiting
-  //      provider sync" today.
-  //   2. workflows/workflow.routes.ts's POST /:id/remove creates a claim stub with
-  //      status: PENDING (source defaults to STAFF) when removing a member for DEATH/DISABILITY
-  //      — a pre-existing, unrelated use. The staff review queue filters on
-  //      `source: MEMBER_PORTAL AND status: PENDING`, so this STAFF-sourced row is correctly
-  //      excluded, but any future code that creates a claim must set `source` deliberately
-  //      rather than relying on the STAFF default to stay out of the review queue.
-  // If real Mankrado sync is ever wired up, or that removal workflow changes, re-check this
-  // invariant before reusing PENDING for anything else.
+  // PENDING includes both unreviewed member claims and claims awaiting confirmed delivery.
+  // Staff review requires source MEMBER_PORTAL, reviewedAt null, and deliveryState NOT_SENT.
+  // Delivery state and externalStatus are separate from the review workflow.
   PENDING
   REDIRECT_READY
   SUBMITTED
@@ -790,6 +779,16 @@ model MemberTransfer {
   @@map("member_transfers")
 }
 
+enum ClaimDeliveryState {
+  NOT_SENT
+  SENDING
+  ACCEPTED
+  FAILED
+  UNKNOWN
+
+  @@map("claim_delivery_state")
+}
+
 model ExternalClaimSubmission {
   id                  Int                   @id @default(autoincrement())
   memberId            Int                   @map("member_id")
@@ -807,6 +806,9 @@ model ExternalClaimSubmission {
   idempotencyKey      String                @unique @map("idempotency_key")
   externalClaimId     String?               @unique @map("external_claim_id")
   formUrl             String?               @map("form_url")
+  deliveryState       ClaimDeliveryState    @default(NOT_SENT) @map("delivery_state")
+  deliveryStartedAt   DateTime?             @map("delivery_started_at")
+  externalStatus      String?               @map("external_status")
   status              ExternalClaimStatus   @default(PENDING)
   claimType           BenefitType?          @map("claim_type")
   claimantType        String?               @map("claimant_type")
@@ -843,6 +845,7 @@ model ExternalClaimSubmission {
   @@index([submittedByMemberId])
   @@index([status])
   @@index([source, status])
+  @@index([deliveryState, deliveryStartedAt])
   @@index([createdAt])
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([memberId, createdAt(sort: Desc), id(sort: Desc)])

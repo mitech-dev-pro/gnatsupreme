@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
+import { deliveryLabel } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import PageHeader from "@/components/ui/PageHeader";
 import Dropdown from "@/components/ui/Dropdown";
@@ -10,7 +11,7 @@ import Pagination from "@/components/ui/Pagination";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TableFrame from "@/components/ui/TableFrame";
 
-type ClaimSubmission = { id: number; externalClaimId: string | null; provider: string; status: string; source: "STAFF" | "MEMBER_PORTAL"; claimType: string | null; claimantName: string | null; estimatedAmount: string | null; errorMessage: string | null; reviewNote: string | null; submittedAt: string | null; member: { id: number; controllerId: string; fullName: string }; submittedByMember: { id: number; controllerId: string; fullName: string } | null };
+type ClaimSubmission = { id: number; externalClaimId: string | null; provider: string; deliveryState: string; reviewedAt: string | null; status: string; source: "STAFF" | "MEMBER_PORTAL"; claimType: string | null; claimantName: string | null; estimatedAmount: string | null; errorMessage: string | null; reviewNote: string | null; submittedAt: string | null; member: { id: number; controllerId: string; fullName: string }; submittedByMember: { id: number; controllerId: string; fullName: string } | null };
 type Decision = "APPROVE" | "RETURN" | "REJECT";
 const STATUSES = ["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"];
 const STATUS_TONES: Record<string, "info" | "success" | "warning" | "danger"> = { PENDING: "warning", REDIRECT_READY: "info", SUBMITTED: "info", RETURNED: "warning", FAILED: "danger", SYNCHRONIZED: "success" };
@@ -75,9 +76,9 @@ export default function Claims() {
         <td className="px-4 py-2.5"><Link to={`/claims/${row.id}`} className="font-semibold text-(--ink) hover:underline hover:text-(--action-primary)">{labelize(row.claimType)}</Link>{row.claimantName && <div className="text-[11px] text-(--text-muted)">{row.claimantName}</div>}{row.source === "MEMBER_PORTAL" && <div className="mt-0.5 inline-block rounded-full bg-(--info-soft) px-2 py-0.5 text-[10px] font-bold text-(--text-strong)">Filed by member</div>}</td>
         <td className="px-4 py-2.5"><div className="font-mono text-[11.5px] text-(--ink)">{row.externalClaimId ?? "Not assigned"}</div><div className="text-[10.5px] text-(--text-muted)">{row.provider}</div></td>
         <td className="px-4 py-2.5 font-semibold text-(--ink)">{row.estimatedAmount ? formatCurrency(row.estimatedAmount) : "Not available"}</td>
-        <td className="px-4 py-2.5"><StatusBadge tone={STATUS_TONES[row.status] ?? "info"}>{labelize(row.status)}</StatusBadge>{row.status === "FAILED" && row.errorMessage && <div className="mt-0.5 text-[11px] text-(--danger)">{row.errorMessage}</div>}{row.status === "RETURNED" && row.reviewNote && <div className="mt-0.5 text-[11px] text-(--warning)">{row.reviewNote}</div>}</td>
+        <td className="px-4 py-2.5"><StatusBadge tone={STATUS_TONES[row.status] ?? "info"}>{labelize(row.status)}</StatusBadge><div className="mt-1 text-[11px] text-(--text-muted)">{row.provider === "SIMULATION" ? "Historical simulation" : deliveryLabel(row.deliveryState)}</div>{row.errorMessage && <div className="mt-0.5 text-[11px] text-(--danger)">{row.errorMessage}</div>}{row.status === "RETURNED" && row.reviewNote && <div className="mt-0.5 text-[11px] text-(--warning)">{row.reviewNote}</div>}</td>
         <td className="px-4 py-2.5 text-(--text-muted)">{formatDate(row.submittedAt)}</td>
-        <td className="px-4 py-2.5">{row.status === "PENDING" && row.source === "MEMBER_PORTAL" && <button type="button" onClick={() => startReview(row)} className="rounded-[7px] border border-(--action-primary) px-2.5 py-1 text-[11px] font-bold text-(--action-primary) hover:bg-(--info-soft)">Review</button>}</td>
+        <td className="px-4 py-2.5">{row.status === "PENDING" && row.source === "MEMBER_PORTAL" && !row.reviewedAt && row.deliveryState === "NOT_SENT" && <button type="button" onClick={() => startReview(row)} className="rounded-[7px] border border-(--action-primary) px-2.5 py-1 text-[11px] font-bold text-(--action-primary) hover:bg-(--info-soft)">Review</button>}</td>
       </tr>
       {reviewingId === row.id && <tr className="border-b border-(--border-default) bg-(--surface-subtle)"><td colSpan={7} className="px-4 py-4">
         <div className="max-w-160">

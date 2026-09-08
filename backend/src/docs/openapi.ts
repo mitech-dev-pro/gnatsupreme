@@ -10,6 +10,14 @@ type Endpoint = {
 };
 
 const endpoints: Endpoint[] = [
+  { method: "get", path: "/api/claims/provider", summary: "Claims integration availability", tag: "Claims" },
+  { method: "post", path: "/api/claims/submissions", summary: "Submit claim (UUID Idempotency-Key header required)", tag: "Claims" },
+  { method: "get", path: "/api/claims/submissions", summary: "Local claims and delivery states", tag: "Claims" },
+  { method: "get", path: "/api/claims/submissions/{id}", summary: "Local claim details", tag: "Claims" },
+  { method: "patch", path: "/api/claims/submissions/{id}/review", summary: "Review member claim and send on approval", tag: "Claims" },
+  { method: "post", path: "/api/claims/submissions/{id}/send", summary: "Send previously unsent approved claim", tag: "Claims" },
+  { method: "get", path: "/api/claims/history/{staffId}", summary: "Scoped Mankrado member history", tag: "Claims" },
+  { method: "get", path: "/api/claims/claimdetails/{externalId}", summary: "Scoped Mankrado claim details", tag: "Claims" },
   { method: "get", path: "/api/health", summary: "Application and database health", tag: "System", security: "public" },
   { method: "get", path: "/api/public/settings/branding", summary: "Public portal branding", tag: "Settings", security: "public" },
   { method: "post", path: "/api/auth/login", summary: "Staff login", tag: "Staff authentication", security: "public" },
@@ -85,7 +93,7 @@ const endpoints: Endpoint[] = [
 
 function parameters(path: string) {
   return [...path.matchAll(/\{([^}]+)\}/g)].map((match) => ({
-    name: match[1], in: "path", required: true, schema: match[1]?.toLowerCase().includes("name") ? { type: "string" } : { type: "integer", minimum: 1 },
+    name: match[1], in: "path", required: true, schema: (match[1]?.toLowerCase().includes("name") || ["staffId", "externalId"].includes(match[1] ?? "")) ? { type: "string" } : { type: "integer", minimum: 1 },
   }));
 }
 

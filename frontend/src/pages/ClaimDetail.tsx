@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
+import MankradoDetails from "@/components/claims/MankradoDetails";
+import MankradoHistory from "@/components/claims/MankradoHistory";
+import { deliveryLabel } from "@/lib/claimDocuments";
 import { CLAIM_DOCUMENT_MANIFEST, nightsBetween, type ClaimType } from "@/lib/claimDocuments";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -16,6 +19,8 @@ type ClaimSubmissionDetail = {
   id: number;
   externalClaimId: string | null;
   provider: string;
+  deliveryState: string;
+  externalStatus: string | null;
   status: string;
   source: "STAFF" | "MEMBER_PORTAL";
   claimType: ClaimType | null;
@@ -223,7 +228,16 @@ export default function ClaimDetail() {
             actions={<StatusBadge tone={STATUS_TONES[claim.status] ?? "info"}>{labelize(claim.status)}</StatusBadge>}
           />
 
-          {claim.status === "FAILED" && claim.errorMessage && (
+          {claim.provider === "MANKRADO" && claim.deliveryState === "NOT_SENT" && claim.status === "PENDING" && (claim.source === "STAFF" || claim.reviewedAt) && <div className="mb-4">
+            <Button loading={reviewBusy} onClick={async () => {
+              setReviewBusy(true); setReviewError("");
+              try { await api.post(`/claims/submissions/${claim.id}/send`); await load(); }
+              catch (caught: any) { setReviewError(caught?.response?.data?.message || "Delivery could not be started."); }
+              finally { setReviewBusy(false); }
+            }}>Send saved claim</Button>
+            {reviewError && <Alert tone="error">{reviewError}</Alert>}
+          </div>}
+          {claim.errorMessage && (
             <div className="mb-4">
               <Alert tone="error">{claim.errorMessage}</Alert>
             </div>
@@ -234,6 +248,7 @@ export default function ClaimDetail() {
             </div>
           )}
 
+          {claim.provider === "MANKRADO" && <MankradoDetails externalId={claim.externalClaimId} />}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Overview">
               <dl className="grid grid-cols-2 gap-4">
@@ -250,6 +265,8 @@ export default function ClaimDetail() {
                 <Field label="Estimated amount" value={claim.estimatedAmount ? formatCurrency(claim.estimatedAmount) : ""} />
                 <Field label="Reference" value={claim.externalClaimId} />
                 <Field label="Provider" value={claim.provider} />
+                <Field label="Delivery" value={claim.provider === "SIMULATION" ? "Historical simulation" : deliveryLabel(claim.deliveryState)} />
+                <Field label="Mankrado status" value={claim.externalStatus} />
                 <Field label="Submitted" value={formatDate(claim.submittedAt)} />
                 <Field
                   label="Filed by"
@@ -365,7 +382,8 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {claim.status === "PENDING" && claim.source === "MEMBER_PORTAL" && (
+          {claim.provider === "MANKRADO" && <MankradoHistory staffId={claim.member.controllerId} externalId={claim.externalClaimId} />}
+          {claim.status === "PENDING" && claim.source === "MEMBER_PORTAL" && !claim.reviewedAt && claim.deliveryState === "NOT_SENT" && (
             <div className="mt-4 rounded-[12px] border border-(--border-default) bg-(--surface-subtle) p-5">
               <p className="mb-2 text-[12.5px] font-bold text-(--text-strong)">
                 Review this member-submitted claim

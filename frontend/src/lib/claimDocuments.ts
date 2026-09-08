@@ -62,3 +62,12 @@ export const CLAIM_TYPES: { value: ClaimType; label: string; coverage: string }[
 export function claimSupportsSpouse(claimType: ClaimType) {
   return claimType === "DEATH" || claimType === "TOTAL_PERMANENT_DISABILITY";
 }
+
+// Keep these supported slots aligned with the backend Mankrado contract.
+export const MANKRADO_DOCUMENT_SLOTS: Record<ClaimType, string[]> = {
+  DEATH: ["medicalCertOrDoctorReport", "deathCertOrMortuary", "policeReport"],
+  TOTAL_PERMANENT_DISABILITY: ["doctorReport", "policeReport"],
+  CRITICAL_ILLNESS: ["medicalReport", "labResults"],
+  HOSPITALIZATION: ["dischargeSummaryOrBill"],
+};
+export const deliveryLabel = (state?: string) => ({ NOT_SENT: "Not sent", SENDING: "Sending to Mankrado", ACCEPTED: "Received by Mankrado", FAILED: "Delivery failed", UNKNOWN: "Delivery unconfirmed" }[state ?? ""] ?? "Not sent");

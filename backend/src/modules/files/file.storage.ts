@@ -4,6 +4,7 @@ import { open } from "node:fs/promises";
 import path from "node:path";
 
 import multer from "multer";
+import { CLAIM_MAX_FILE_BYTES, CLAIM_MIME_EXTENSIONS } from "../claims/mankrado.contract.js";
 
 import { env } from "../../config/env.js";
 
@@ -26,7 +27,7 @@ const allowedMimeTypes = new Map([
 const storage = multer.diskStorage({
   destination: (_request, _file, callback) => callback(null, memberUploadDirectory),
   filename: (_request, file, callback) => {
-    const extension = allowedMimeTypes.get(file.mimetype);
+    const extension = allowedMimeTypes.get(file.mimetype) ?? CLAIM_MIME_EXTENSIONS[file.mimetype]?.[0];
     callback(null, `${randomUUID()}${extension ?? ""}`);
   },
 });
@@ -35,10 +36,19 @@ export const memberFileUpload = multer({
   storage,
   limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
   fileFilter: (_request, file, callback) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
+    if (!allowedMimeTypes.has(file.mimetype) && !CLAIM_MIME_EXTENSIONS[file.mimetype]) {
       callback(new Error("Only PDF, JPEG, PNG, and WebP files are allowed"));
       return;
     }
+    callback(null, true);
+  },
+});
+
+export const claimFileUpload = multer({
+  storage,
+  limits: { fileSize: CLAIM_MAX_FILE_BYTES, files: 1 },
+  fileFilter: (_request, file, callback) => {
+    if (!CLAIM_MIME_EXTENSIONS[file.mimetype]) return callback(new Error("Claims accept PDF, DOC, DOCX, JPEG and JPG only."));
     callback(null, true);
   },
 });
@@ -114,6 +124,8 @@ export async function hasValidFileSignature(filePath: string, mimeType: string) 
     await handle.close();
   }
 
+  if (mimeType === "application/msword") return header.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   if (mimeType === "application/pdf") return header.subarray(0, 5).toString() === "%PDF-";
   if (mimeType === "image/jpeg") return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
   if (mimeType === "image/png") {

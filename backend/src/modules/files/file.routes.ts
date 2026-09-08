@@ -5,6 +5,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { z } from "zod";
 
+import { validateClaimFile } from "../claims/claims.documents.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
@@ -17,7 +18,7 @@ export const fileRouter = Router();
 const memberParamsSchema = z.object({ memberId: z.coerce.number().int().positive() });
 const fileParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 const storedNameParamsSchema = z.object({
-  storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp|csv|xlsx)$/),
+  storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp|csv|xlsx|doc|docx)$/),
 });
 const categorySchema = z.enum(["MEMBER_DOCUMENT", "MARRIAGE_CERTIFICATE", "CLAIM_DOCUMENT", "OTHER"]);
 
@@ -130,6 +131,12 @@ memberFileRouter.post(
       return;
     }
 
+    if (category.data === "CLAIM_DOCUMENT") {
+      try { validateClaimFile({ originalName: request.file.originalname, mimeType: request.file.mimetype, sizeBytes: request.file.size }); }
+      catch (error) { await removeUploadedFile(request.file.path); response.status(400).json({ success: false, message: (error as Error).message }); return; }
+    } else if (["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(request.file.mimetype)) {
+      await removeUploadedFile(request.file.path); response.status(400).json({ success: false, message: "Word files are supported for claim documents only." }); return;
+    }
     const storagePath = path.posix.join("member-files", request.file.filename);
     const downloadPath = `/api/files/${request.file.filename}`;
     const slotKey =
@@ -207,6 +214,10 @@ fileRouter.get("/:storedName", async (request, response) => {
   if (!file || !accessible) {
     response.status(404).json({ success: false, message: "File not found" });
     return;
+  }
+  if (file.category === "CLAIM_DOCUMENT") {
+    const attached = await prisma.externalClaimSubmission.findFirst({ where: { documentIds: { has: file.id }, NOT: { status: "RETURNED", deliveryState: "NOT_SENT" } }, select: { id: true } });
+    if (attached) { response.status(409).json({ success: false, message: "Documents on a filed claim cannot be deleted. Request a return for correction first." }); return; }
   }
   const filePath = absoluteStoragePath(file.storagePath);
   if (!filePath) {

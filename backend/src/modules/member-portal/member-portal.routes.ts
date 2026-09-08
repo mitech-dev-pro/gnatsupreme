@@ -1,5 +1,6 @@
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { ClaimDocumentError, loadClaimDocuments, validateClaimFile } from "../claims/claims.documents.js";
+import { claimFileUpload } from "../files/file.storage.js";
 import { unlink } from "node:fs/promises";
 
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -325,7 +326,7 @@ const memberClaimSubmissionSchema = claimSubmissionUnion({
     residentialAddress: z.string().trim().max(240).optional(),
     nationality: z.string().trim().min(2).max(80),
   }),
-  paymentMethod: z.enum(["MOBILE_MONEY", "BANK_ACCOUNT", "CHEQUE", "NO_PAYMENT"]),
+  paymentMethod: z.literal("CHEQUE"),
   paymentDetails: z.record(z.string(), z.string().trim().max(150)).default({}),
   documentIds: z.array(z.number().int().positive()).max(10).default([]),
   notes: z.string().trim().max(1000).optional(),
@@ -345,6 +346,9 @@ const memberClaimSubmissionSchema = claimSubmissionUnion({
 const claimSelect = {
   id: true,
   provider: true,
+  deliveryState: true,
+  externalStatus: true,
+  reviewedAt: true,
   externalClaimId: true,
   formUrl: true,
   status: true,
@@ -423,6 +427,9 @@ memberPortalRouter.post("/claims", async (request, response) => {
     return;
   }
   const currentMember = member(response);
+  const token = z.string().uuid().safeParse(request.get("Idempotency-Key"));
+  if (!token.success) { response.status(400).json({ success: false, message: "Provide a UUID Idempotency-Key header." }); return; }
+  const idempotencyKey = `member-portal:${currentMember.id}:${token.data}`;
   const record = await prisma.member.findUnique({
     where: { id: currentMember.id },
     select: { fullName: true, spouse: { select: { id: true, fullName: true } } },
@@ -433,10 +440,7 @@ memberPortalRouter.post("/claims", async (request, response) => {
   }
 
   const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
     CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
   };
   const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter((key) => !parsed.data.paymentDetails[key]);
   if (missing.length) {
@@ -463,20 +467,24 @@ memberPortalRouter.post("/claims", async (request, response) => {
     return;
   }
 
+  try { await loadClaimDocuments(parsed.data.claimType, uniqueDocumentIds, currentMember.id, currentMember.id); }
+  catch (error) { if (!(error instanceof ClaimDocumentError)) throw error; response.status(400).json({ success: false, message: error.message }); return; }
   const amount = await activeClaimBenefit(parsed.data.claimType, parsed.data.claimantType);
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
       : parsed.data.claimDetails;
 
-  const claim = await prisma.externalClaimSubmission.create({
-    data: {
+  const claim = await prisma.externalClaimSubmission.upsert({
+    where: { idempotencyKey },
+    update: {},
+    create: {
       memberId: currentMember.id,
       submittedByMemberId: currentMember.id,
       source: "MEMBER_PORTAL",
       status: "PENDING",
-      provider: "SIMULATION",
-      idempotencyKey: `member-portal:${randomUUID()}`,
+      provider: "MANKRADO",
+      idempotencyKey,
       claimType: parsed.data.claimType,
       claimantType: parsed.data.claimantType,
       claimantName: parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
@@ -507,7 +515,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
   const currentMember = member(response);
   const existing = await prisma.externalClaimSubmission.findFirst({
-    where: { id: params.data.id, submittedByMemberId: currentMember.id, status: "RETURNED" },
+    where: { id: params.data.id, submittedByMemberId: currentMember.id, status: "RETURNED", deliveryState: "NOT_SENT" },
     select: { id: true },
   });
   if (!existing) {
@@ -524,10 +532,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
 
   const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
     CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
   };
   const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter((key) => !parsed.data.paymentDetails[key]);
   if (missing.length) {
@@ -554,6 +559,8 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     return;
   }
 
+  try { await loadClaimDocuments(parsed.data.claimType, uniqueDocumentIds, currentMember.id, currentMember.id); }
+  catch (error) { if (!(error instanceof ClaimDocumentError)) throw error; response.status(400).json({ success: false, message: error.message }); return; }
   const amount = await activeClaimBenefit(parsed.data.claimType, parsed.data.claimantType);
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
@@ -561,7 +568,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
       : parsed.data.claimDetails;
 
   const updated = await prisma.externalClaimSubmission.update({
-    where: { id: existing.id },
+    where: { id: existing.id, status: "RETURNED", deliveryState: "NOT_SENT" },
     data: {
       status: "PENDING",
       claimType: parsed.data.claimType,
@@ -589,7 +596,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
 });
 
 function receiveClaimDocument(request: Request, response: Response, next: NextFunction) {
-  memberFileUpload.single("file")(request, response, (error) => {
+  claimFileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
       response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
@@ -610,6 +617,8 @@ memberPortalRouter.post("/claims/documents", receiveClaimDocument, async (reques
     return;
   }
   const currentMember = member(response);
+  try { validateClaimFile({ originalName: request.file.originalname, mimeType: request.file.mimetype, sizeBytes: request.file.size }); }
+  catch (error) { await unlink(request.file.path).catch(() => undefined); response.status(400).json({ success: false, message: (error as Error).message }); return; }
   const slotKey = typeof request.body.slotKey === "string" && request.body.slotKey.trim() ? request.body.slotKey.trim().slice(0, 80) : null;
   const storagePath = path.posix.join("member-files", request.file.filename);
   const downloadPath = `/api/files/${request.file.filename}`;
@@ -647,6 +656,8 @@ memberPortalRouter.delete("/claims/documents/:id", async (request, response) => 
     response.status(404).json({ success: false, message: "Document not found" });
     return;
   }
+  const attached = await prisma.externalClaimSubmission.findFirst({ where: { documentIds: { has: file.id }, NOT: { status: "RETURNED", deliveryState: "NOT_SENT" } }, select: { id: true } });
+  if (attached) { response.status(409).json({ success: false, message: "Documents on a filed claim cannot be deleted. Request a return for correction first." }); return; }
   await prisma.storedFile.delete({ where: { id: file.id } });
   await unlink(path.resolve(uploadRoot, file.storagePath)).catch(() => undefined);
   await recordAudit({ request, action: "MEMBER_FILE_REMOVED", entityType: "STORED_FILE", entityId: file.id, description: `Member ${currentMember.controllerId} removed a claim document` });

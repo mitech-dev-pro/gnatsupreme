@@ -1,3 +1,4 @@
+import { deliveryLabel } from "@/lib/claimDocuments";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
@@ -77,6 +78,8 @@ type MemberNotification = {
 };
 
 type ClaimItem = {
+  deliveryState?: string;
+  reviewedAt?: string | null;
   id: number;
   provider: string;
   externalClaimId: string | null;
@@ -2084,7 +2087,7 @@ export default function MemberHome({
                 <ul className="divide-y divide-(--border-default)">
                   {claims.map((claim) => {
                     const statusLabel =
-                      claim.status === "PENDING" &&
+                      claim.status === "PENDING" && !claim.reviewedAt &&
                       claim.source === "MEMBER_PORTAL"
                         ? "Submitted — awaiting staff review"
                         : claim.status === "RETURNED"
@@ -2115,15 +2118,16 @@ export default function MemberHome({
                           >
                             {statusLabel}
                           </div>
+                          {claim.deliveryState && <p className="text-[11.5px] text-(--text-muted)">{deliveryLabel(claim.deliveryState)}</p>}
                           {claim.status === "RETURNED" && claim.reviewNote && (
                             <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">
                               {claim.reviewNote}
                             </p>
                           )}
-                          {claim.status === "FAILED" &&
+                          {(claim.status === "FAILED" || claim.deliveryState === "FAILED" || claim.deliveryState === "UNKNOWN") &&
                             (claim.reviewNote || claim.errorMessage) && (
                               <p className="mt-1 max-w-[55ch] text-[11.5px] text-(--text-muted)">
-                                {claim.reviewNote || claim.errorMessage}
+                                {claim.errorMessage || claim.reviewNote}
                               </p>
                             )}
                         </div>

@@ -29,6 +29,7 @@ const Claims = lazy(() => import("@/pages/Claims"));
 const ClaimNew = lazy(() => import("@/pages/ClaimNew"));
 const ClaimDetail = lazy(() => import("@/pages/ClaimDetail"));
 const ClaimHistory = lazy(() => import("@/pages/ClaimHistory"));
+const ClaimApprovals = lazy(() => import("@/pages/ClaimApprovals"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Setup = lazy(() => import("@/pages/Setup"));
 const System = lazy(() => import("@/pages/System"));
@@ -65,6 +66,7 @@ export default function App() {
               {/* <Route path="/transfers" element={<Transfers />} /> */}
               <Route path="/claims" element={<Claims />} />
               <Route path="/claims/new" element={<ClaimNew />} />
+              <Route path="/claims/approvals" element={<ClaimApprovals />} />
               <Route path="/claims/history" element={<ClaimHistory />} />
               <Route path="/claims/:id" element={<ClaimDetail />} />
               <Route path="/reports" element={<Reports />} />

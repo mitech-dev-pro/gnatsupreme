@@ -56,6 +56,7 @@ const claimsGroupIcon = (
 
 const claimsItems: NavSubItem[] = [
   { label: "File a Claim", target: "new", to: "/claims/new" },
+  { label: "Claim Approvals", target: "approvals", to: "/claims/approvals" },
   { label: "Claim Details", target: "details", to: "/claims" },
   { label: "Claim History", target: "history", to: "/claims/history" },
 ];

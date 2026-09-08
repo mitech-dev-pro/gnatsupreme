@@ -28,6 +28,11 @@ const querySchema = z.object({
     .enum(["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"])
     .optional(),
   source: z.enum(["STAFF", "MEMBER_PORTAL"]).optional(),
+  // Mirrors the four-condition check the frontend already uses to decide whether a
+  // claim's review actions should show (Claims.tsx, ClaimDetail.tsx) -- lets the
+  // Claim Approvals queue page ask for exactly that set server-side. A literal (not
+  // z.coerce.boolean()) so "?awaitingReview=false" can't coerce to true.
+  awaitingReview: z.literal("true").optional(),
 });
 const idSchema = z.object({ id: z.coerce.number().int().positive() });
 const lookupSchema = z.object({
@@ -344,11 +349,12 @@ claimsRouter.get("/submissions", async (request, response) => {
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
-  const { page, limit, status, source } = parsed.data;
+  const { page, limit, status, source, awaitingReview } = parsed.data;
   const where = {
     member: { is: memberScope(user) },
-    ...(status ? { status } : {}),
-    ...(source ? { source } : {}),
+    ...(awaitingReview
+      ? { status: "PENDING" as const, source: "MEMBER_PORTAL" as const, reviewedAt: null, deliveryState: "NOT_SENT" as const }
+      : { ...(status ? { status } : {}), ...(source ? { source } : {}) }),
   };
   const [submissions, total] = await Promise.all([
     prisma.externalClaimSubmission.findMany({
@@ -358,7 +364,7 @@ claimsRouter.get("/submissions", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status, source: parsed.data.source }, () => prisma.externalClaimSubmission.count({ where })),
+    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status, source: parsed.data.source, awaitingReview }, () => prisma.externalClaimSubmission.count({ where })),
   ]);
   response.json({
     success: true,

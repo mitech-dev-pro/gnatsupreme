@@ -17,6 +17,7 @@ import { Alert } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
+import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -26,7 +27,6 @@ type BeneficiaryDraft = {
   relationship: string;
   dateOfBirth: string;
   trusteeName: string;
-  trusteeGhanaCardId: string;
 };
 type Errors = Record<string, string>;
 type CreatedMember = { id: number; fullName: string; controllerId: string };
@@ -36,11 +36,7 @@ const emptyBeneficiary = (): BeneficiaryDraft => ({
   relationship: "CHILD",
   dateOfBirth: "",
   trusteeName: "",
-  trusteeGhanaCardId: "",
 });
-const normalizeGhanaCard = (value: string) =>
-  value.toUpperCase().replace(/\s/g, "").slice(0, 17);
-
 function Field({
   label,
   required,
@@ -87,6 +83,9 @@ export default function AddMember() {
   const [ghanaCardId, setGhanaCardId] = useState("");
   const [phone, setPhone] = useState("");
   const [school, setSchool] = useState("");
+  const [employmentCategory, setEmploymentCategory] = useState<
+    "TEACHING" | "NON_TEACHING"
+  >("TEACHING");
   const [districtId, setDistrictId] = useState("");
   const [districtSearch, setDistrictSearch] = useState("");
   const [includeSpouse, setIncludeSpouse] = useState(false);
@@ -104,6 +103,9 @@ export default function AddMember() {
     null,
   );
 
+  // Remembers the last real school typed before switching to Non-teaching staff, so switching
+  // back to Teaching doesn't force retyping it.
+  const lastTeachingSchoolRef = useRef("");
   const memberSection = useRef<HTMLElement>(null);
   const employmentSection = useRef<HTMLElement>(null);
   const householdSection = useRef<HTMLElement>(null);
@@ -119,11 +121,7 @@ export default function AddMember() {
     districtId ||
     includeSpouse ||
     beneficiaries.some(
-      (item) =>
-        item.fullName ||
-        item.dateOfBirth ||
-        item.trusteeName ||
-        item.trusteeGhanaCardId,
+      (item) => item.fullName || item.dateOfBirth || item.trusteeName,
     ),
   );
 
@@ -204,17 +202,9 @@ export default function AddMember() {
       )
         next[`beneficiaries.${index}.dateOfBirth`] =
           "Date cannot be in the future.";
-      if (item.trusteeGhanaCardId && !GHANA_CARD.test(item.trusteeGhanaCardId))
-        next[`beneficiaries.${index}.trusteeGhanaCardId`] =
-          "Use the format GHA-000000000-0.";
-      if (isMinor(item.dateOfBirth)) {
-        if (!item.trusteeName.trim())
-          next[`beneficiaries.${index}.trusteeName`] =
-            "Trustee name is required for a beneficiary under 18.";
-        if (!item.trusteeGhanaCardId.trim())
-          next[`beneficiaries.${index}.trusteeGhanaCardId`] =
-            "Trustee Ghana Card ID is required for a beneficiary under 18.";
-      }
+      if (isMinor(item.dateOfBirth) && !item.trusteeName.trim())
+        next[`beneficiaries.${index}.trusteeName`] =
+          "Trustee name is required for a beneficiary under 18.";
     });
     setErrors(next);
     if (Object.keys(next).length) {
@@ -254,6 +244,7 @@ export default function AddMember() {
         ghanaCardId: ghanaCardId || null,
         phone: phone.trim() || null,
         school: school.trim(),
+        employmentCategory,
         districtId: Number(districtId),
         spouse: includeSpouse
           ? {
@@ -266,7 +257,6 @@ export default function AddMember() {
           relationship: item.relationship,
           dateOfBirth: item.dateOfBirth || null,
           trusteeName: item.trusteeName.trim() || null,
-          trusteeGhanaCardId: item.trusteeGhanaCardId || null,
         })),
       });
       setCreated(response.data.data);
@@ -297,6 +287,7 @@ export default function AddMember() {
     setGhanaCardId("");
     setPhone("");
     setSchool("");
+    setEmploymentCategory("TEACHING");
     setDistrictId("");
     setDistrictSearch("");
     setIncludeSpouse(false);
@@ -424,6 +415,14 @@ export default function AddMember() {
               <h3>Employment and location</h3>
               <dl>
                 <SummaryRow label="School" value={school} />
+                <SummaryRow
+                  label="Employment category"
+                  value={
+                    employmentCategory === "NON_TEACHING"
+                      ? "Non-teaching staff"
+                      : "Teaching"
+                  }
+                />
                 <SummaryRow label="District" value={selectedDistrict?.name} />
                 <SummaryRow
                   label="Region"
@@ -545,7 +544,7 @@ export default function AddMember() {
                   <input
                     value={ghanaCardId}
                     onChange={(event) =>
-                      setGhanaCardId(normalizeGhanaCard(event.target.value))
+                      setGhanaCardId(applyGhanaCardIdChange(event))
                     }
                     placeholder="GHA-000000000-0"
                   />
@@ -574,11 +573,43 @@ export default function AddMember() {
                 </div>
               </div>
               <div className="enroll-fields">
-                <Field label="School" required error={errors.school}>
+                <Field
+                  label="School"
+                  required={employmentCategory === "TEACHING"}
+                  error={errors.school}
+                  help={
+                    employmentCategory === "NON_TEACHING"
+                      ? "Non-teaching staff are recorded under Head Office, not a school."
+                      : undefined
+                  }
+                >
                   <input
                     value={school}
+                    disabled={employmentCategory === "NON_TEACHING"}
                     onChange={(event) => setSchool(event.target.value)}
                     placeholder="School or institution"
+                  />
+                </Field>
+                <Field
+                  label="Employment category"
+                  help="Non-teaching staff are not checked against Report 20"
+                >
+                  <Dropdown
+                    value={employmentCategory}
+                    onChange={(value) => {
+                      const next = value as "TEACHING" | "NON_TEACHING";
+                      setEmploymentCategory(next);
+                      if (next === "NON_TEACHING") {
+                        if (school.trim()) lastTeachingSchoolRef.current = school;
+                        setSchool("Head Office");
+                      } else if (school === "Head Office") {
+                        setSchool(lastTeachingSchoolRef.current);
+                      }
+                    }}
+                    options={[
+                      { value: "TEACHING", label: "Teaching" },
+                      { value: "NON_TEACHING", label: "Non-teaching staff" },
+                    ]}
                   />
                 </Field>
                 <Field
@@ -673,9 +704,7 @@ export default function AddMember() {
                     <input
                       value={spouseGhanaCardId}
                       onChange={(event) =>
-                        setSpouseGhanaCardId(
-                          normalizeGhanaCard(event.target.value),
-                        )
+                        setSpouseGhanaCardId(applyGhanaCardIdChange(event))
                       }
                       placeholder="GHA-000000000-0"
                     />
@@ -765,46 +794,23 @@ export default function AddMember() {
                         />
                       </div>
                       {isMinor(item.dateOfBirth) && (
-                        <>
-                          <Field
-                            label="Trustee name"
-                            required
-                            help="Required for a beneficiary under 18"
-                            error={
-                              errors[`beneficiaries.${index}.trusteeName`]
+                        <Field
+                          label="Trustee name"
+                          required
+                          help="Required for a beneficiary under 18"
+                          error={
+                            errors[`beneficiaries.${index}.trusteeName`]
+                          }
+                        >
+                          <input
+                            value={item.trusteeName}
+                            onChange={(event) =>
+                              updateBeneficiary(index, {
+                                trusteeName: event.target.value,
+                              })
                             }
-                          >
-                            <input
-                              value={item.trusteeName}
-                              onChange={(event) =>
-                                updateBeneficiary(index, {
-                                  trusteeName: event.target.value,
-                                })
-                              }
-                            />
-                          </Field>
-                          <Field
-                            label="Trustee Ghana Card"
-                            required
-                            error={
-                              errors[
-                                `beneficiaries.${index}.trusteeGhanaCardId`
-                              ]
-                            }
-                          >
-                            <input
-                              value={item.trusteeGhanaCardId}
-                              onChange={(event) =>
-                                updateBeneficiary(index, {
-                                  trusteeGhanaCardId: normalizeGhanaCard(
-                                    event.target.value,
-                                  ),
-                                })
-                              }
-                              placeholder="GHA-000000000-0"
-                            />
-                          </Field>
-                        </>
+                          />
+                        </Field>
                       )}
                     </div>
                   </article>

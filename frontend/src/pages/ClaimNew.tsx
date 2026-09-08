@@ -17,15 +17,12 @@ import {
   type ClaimType,
 } from "@/lib/claimDocuments";
 import Button from "@/components/ui/Button";
-import {
-  InputField,
-  SelectField,
-  TextareaField,
-} from "@/components/ui/FormField";
+import { InputField, TextareaField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Feedback";
 import ClaimDocumentChecklist, {
   type UploadedClaimDocument,
 } from "@/components/claims/ClaimDocumentChecklist";
+import { applyGhanaCardIdChange, formatGhanaCardIdInput } from "@/lib/ghanaCardId";
 
 type MemberLookup = {
   id: number;
@@ -54,11 +51,7 @@ type ContactDetails = {
   nationality: string;
 };
 
-const PAGE_LABELS = [
-  "Policy and identification",
-  "Claimant information",
-  "Payment and declaration",
-];
+const PAGE_LABELS = ["Policy and identification", "Payment and declaration"];
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -85,7 +78,7 @@ function Progress({ page }: { page: number }) {
   return (
     <div
       className="flex justify-center gap-2 py-5"
-      aria-label={`Step ${page + 1} of 3`}
+      aria-label={`Step ${page + 1} of ${PAGE_LABELS.length}`}
     >
       {PAGE_LABELS.map((label, index) => (
         <span
@@ -219,7 +212,7 @@ export default function ClaimNew() {
     setClaimantType(value);
     setEstimate(null);
     const selected = value === "SPOUSE" ? member?.spouse : member;
-    setClaimantIdNumber(selected?.ghanaCardId ?? "");
+    setClaimantIdNumber(formatGhanaCardIdInput(selected?.ghanaCardId ?? ""));
     setContact({
       fullName: selected?.fullName ?? "",
       primaryPhone: value === "MEMBER" ? (member?.phone ?? "") : "",
@@ -263,7 +256,7 @@ export default function ClaimNew() {
       const found = response.data.data as MemberLookup;
       setMember(found);
       setClaimantType("MEMBER");
-      setClaimantIdNumber(found.ghanaCardId ?? "");
+      setClaimantIdNumber(formatGhanaCardIdInput(found.ghanaCardId ?? ""));
       setContact({
         fullName: found.fullName,
         primaryPhone: found.phone ?? "",
@@ -476,7 +469,7 @@ export default function ClaimNew() {
           ← Back to claims
         </button>
         <span className="text-[11px] font-semibold text-(--text-muted)">
-          Step {page + 1} of 3
+          Step {page + 1} of {PAGE_LABELS.length}
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
@@ -868,7 +861,7 @@ export default function ClaimNew() {
                           hint="Required to continue. Use the format GHA-000000000-0."
                           value={claimantIdNumber}
                           onChange={(event) =>
-                            setClaimantIdNumber(event.target.value)
+                            setClaimantIdNumber(applyGhanaCardIdChange(event))
                           }
                           placeholder="GHA-000000000-0"
                         />
@@ -910,103 +903,6 @@ export default function ClaimNew() {
             )}
 
             {page === 1 && (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setError("");
-                  setPage(2);
-                }}
-              >
-                <SectionTitle>Claimant information</SectionTitle>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <InputField
-                    label="Full name"
-                    required
-                    value={contact.fullName}
-                    onChange={(event) =>
-                      updateContact("fullName", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="Primary mobile number"
-                    required
-                    inputMode="tel"
-                    value={contact.primaryPhone}
-                    onChange={(event) =>
-                      updateContact("primaryPhone", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="Additional contact number"
-                    inputMode="tel"
-                    value={contact.additionalPhone}
-                    onChange={(event) =>
-                      updateContact("additionalPhone", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="Email address"
-                    type="email"
-                    value={contact.email}
-                    onChange={(event) =>
-                      updateContact("email", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="GPS address"
-                    value={contact.gpsAddress}
-                    onChange={(event) =>
-                      updateContact("gpsAddress", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="Residential address"
-                    value={contact.residentialAddress}
-                    onChange={(event) =>
-                      updateContact("residentialAddress", event.target.value)
-                    }
-                  />
-                  <InputField
-                    label="Staff ID"
-                    value={member?.controllerId ?? ""}
-                    disabled
-                  />
-                  <SelectField
-                    label="Nationality"
-                    required
-                    value={contact.nationality}
-                    onChange={(event) =>
-                      updateContact("nationality", event.target.value)
-                    }
-                  >
-                    <option value="Ghanaian">Ghanaian</option>
-                    <option value="Other">Other</option>
-                  </SelectField>
-                </div>
-                <p className="mt-5 rounded-[9px] border border-(--info-border) bg-(--info-soft) px-4 py-3 text-[11.5px] text-(--text-muted)">
-                  These contact details are stored with this claim only. They do
-                  not change the member's profile.
-                </p>
-                <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between">
-                  <Button variant="secondary" onClick={() => setPage(0)}>
-                    Back
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      !contact.fullName.trim() ||
-                      contact.primaryPhone.trim().length < 7 ||
-                      !contact.nationality
-                    }
-                  >
-                    Next
-                  </Button>
-                </div>
-                <Progress page={page} />
-              </form>
-            )}
-
-            {page === 2 && (
               <form onSubmit={submit}>
                 <SectionTitle>Payment option</SectionTitle>
                 <p className="mb-4 text-[12.5px] font-semibold text-(--ink)">
@@ -1021,6 +917,18 @@ export default function ClaimNew() {
                       updatePayment("payeeName", event.target.value)
                     }
                   />
+                  {!contact.primaryPhone.trim() && (
+                    <InputField
+                      label="Contact phone number"
+                      required
+                      inputMode="tel"
+                      hint="No phone number is on file for this claimant — needed to reach them about this claim."
+                      value={contact.primaryPhone}
+                      onChange={(event) =>
+                        updateContact("primaryPhone", event.target.value)
+                      }
+                    />
+                  )}
                 </div>
                 <div className="mt-8">
                   <SectionTitle>Declaration</SectionTitle>
@@ -1057,14 +965,18 @@ export default function ClaimNew() {
                   </div>
                 </div>
                 <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between">
-                  <Button variant="secondary" onClick={() => setPage(1)}>
+                  <Button variant="secondary" onClick={() => setPage(0)}>
                     Back
                   </Button>
                   <Button
                     type="submit"
                     loading={busy}
                     loadingLabel="Submitting claim..."
-                    disabled={!paymentComplete || !declaration}
+                    disabled={
+                      !paymentComplete ||
+                      !declaration ||
+                      contact.primaryPhone.trim().length < 7
+                    }
                   >
                     Submit claim
                   </Button>

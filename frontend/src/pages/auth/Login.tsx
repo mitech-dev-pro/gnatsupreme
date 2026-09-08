@@ -12,18 +12,16 @@ import {
   parseISODate,
   toISODate,
 } from "@/lib/utils";
+import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
-const normalizeGhanaCard = (value: string) =>
-  value.toUpperCase().replace(/\s/g, "").slice(0, 17);
 
 type BeneficiaryDraft = {
   fullName: string;
   relationship: string;
   dateOfBirth: string;
   trusteeName: string;
-  trusteeGhanaCardId: string;
 };
 
 const emptyBeneficiary = (): BeneficiaryDraft => ({
@@ -31,7 +29,6 @@ const emptyBeneficiary = (): BeneficiaryDraft => ({
   relationship: "CHILD",
   dateOfBirth: "",
   trusteeName: "",
-  trusteeGhanaCardId: "",
 });
 
 // const FEATURES = [
@@ -159,7 +156,9 @@ export default function Login() {
   const [setupDistrictLocked, setSetupDistrictLocked] = useState(false);
   const [setupEmail, setSetupEmail] = useState("");
   const [setupPassword, setSetupPassword] = useState("");
+  const [showSetupPassword, setShowSetupPassword] = useState(false);
   const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
+  const [showSetupConfirmPassword, setShowSetupConfirmPassword] = useState(false);
   const [districts, setDistricts] = useState<
     { id: number; name: string; region: { name: string } }[]
   >([]);
@@ -167,7 +166,6 @@ export default function Login() {
   const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
   const [spouseName, setSpouseName] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
-  const [marriageCertFile, setMarriageCertFile] = useState<File | null>(null);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([
     emptyBeneficiary(),
   ]);
@@ -196,7 +194,15 @@ export default function Login() {
     return <Navigate to={safeStaffRedirect} replace />;
   }
 
-  if (member && requestedMode === "member" && memberStep !== "policy") {
+  // A logged-in member should be bounced back into the portal -- unless they're still mid-way
+  // through the post-login onboarding wizard (policy details, then beneficiaries), which is a
+  // multi-step flow that keeps them on this page across more than just the "policy" step.
+  if (
+    member &&
+    requestedMode === "member" &&
+    memberStep !== "policy" &&
+    memberStep !== "beneficiaries"
+  ) {
     return <Navigate to={safeMemberRedirect} replace />;
   }
 
@@ -380,27 +386,33 @@ export default function Login() {
     setMemberStep("beneficiaries");
   };
 
+  // A row the member hasn't touched at all (still exactly the emptyBeneficiary() default) isn't
+  // "a beneficiary with a missing name" -- it's just the form's starting placeholder. A member
+  // reaching this wizard purely because staff never recorded their Ghana Card ID (say) may
+  // already have a beneficiary on file from enrollment, with nothing left to add here -- treating
+  // the untouched default row as required would force them to invent a redundant one.
+  const isBeneficiaryStarted = (item: BeneficiaryDraft) =>
+    Boolean(item.fullName.trim() || item.dateOfBirth || item.trusteeName.trim());
+
   const handleFinishSetup = async (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
 
-    for (const item of beneficiaries) {
+    const startedBeneficiaries = beneficiaries.filter(isBeneficiaryStarted);
+    for (const item of startedBeneficiaries) {
       if (!item.fullName.trim()) {
         setMemberError("Enter a full name for every beneficiary.");
         return;
       }
-      if (
-        isMinor(item.dateOfBirth) &&
-        (!item.trusteeName.trim() || !item.trusteeGhanaCardId.trim())
-      ) {
-        setMemberError("Enter trustee details for every beneficiary under 18.");
+      if (isMinor(item.dateOfBirth) && !item.trusteeName.trim()) {
+        setMemberError("Enter a trustee name for every beneficiary under 18.");
         return;
       }
     }
 
     setMemberSubmitting(true);
     try {
-      const res = await api.post("/member-portal/onboarding", {
+      await api.post("/member-portal/onboarding", {
         ghanaCardId: policyGhanaCardId,
         spouse: hasSpouseDetails
           ? {
@@ -408,21 +420,13 @@ export default function Login() {
               ghanaCardId: spouseGhanaCardId || null,
             }
           : null,
-        beneficiaries: beneficiaries.map((item) => ({
+        beneficiaries: startedBeneficiaries.map((item) => ({
           fullName: item.fullName.trim(),
           relationship: item.relationship,
           dateOfBirth: item.dateOfBirth || null,
           trusteeName: item.trusteeName || null,
-          trusteeGhanaCardId: item.trusteeGhanaCardId || null,
         })),
       });
-      if (hasSpouseDetails && res.data.data.spouseId && marriageCertFile) {
-        const formData = new FormData();
-        formData.append("file", marriageCertFile);
-        await api
-          .post("/member-portal/spouse/marriage-certificate", formData)
-          .catch(() => undefined);
-      }
       markProfileComplete();
       navigate(safeMemberRedirect, { replace: true });
     } catch (err: any) {
@@ -477,7 +481,6 @@ export default function Login() {
     setPolicyGhanaCardId("");
     setSpouseName("");
     setSpouseGhanaCardId("");
-    setMarriageCertFile(null);
     setBeneficiaries([emptyBeneficiary()]);
   };
 
@@ -871,12 +874,17 @@ export default function Login() {
             </>
           ) : memberStep === "setup" ? (
             <>
-              <h2 className="mb-5 text-xl font-extrabold tracking-tight text-[#1e2761]">
+              <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
                 Set up your account
               </h2>
               {/* <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
                 Set your login email and password.
               </div> */}
+              <div className="mb-5 rounded-lg bg-[#eef2fb] px-2.5 py-2 text-[11.5px] leading-relaxed font-semibold text-[#334a7a]">
+                The details below were recorded by your district office at enrollment. If any of
+                this information is incorrect, please contact your district office to have it
+                corrected.
+              </div>
 
               {memberError && <ErrorBanner message={memberError} />}
 
@@ -976,18 +984,24 @@ export default function Login() {
                   >
                     New password
                   </label>
-                  <input
-                    id="setup-password"
-                    type="password"
-                    value={setupPassword}
-                    onChange={(e) => {
-                      setSetupPassword(e.target.value);
-                      setMemberError("");
-                    }}
-                    placeholder="At least 8 characters"
-                    autoComplete="new-password"
-                    className={inputClasses.replace("pl-9", "pl-3")}
-                  />
+                  <div className="relative">
+                    <input
+                      id="setup-password"
+                      type={showSetupPassword ? "text" : "password"}
+                      value={setupPassword}
+                      onChange={(e) => {
+                        setSetupPassword(e.target.value);
+                        setMemberError("");
+                      }}
+                      placeholder="At least 8 characters"
+                      autoComplete="new-password"
+                      className={`${inputClasses.replace("pl-9", "pl-3")} pr-10`}
+                    />
+                    <EyeToggle
+                      shown={showSetupPassword}
+                      onToggle={() => setShowSetupPassword((v) => !v)}
+                    />
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -997,18 +1011,24 @@ export default function Login() {
                   >
                     Confirm new password
                   </label>
-                  <input
-                    id="setup-confirm-password"
-                    type="password"
-                    value={setupConfirmPassword}
-                    onChange={(e) => {
-                      setSetupConfirmPassword(e.target.value);
-                      setMemberError("");
-                    }}
-                    placeholder="Re-enter your new password"
-                    autoComplete="new-password"
-                    className={inputClasses.replace("pl-9", "pl-3")}
-                  />
+                  <div className="relative">
+                    <input
+                      id="setup-confirm-password"
+                      type={showSetupConfirmPassword ? "text" : "password"}
+                      value={setupConfirmPassword}
+                      onChange={(e) => {
+                        setSetupConfirmPassword(e.target.value);
+                        setMemberError("");
+                      }}
+                      placeholder="Re-enter your new password"
+                      autoComplete="new-password"
+                      className={`${inputClasses.replace("pl-9", "pl-3")} pr-10`}
+                    />
+                    <EyeToggle
+                      shown={showSetupConfirmPassword}
+                      onToggle={() => setShowSetupConfirmPassword((v) => !v)}
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -1035,7 +1055,7 @@ export default function Login() {
           ) : memberStep === "policy" ? (
             <>
               <h2 className="mb-1 text-xl font-extrabold tracking-tight text-[#1e2761]">
-                Your policy details
+                Please provide your policy details
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
                 A few more details to finish setup.
@@ -1055,7 +1075,7 @@ export default function Login() {
                     id="policy-ghana-card"
                     value={policyGhanaCardId}
                     onChange={(e) => {
-                      setPolicyGhanaCardId(normalizeGhanaCard(e.target.value));
+                      setPolicyGhanaCardId(applyGhanaCardIdChange(e));
                       setMemberError("");
                     }}
                     placeholder="GHA-000000000-0"
@@ -1084,7 +1104,7 @@ export default function Login() {
                       className={inputClasses.replace("pl-9", "pl-3")}
                     />
                   </div>
-                  <div className="mb-3">
+                  <div>
                     <label
                       htmlFor="spouse-ghana-card"
                       className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
@@ -1095,30 +1115,11 @@ export default function Login() {
                       id="spouse-ghana-card"
                       value={spouseGhanaCardId}
                       onChange={(e) => {
-                        setSpouseGhanaCardId(
-                          normalizeGhanaCard(e.target.value),
-                        );
+                        setSpouseGhanaCardId(applyGhanaCardIdChange(e));
                         setMemberError("");
                       }}
                       placeholder="GHA-000000000-0"
                       className={inputClasses.replace("pl-9", "pl-3")}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="marriage-cert"
-                      className="mb-1 block text-[11.5px] font-bold text-[#1e2761]"
-                    >
-                      Marriage certificate (optional)
-                    </label>
-                    <input
-                      id="marriage-cert"
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.webp"
-                      onChange={(e) =>
-                        setMarriageCertFile(e.target.files?.[0] ?? null)
-                      }
-                      className="w-full rounded-[9px] border border-[#e5e9f0] bg-[#fbfcfe] py-2 pl-3 pr-3 text-[12px]"
                     />
                   </div>
                 </div>
@@ -1144,22 +1145,6 @@ export default function Login() {
               {memberError && <ErrorBanner message={memberError} />}
 
               <form onSubmit={handleFinishSetup} noValidate>
-                <div className="mb-2 flex items-center justify-end">
-                  <button
-                    type="button"
-                    disabled={beneficiaries.length >= 10}
-                    onClick={() =>
-                      setBeneficiaries((current) => [
-                        ...current,
-                        emptyBeneficiary(),
-                      ])
-                    }
-                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    + Add beneficiary
-                  </button>
-                </div>
-
                 {beneficiaries.map((item, index) => (
                   <div
                     key={index}
@@ -1223,10 +1208,10 @@ export default function Login() {
                     {isMinor(item.dateOfBirth) && (
                       <>
                         <p className="mb-2.5 rounded-lg bg-[#fbf0dd] px-3 py-2 text-[11px] font-semibold text-[#b9791a]">
-                          This beneficiary is under 18 — trustee details are
+                          This beneficiary is under 18 — a trustee name is
                           required.
                         </p>
-                        <div className="mb-2.5">
+                        <div>
                           <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
                             Trustee name
                           </label>
@@ -1241,28 +1226,26 @@ export default function Login() {
                             className={inputClasses.replace("pl-9", "pl-3")}
                           />
                         </div>
-                        <div>
-                          <label className="mb-1 block text-[11px] font-bold text-[#1e2761]">
-                            Trustee Ghana Card
-                          </label>
-                          <input
-                            value={item.trusteeGhanaCardId}
-                            onChange={(e) =>
-                              updateBeneficiary(index, {
-                                trusteeGhanaCardId: normalizeGhanaCard(
-                                  e.target.value,
-                                ),
-                              })
-                            }
-                            placeholder="GHA-000000000-0"
-                            required
-                            className={inputClasses.replace("pl-9", "pl-3")}
-                          />
-                        </div>
                       </>
                     )}
                   </div>
                 ))}
+
+                <div className="mb-3 flex items-center justify-end">
+                  <button
+                    type="button"
+                    disabled={beneficiaries.length >= 10}
+                    onClick={() =>
+                      setBeneficiaries((current) => [
+                        ...current,
+                        emptyBeneficiary(),
+                      ])
+                    }
+                    className="text-[11.5px] font-semibold text-[#1e2761] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    + Add another beneficiary
+                  </button>
+                </div>
 
                 <button
                   type="submit"

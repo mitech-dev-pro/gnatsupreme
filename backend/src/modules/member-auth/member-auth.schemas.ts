@@ -44,8 +44,12 @@ export const onboardingDetailsSchema = z.object({
     .toUpperCase()
     .regex(/^GHA-\d{9}-\d$/, "Use the format GHA-000000000-0"),
   spouse: spouseSchema.nullable().optional(),
+  // No .min(1) here -- a member enrolled by staff may already have beneficiaries on file, and
+  // this endpoint only ever runs for a member reaching this step because *some* completion item
+  // (often just the Ghana Card ID) is missing, not necessarily the beneficiary. Whether at least
+  // one beneficiary exists in total (existing + newly submitted) is checked in the route handler,
+  // where the existing count is actually known.
   beneficiaries: z
     .array(beneficiarySchema)
-    .min(1, "Add at least one beneficiary")
     .max(10, "Up to 10 beneficiaries can be added"),
 });

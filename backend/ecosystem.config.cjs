@@ -37,6 +37,13 @@ module.exports = {
       exec_mode: "fork",
       autorestart: true,
       max_memory_restart: "5G",
+      // Without this, V8's own old-space heap limit defaults to roughly 2GB regardless of
+      // max_memory_restart above -- ExcelJS loads an entire workbook (Report 20 / bulk member
+      // import) into an in-memory object model via workbook.xlsx.readFile, and a large file blows
+      // past that ~2GB V8 ceiling long before PM2's RSS-based max_memory_restart would ever step
+      // in, crashing with "FATAL ERROR: Reached heap limit" instead of a clean managed restart.
+      // Set below max_memory_restart so PM2's RSS ceiling can still catch a genuine runaway/leak.
+      node_args: ["--max-old-space-size=4096"],
       kill_timeout: 15000,
       env_production: {
         NODE_ENV: "production",

@@ -32,6 +32,17 @@ enum MemberStatus {
   @@map("member_status")
 }
 
+// Distinguishes teachers on the government payroll (Report 20 applies to them) from
+// administrative/back-office staff who are members of the scheme but never appear in a Report
+// 20 file -- see reconcileReport20 in imports/report20.service.ts, which excludes NON_TEACHING
+// members from its missing/reappeared sweep entirely so their status stays fully staff-managed.
+enum MemberEmploymentCategory {
+  TEACHING
+  NON_TEACHING
+
+  @@map("member_employment_category")
+}
+
 enum BeneficiaryRelationship {
   CHILD
   SPOUSE
@@ -305,6 +316,7 @@ model Member {
   passwordHash                 String?                    @map("password_hash")
   school                       String
   status                       MemberStatus               @default(PENDING)
+  employmentCategory           MemberEmploymentCategory   @default(TEACHING) @map("employment_category")
   report20Matched              Boolean                    @default(false) @map("report20_matched")
   missingFromReport20At        DateTime?                  @map("missing_from_report20_at")
   spouseDeclarationStatus      SpouseDeclarationStatus    @default(UNKNOWN) @map("spouse_declaration_status")
@@ -332,6 +344,9 @@ model Member {
 
   @@index([districtId])
   @@index([status])
+  // Matches reconcileReport20's activeMembers query, which filters status IN (...) alongside
+  // employmentCategory: "TEACHING" on every Report 20 upload.
+  @@index([status, employmentCategory])
   @@index([fullName])
   @@index([status, updatedAt(sort: Desc)])
   @@index([districtId, status, updatedAt(sort: Desc)])

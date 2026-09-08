@@ -51,7 +51,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Endorsements",
+    label: "Request Changes",
     to: "/member/requests",
     icon: icon(
       <>
@@ -88,7 +88,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/member": "Member Details",
   "/member/coverage": "My Scheme Benefits",
   "/member/claims": "My Claims",
-  "/member/requests": "Endorsements",
+  "/member/requests": "Request Changes",
   "/member/notifications": "Notifications",
   "/member/help": "Help and support",
 };
@@ -252,7 +252,9 @@ export default function MemberPortalLayout() {
               }
             >
               {item.icon}
-              <span>{item.label === "Member Details" ? "Details" : item.label}</span>
+              <span>
+                {item.label === "Member Details" ? "Details" : item.label}
+              </span>
             </NavLink>
           ))}
           <button

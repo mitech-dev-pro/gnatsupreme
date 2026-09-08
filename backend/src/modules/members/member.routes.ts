@@ -345,6 +345,21 @@ memberRouter.patch("/:id", async (request, response) => {
     return;
   }
 
+  // Whenever this switches a member from TEACHING to NON_TEACHING, null out any stale
+  // missingFromReport20At left over from before the switch -- reconcileReport20's activeMembers
+  // query now excludes NON_TEACHING members entirely, so reappearedMemberIds can never reach
+  // them again to clear it, and it would otherwise sit there permanently, correct-looking in the
+  // UI (which suppresses the "unmatched" display for NON_TEACHING) but silently wrong in the
+  // database. Diffs against `existing` (already fetched above) rather than reacting to the
+  // payload alone, so a no-op re-save that merely repeats NON_TEACHING doesn't re-clear it
+  // unnecessarily. This assumes the direct staff PATCH here is the only place employmentCategory
+  // can ever change -- it is not present in memberDetailsChangeSchema (the member self-service
+  // change-request field list) or the member self-onboarding schema; if either of those is ever
+  // extended to include employmentCategory, this clearing logic needs to move or be duplicated.
+  const wasTeaching = existing.employmentCategory === "TEACHING";
+  const willBeNonTeaching = body.data.employmentCategory === "NON_TEACHING";
+  const clearingUpdate = wasTeaching && willBeNonTeaching ? { missingFromReport20At: null } : {};
+
   const member = await prisma.member.update({
     where: { id: existing.id },
     data: {
@@ -352,6 +367,7 @@ memberRouter.patch("/:id", async (request, response) => {
       ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
         ? { phoneVerifiedAt: null }
         : {}),
+      ...clearingUpdate,
     },
     include: memberInclude,
   });

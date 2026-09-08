@@ -8,18 +8,24 @@ import { processMemberImportJob } from "./modules/imports/member-import.worker.j
 import { processReport20Job } from "./modules/imports/report20.worker.js";
 import { MEMBER_IMPORT_QUEUE_NAME, REPORT20_QUEUE_NAME } from "./queues/import.queue.js";
 
-// BullMQ renews a job's lock via a timer running in this same process. ExcelJS's XLSX parsing
-// (workbook.xlsx.readFile, used by both parseReport20 and stageMemberImport) runs largely
-// synchronously despite being promise-wrapped, and for a file with tens of thousands of rows can
-// block the event loop for well over BullMQ's 30s default lock duration -- long enough that the
-// lock-renewal timer never gets a turn to fire. BullMQ then (correctly, given its 30s assumption)
-// decides the lock was lost and marks the job "stalled" even though the worker is still actively
-// parsing, not dead. Observed in production: every Report 20 job ever submitted failed with
-// "job stalled more than allowable limit" after repeated "could not renew lock" errors, despite
-// the worker process being alive and plenty of free system memory (ruling out an OOM restart).
-// 600s matches the transaction timeout already used for the same class of large-file operations
-// (see reconcileReport20, stageMemberImport) -- comfortably longer than any single parse should
-// take, so a genuinely dead worker still gets detected, just not a merely-busy one.
+// BullMQ renews a job's lock via a timer running in this same process. parseReport20 and
+// stageMemberImport originally used ExcelJS's workbook.xlsx.readFile/workbook.csv.readFile, which
+// ran largely synchronously despite being promise-wrapped -- for a file with tens of thousands of
+// rows that could block the event loop for well over BullMQ's 30s default lock duration, long
+// enough that the lock-renewal timer never got a turn to fire. BullMQ then (correctly, given its
+// 30s assumption) decided the lock was lost and marked the job "stalled" even though the worker
+// was still actively parsing, not dead. Observed in production: every Report 20 job ever
+// submitted failed with "job stalled more than allowable limit" after repeated "could not renew
+// lock" errors, despite the worker process being alive and plenty of free system memory (ruling
+// out an OOM restart).
+//
+// Both parse paths now stream rows via spreadsheet-stream.ts (ExcelJS's WorkbookReader / fast-csv)
+// instead of materializing the whole file, which yields to the event loop far more often and
+// makes a full 30s stall much less likely on its own -- but this generous duration is kept
+// regardless: it matches the transaction timeout already used for the same class of large-file
+// operations (see reconcileReport20, stageMemberImport), comfortably longer than any single parse
+// or bulk-insert phase should take, so a genuinely dead worker still gets detected, just not a
+// merely-busy one.
 const LOCK_DURATION_MS = 600_000;
 
 // Separate process from the API server (started via `npm run worker`, or the "gnatsupreme-worker"

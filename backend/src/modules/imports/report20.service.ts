@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 
-import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
@@ -11,6 +10,7 @@ import {
   resolveDistrict,
 } from "../geography/district-match.js";
 import { notifyMember } from "../notifications/notification.service.js";
+import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
 
 const MAX_ROWS = 300_000;
 
@@ -78,40 +78,38 @@ export async function parseReport20(
   filePath: string,
   mimeType: string,
 ): Promise<SourceRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  if (
-    mimeType ===
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  ) {
-    await workbook.xlsx.readFile(filePath);
-  } else {
-    await workbook.csv.readFile(filePath);
-  }
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) throw new Error("The file does not contain a worksheet");
-  if (worksheet.rowCount < 2) throw new Error("The file has no data rows");
-  if (worksheet.rowCount - 1 > MAX_ROWS)
-    throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
-
-  const headers: string[] = [];
-  worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
-    headers[column] = cell.text.trim() || `Column ${column}`;
-  });
-  if (
-    !headers.some((header) =>
-      aliases.controllerId.some((alias) => alias === normalizeHeader(header)),
-    )
-  ) {
-    throw new Error("A Controller ID or Employee No column is required");
-  }
-
+  let headers: string[] | null = null;
   const rows: SourceRow[] = [];
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    const row = worksheet.getRow(rowNumber);
+  let dataRowCount = 0;
+
+  for await (const { rowNumber, cells } of streamSpreadsheetRows(
+    filePath,
+    mimeType,
+  )) {
+    if (rowNumber === 1) {
+      headers = [];
+      cells.forEach((text, column) => {
+        if (column > 0) headers![column] = text.trim() || `Column ${column}`;
+      });
+      if (
+        !headers.some((header) =>
+          aliases.controllerId.some(
+            (alias) => alias === normalizeHeader(header),
+          ),
+        )
+      ) {
+        throw new Error("A Controller ID or Employee No column is required");
+      }
+      continue;
+    }
+
+    dataRowCount += 1;
+    if (dataRowCount > MAX_ROWS)
+      throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
+
     const rawData: Record<string, string> = {};
-    headers.forEach((header, column) => {
-      if (header && column > 0)
-        rawData[header] = row.getCell(column).text.trim();
+    headers!.forEach((header, column) => {
+      if (header && column > 0) rawData[header] = cellAt(cells, column);
     });
     if (!Object.values(rawData).some(Boolean)) continue;
     rows.push({
@@ -125,7 +123,7 @@ export async function parseReport20(
       ghanaCardId: field(rawData, aliases.ghanaCardId),
     });
   }
-  if (!rows.length) throw new Error("The file has no data rows");
+  if (!headers || !rows.length) throw new Error("The file has no data rows");
   return rows;
 }
 
@@ -156,8 +154,17 @@ export async function reconcileReport20(
   ];
   const [members, districts, districtAliases, activeMembers] =
     await Promise.all([
+      // NON_TEACHING members are excluded here too, not just from the activeMembers query below
+      // -- this is what feeds matchedMemberIds/changedMemberIds (see classifyRow), which drive
+      // report20Matched updates independently of the missing/reappeared logic. Without this
+      // filter, a non-teaching member whose controller ID happens to appear in an uploaded file
+      // would still get report20Matched toggled even though they're meant to be fully exempt
+      // from Report 20 reconciliation.
       prisma.member.findMany({
-        where: { controllerId: { in: controllerIds } },
+        where: {
+          controllerId: { in: controllerIds },
+          employmentCategory: "TEACHING",
+        },
         include: { district: { select: { name: true } } },
       }),
       prisma.district.findMany({
@@ -171,9 +178,13 @@ export async function reconcileReport20(
       // from payroll. INACTIVE has to stay in this query too, not just ACTIVE/FLAGGED — otherwise
       // an inactive member could never be detected as reappeared and reactivated automatically.
       // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
-      // are already off the books.
+      // are already off the books. NON_TEACHING members are excluded entirely -- Report 20 is a
+      // teaching-staff payroll file and doesn't apply to them; their status stays staff-managed.
       prisma.member.findMany({
-        where: { status: { in: ["ACTIVE", "FLAGGED", "INACTIVE"] } },
+        where: {
+          status: { in: ["ACTIVE", "FLAGGED", "INACTIVE"] },
+          employmentCategory: "TEACHING",
+        },
         select: {
           id: true,
           controllerId: true,

@@ -246,7 +246,7 @@ function runMemberImportCommit(jobId: number, currentUser: AuthenticatedUser, au
             data: {
               controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
               ...(extra.spouseName ? { spouseDeclarationStatus: "HAS_SPOUSE", spouse: { create: { fullName: extra.spouseName, ghanaCardId: extra.spouseGhanaCardId } } } : {}),
-              beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName, trusteeGhanaCardId: extra.trusteeGhanaCardId } },
+              beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName } },
             },
           });
           await transaction.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "IMPORTED", memberId: created.id } });

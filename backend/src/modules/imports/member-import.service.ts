@@ -1,9 +1,9 @@
-import ExcelJS from "exceljs";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
+import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
 
 const MAX_ROWS = 300_000;
 const aliases = {
@@ -20,7 +20,6 @@ const aliases = {
   beneficiaryRelationship: ["beneficiaryrelationship", "relationship"],
   beneficiaryDateOfBirth: ["beneficiarydateofbirth", "beneficiarydob"],
   trusteeName: ["trusteename"],
-  trusteeGhanaCardId: ["trusteeghanacardid", "trusteeghanacard"],
 } as const;
 
 type RawRow = { rowNumber: number; data: Record<string, string> };
@@ -51,30 +50,34 @@ function parseRelationship(value: string | null) {
 }
 
 async function spreadsheetRows(filePath: string, mimeType: string): Promise<RawRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") await workbook.xlsx.readFile(filePath);
-  else await workbook.csv.readFile(filePath);
-  const sheet = workbook.worksheets[0];
-  if (!sheet || sheet.rowCount < 2) throw new Error("The file has no data rows");
-  if (sheet.rowCount - 1 > MAX_ROWS) throw new Error(`An import may contain at most ${MAX_ROWS} rows`);
-  const headers: string[] = [];
-  sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
-    headers[column] = cell.text.trim() || `Column ${column}`;
-  });
-  for (const required of [aliases.controllerId, aliases.fullName, aliases.school, aliases.district]) {
-    if (!headers.some((header) => required.some((name) => name === normalized(header)))) {
-      throw new Error("Controller ID, Full Name, School, and District columns are required");
-    }
-  }
+  let headers: string[] | null = null;
   const rows: RawRow[] = [];
-  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+  let dataRowCount = 0;
+
+  for await (const { rowNumber, cells } of streamSpreadsheetRows(filePath, mimeType)) {
+    if (rowNumber === 1) {
+      headers = [];
+      cells.forEach((text, column) => {
+        if (column > 0) headers![column] = text.trim() || `Column ${column}`;
+      });
+      for (const required of [aliases.controllerId, aliases.fullName, aliases.school, aliases.district]) {
+        if (!headers.some((header) => required.some((name) => name === normalized(header)))) {
+          throw new Error("Controller ID, Full Name, School, and District columns are required");
+        }
+      }
+      continue;
+    }
+
+    dataRowCount += 1;
+    if (dataRowCount > MAX_ROWS) throw new Error(`An import may contain at most ${MAX_ROWS} rows`);
+
     const data: Record<string, string> = {};
-    headers.forEach((header, column) => {
-      if (header && column > 0) data[header] = sheet.getRow(rowNumber).getCell(column).text.trim();
+    headers!.forEach((header, column) => {
+      if (header && column > 0) data[header] = cellAt(cells, column);
     });
     if (Object.values(data).some(Boolean)) rows.push({ rowNumber, data });
   }
-  if (!rows.length) throw new Error("The file has no data rows");
+  if (!headers || !rows.length) throw new Error("The file has no data rows");
   return rows;
 }
 
@@ -128,7 +131,6 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     const relationship = parseRelationship(relationshipValue);
     const spouseName = readField(data, aliases.spouseName);
     const spouseGhanaCardId = readField(data, aliases.spouseGhanaCardId)?.toUpperCase() ?? null;
-    const trusteeGhanaCardId = readField(data, aliases.trusteeGhanaCardId)?.toUpperCase() ?? null;
     parseDate(readField(data, aliases.beneficiaryDateOfBirth), "Beneficiary date of birth", issues);
     if (!controllerId || !/^\d{4,7}$/.test(controllerId)) issues.push("Controller ID must contain 4 to 7 digits");
     if (!fullName || fullName.length < 2) issues.push("Full name is required");
@@ -140,7 +142,6 @@ export async function stageMemberImport(jobId: number, filePath: string, mimeTyp
     if (ghanaCardId && !/^GHA-\d{9}-\d$/.test(ghanaCardId)) issues.push("Ghana Card ID has an invalid format");
     if (spouseGhanaCardId && !spouseName) issues.push("Spouse name is required when spouse details are provided");
     if (spouseGhanaCardId && !/^GHA-\d{9}-\d$/.test(spouseGhanaCardId)) issues.push("Spouse Ghana Card ID has an invalid format");
-    if (trusteeGhanaCardId && !/^GHA-\d{9}-\d$/.test(trusteeGhanaCardId)) issues.push("Trustee Ghana Card ID has an invalid format");
     if (ghanaCardId && spouseGhanaCardId === ghanaCardId) issues.push("Member and spouse cannot use the same Ghana Card ID");
 
     let status: keyof typeof counts = "READY";
@@ -207,6 +208,5 @@ export function bulkRawFields(raw: Prisma.JsonValue) {
     beneficiaryRelationship: parseRelationship(readField(data, aliases.beneficiaryRelationship)),
     beneficiaryDateOfBirth: readField(data, aliases.beneficiaryDateOfBirth),
     trusteeName: readField(data, aliases.trusteeName),
-    trusteeGhanaCardId: readField(data, aliases.trusteeGhanaCardId)?.toUpperCase() ?? null,
   };
 }

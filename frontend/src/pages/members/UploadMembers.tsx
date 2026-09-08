@@ -56,7 +56,6 @@ const TEMPLATE_HEADERS = [
   "Beneficiary Relationship",
   "Beneficiary Date of Birth",
   "Trustee Name",
-  "Trustee Ghana Card ID",
 ];
 
 const TEMPLATE_EXAMPLE_ROW = [
@@ -74,7 +73,6 @@ const TEMPLATE_EXAMPLE_ROW = [
   "Kojo Owusu",
   "CHILD",
   "2010-06-15",
-  "",
   "",
 ];
 

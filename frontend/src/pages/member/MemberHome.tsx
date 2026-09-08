@@ -8,6 +8,7 @@ import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
+import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
 
 type Beneficiary = {
   id: number;
@@ -281,9 +282,7 @@ function MemberDetailsForm({
           <input
             id="member-profile-card"
             value={ghanaCardId}
-            onChange={(event) =>
-              setGhanaCardId(event.target.value.toUpperCase())
-            }
+            onChange={(event) => setGhanaCardId(applyGhanaCardIdChange(event))}
             placeholder="GHA-000000000-0"
             className={inputClasses}
           />
@@ -414,7 +413,7 @@ function SpouseForm({
         <label className={labelClasses}>Ghana Card ID</label>
         <input
           value={ghanaCardId}
-          onChange={(e) => setGhanaCardId(e.target.value.toUpperCase())}
+          onChange={(e) => setGhanaCardId(applyGhanaCardIdChange(e))}
           placeholder="GHA-000000000-0"
           className={inputClasses}
         />
@@ -473,9 +472,6 @@ function BeneficiaryForm({
   const [trusteeName, setTrusteeName] = useState(
     beneficiary?.trusteeName ?? "",
   );
-  const [trusteeGhanaCardId, setTrusteeGhanaCardId] = useState(
-    beneficiary?.trusteeGhanaCardId ?? "",
-  );
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -484,8 +480,8 @@ function BeneficiaryForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (minor && (!trusteeName.trim() || !trusteeGhanaCardId.trim())) {
-      setError("Trustee name and Ghana Card ID are required for a beneficiary under 18.");
+    if (minor && !trusteeName.trim()) {
+      setError("A trustee name is required for a beneficiary under 18.");
       return;
     }
     setBusy(true);
@@ -499,7 +495,6 @@ function BeneficiaryForm({
           relationship,
           dateOfBirth: dateOfBirth || null,
           trusteeName: trusteeName.trim() || null,
-          trusteeGhanaCardId: trusteeGhanaCardId.trim() || null,
         },
         requestNote: note.trim() || undefined,
       });
@@ -552,35 +547,19 @@ function BeneficiaryForm({
       </div>
       {minor && (
         <p className="rounded-lg bg-[#fbf0dd] px-3 py-2 text-[11.5px] font-semibold text-[#b9791a]">
-          This beneficiary is under 18 — trustee details are required.
+          This beneficiary is under 18 — a trustee name is required.
         </p>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label className={labelClasses}>
-            Trustee Name {minor ? "" : "(optional)"}
-          </label>
-          <input
-            value={trusteeName}
-            onChange={(e) => setTrusteeName(e.target.value)}
-            className={inputClasses}
-            required={minor}
-          />
-        </div>
-        <div>
-          <label className={labelClasses}>
-            Trustee Ghana Card ID {minor ? "" : "(optional)"}
-          </label>
-          <input
-            value={trusteeGhanaCardId}
-            onChange={(e) =>
-              setTrusteeGhanaCardId(e.target.value.toUpperCase())
-            }
-            placeholder="GHA-000000000-0"
-            className={inputClasses}
-            required={minor}
-          />
-        </div>
+      <div>
+        <label className={labelClasses}>
+          Trustee Name {minor ? "" : "(optional)"}
+        </label>
+        <input
+          value={trusteeName}
+          onChange={(e) => setTrusteeName(e.target.value)}
+          className={inputClasses}
+          required={minor}
+        />
       </div>
       <div>
         <label className={labelClasses}>Note (optional)</label>
@@ -866,7 +845,7 @@ export default function MemberHome({
                 aria-labelledby="coverage-summary-title"
               >
                 <div
-                  className="flex flex-col gap-5 px-5 py-5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                  className="flex flex-col gap-5 px-5 py-5 text-white sm:px-6"
                   style={{ backgroundColor: settings.primaryColor }}
                 >
                   <div>
@@ -894,22 +873,6 @@ export default function MemberHome({
                         : "District not yet assigned"}
                     </p>
                   </div>
-                  {benefitPlan && (
-                    <div className="shrink-0 border-t border-white/14 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
-                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-white/58">
-                        Monthly premium
-                      </span>
-                      <strong className="mt-0.5 block text-[18px]">
-                        {formatCurrency(
-                          benefitPlan.monthlyPremium,
-                          settings.currency,
-                        )}
-                      </strong>
-                      <span className="mt-0.5 block text-[10.5px] text-white/65">
-                        via {benefitPlan.collectionMethod}
-                      </span>
-                    </div>
-                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-(--border-default) px-5 py-3 text-[11.5px] text-(--text-muted)">
                   <span>
@@ -1593,20 +1556,11 @@ export default function MemberHome({
                     </a>
                   </div>
                 </div>
-                <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-3">
+                <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
                   <div>
                     <dt className="text-(--text-muted)">Effective from</dt>
                     <dd className="font-semibold text-(--ink)">
                       {new Date(benefitPlan.effectiveFrom).toLocaleDateString()}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-(--text-muted)">Monthly premium</dt>
-                    <dd className="font-semibold text-(--ink)">
-                      {formatCurrency(
-                        benefitPlan.monthlyPremium,
-                        settings.currency,
-                      )}
                     </dd>
                   </div>
                   <div>

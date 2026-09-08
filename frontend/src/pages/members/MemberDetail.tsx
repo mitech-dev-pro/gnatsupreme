@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
@@ -9,6 +9,7 @@ import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useDistricts } from "@/lib/useDistricts";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
+import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -49,6 +50,7 @@ type MemberDetailData = {
   email: string | null;
   school: string;
   status: string;
+  employmentCategory: "TEACHING" | "NON_TEACHING";
   report20Matched: boolean;
   missingFromReport20At: string | null;
   createdAt: string;
@@ -121,6 +123,13 @@ export default function MemberDetail() {
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editSchool, setEditSchool] = useState("");
+  const [editEmploymentCategory, setEditEmploymentCategory] = useState<
+    "TEACHING" | "NON_TEACHING"
+  >("TEACHING");
+  const [employmentCategoryNote, setEmploymentCategoryNote] = useState("");
+  // Remembers the real school on file before switching to Non-teaching staff, so switching back
+  // to Teaching doesn't force staff to retype it.
+  const lastTeachingSchoolRef = useRef("");
 
   const [passwordResult, setPasswordResult] = useState<string | null>(null);
   const [confirmingPasswordReset, setConfirmingPasswordReset] = useState(false);
@@ -146,7 +155,6 @@ export default function MemberDetail() {
     relationship: "CHILD",
     dateOfBirth: "",
     trusteeName: "",
-    trusteeGhanaCardId: "",
   });
   const [beneficiaryError, setBeneficiaryError] = useState("");
 
@@ -183,7 +191,13 @@ export default function MemberDetail() {
     setEditGhanaCard(member.ghanaCardId ?? "");
     setEditPhone(member.phone ?? "");
     setEditEmail(member.email ?? "");
-    setEditSchool(member.school);
+    // Non-teaching staff are always recorded under Head Office -- force this even if the stored
+    // value is stale (e.g. a member switched to Non-teaching before this field existed, or edited
+    // directly some other way), so the edit form never contradicts the employment category.
+    setEditSchool(
+      member.employmentCategory === "NON_TEACHING" ? "Head Office" : member.school,
+    );
+    setEditEmploymentCategory(member.employmentCategory);
     setEditing(true);
   };
 
@@ -198,7 +212,19 @@ export default function MemberDetail() {
         phone: editPhone.trim() || null,
         email: editEmail.trim() || null,
         school: editSchool.trim(),
+        employmentCategory: editEmploymentCategory,
       });
+      // The backend already clears a stale missingFromReport20At on this transition (see
+      // member.routes.ts) -- this note is purely to surface a status that stays untouched
+      // (member.status is read from before this save, i.e. the pre-transition value) so staff
+      // don't have to notice it separately later.
+      setEmploymentCategoryNote(
+        member?.employmentCategory === "TEACHING" &&
+          editEmploymentCategory === "NON_TEACHING" &&
+          member?.status === "INACTIVE"
+          ? "This member is currently Inactive — review and reactivate separately if appropriate."
+          : "",
+      );
       setEditing(false);
       await load();
     } catch (err: any) {
@@ -321,13 +347,9 @@ export default function MemberDetail() {
   const addBeneficiary = async (e: FormEvent) => {
     e.preventDefault();
     setBeneficiaryError("");
-    if (
-      isMinor(newBeneficiary.dateOfBirth) &&
-      (!newBeneficiary.trusteeName.trim() ||
-        !newBeneficiary.trusteeGhanaCardId.trim())
-    ) {
+    if (isMinor(newBeneficiary.dateOfBirth) && !newBeneficiary.trusteeName.trim()) {
       setBeneficiaryError(
-        "Trustee name and Ghana Card ID are required for a beneficiary under 18.",
+        "A trustee name is required for a beneficiary under 18.",
       );
       return;
     }
@@ -339,7 +361,6 @@ export default function MemberDetail() {
         relationship: newBeneficiary.relationship,
         dateOfBirth: newBeneficiary.dateOfBirth || null,
         trusteeName: newBeneficiary.trusteeName.trim() || null,
-        trusteeGhanaCardId: newBeneficiary.trusteeGhanaCardId.trim() || null,
       });
       setAddingBeneficiary(false);
       setNewBeneficiary({
@@ -347,7 +368,6 @@ export default function MemberDetail() {
         relationship: "CHILD",
         dateOfBirth: "",
         trusteeName: "",
-        trusteeGhanaCardId: "",
       });
       await load();
     } catch (err: any) {
@@ -587,13 +607,29 @@ export default function MemberDetail() {
           <div className="member-record__signals">
             {/* <div><span className={member.phoneVerifiedAt ? "ok" : "warn"}>{member.phoneVerifiedAt ? "✓" : "!"}</span><p>Phone verification<strong>{member.phoneVerifiedAt ? "Verified" : "Not verified"}</strong></p></div> */}
             <div>
-              <span className={member.report20Matched ? "ok" : "warn"}>
-                {member.report20Matched ? "✓" : "!"}
+              <span
+                className={
+                  member.employmentCategory === "NON_TEACHING"
+                    ? "ok"
+                    : member.report20Matched
+                      ? "ok"
+                      : "warn"
+                }
+              >
+                {member.employmentCategory === "NON_TEACHING"
+                  ? "–"
+                  : member.report20Matched
+                    ? "✓"
+                    : "!"}
               </span>
               <p>
                 Report 20
                 <strong>
-                  {member.report20Matched ? "Matched" : "Not matched"}
+                  {member.employmentCategory === "NON_TEACHING"
+                    ? "Not applicable"
+                    : member.report20Matched
+                      ? "Matched"
+                      : "Not matched"}
                 </strong>
               </p>
             </div>
@@ -623,6 +659,12 @@ export default function MemberDetail() {
             </div>
           )}
 
+          {employmentCategoryNote && (
+            <div className="mb-4 rounded-lg bg-[#fbf0dd] px-3 py-2 text-[12.5px] font-semibold text-[#b9791a]">
+              {employmentCategoryNote}
+            </div>
+          )}
+
           {confirmation && (
             <div className="mb-4">
               <ConfirmationPanel
@@ -638,7 +680,7 @@ export default function MemberDetail() {
                     ? "The spouse record will be removed from this member. This does not remove the member."
                     : confirmation.type === "beneficiary"
                       ? "This beneficiary will be removed from the member record."
-                      : `The member's resulting status will be ${member.report20Matched ? "Active" : "Flagged"}.`
+                      : `The member's resulting status will be ${member.employmentCategory === "NON_TEACHING" || member.report20Matched ? "Active" : "Flagged"}.`
                 }
                 confirmLabel={
                   confirmation.type === "approve"
@@ -697,7 +739,7 @@ export default function MemberDetail() {
                       <label className={labelClasses}>Ghana Card ID</label>
                       <input
                         value={editGhanaCard}
-                        onChange={(e) => setEditGhanaCard(e.target.value)}
+                        onChange={(e) => setEditGhanaCard(applyGhanaCardIdChange(e))}
                         className={inputClasses}
                       />
                     </div>
@@ -713,9 +755,15 @@ export default function MemberDetail() {
                       <label className={labelClasses}>School</label>
                       <input
                         value={editSchool}
+                        disabled={editEmploymentCategory === "NON_TEACHING"}
                         onChange={(e) => setEditSchool(e.target.value)}
                         className={inputClasses}
                       />
+                      {editEmploymentCategory === "NON_TEACHING" && (
+                        <p className="mt-1 text-[11px] text-[#5b6472]">
+                          Non-teaching staff are recorded under Head Office, not a school.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className={labelClasses}>Email</label>
@@ -725,6 +773,33 @@ export default function MemberDetail() {
                         onChange={(e) => setEditEmail(e.target.value)}
                         placeholder="Needed for self-service password reset"
                         className={inputClasses}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClasses}>
+                        Employment category
+                      </label>
+                      <Dropdown
+                        value={editEmploymentCategory}
+                        onChange={(value) => {
+                          const next = value as "TEACHING" | "NON_TEACHING";
+                          setEditEmploymentCategory(next);
+                          if (next === "NON_TEACHING") {
+                            if (editSchool.trim() && editSchool !== "Head Office") {
+                              lastTeachingSchoolRef.current = editSchool;
+                            }
+                            setEditSchool("Head Office");
+                          } else if (editSchool === "Head Office") {
+                            setEditSchool(lastTeachingSchoolRef.current);
+                          }
+                        }}
+                        options={[
+                          { value: "TEACHING", label: "Teaching" },
+                          {
+                            value: "NON_TEACHING",
+                            label: "Non-teaching staff",
+                          },
+                        ]}
                       />
                     </div>
                   </div>
@@ -761,10 +836,31 @@ export default function MemberDetail() {
                         : "No"
                     }
                   />
-                  <Field label="School" value={member.school} />
+                  <Field
+                    label="School"
+                    value={
+                      member.employmentCategory === "NON_TEACHING"
+                        ? "Head Office"
+                        : member.school
+                    }
+                  />
+                  <Field
+                    label="Employment category"
+                    value={
+                      member.employmentCategory === "NON_TEACHING"
+                        ? "Non-teaching staff"
+                        : "Teaching"
+                    }
+                  />
                   <Field
                     label="Report 20 Matched"
-                    value={member.report20Matched ? "Yes" : "No"}
+                    value={
+                      member.employmentCategory === "NON_TEACHING"
+                        ? "Not applicable (non-teaching)"
+                        : member.report20Matched
+                          ? "Yes"
+                          : "No"
+                    }
                   />
                   <Field
                     label="Enrolled"
@@ -905,7 +1001,7 @@ export default function MemberDetail() {
                         id="spouse-ghana-card"
                         value={spouseGhanaCard}
                         onChange={(e) => {
-                          setSpouseGhanaCard(e.target.value);
+                          setSpouseGhanaCard(applyGhanaCardIdChange(e));
                           clearSpouseFieldError("ghanaCardId");
                         }}
                         aria-invalid={
@@ -1028,37 +1124,19 @@ export default function MemberDetail() {
                     />
                   </div>
                   {isMinor(newBeneficiary.dateOfBirth) && (
-                    <>
-                      <div>
-                        <label className={labelClasses}>Trustee Name</label>
-                        <input
-                          value={newBeneficiary.trusteeName}
-                          onChange={(e) =>
-                            setNewBeneficiary((p) => ({
-                              ...p,
-                              trusteeName: e.target.value,
-                            }))
-                          }
-                          className={inputClasses}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClasses}>
-                          Trustee Ghana Card ID
-                        </label>
-                        <input
-                          value={newBeneficiary.trusteeGhanaCardId}
-                          onChange={(e) =>
-                            setNewBeneficiary((p) => ({
-                              ...p,
-                              trusteeGhanaCardId: e.target.value.toUpperCase(),
-                            }))
-                          }
-                          placeholder="GHA-000000000-0"
-                          className={inputClasses}
-                        />
-                      </div>
-                    </>
+                    <div>
+                      <label className={labelClasses}>Trustee Name</label>
+                      <input
+                        value={newBeneficiary.trusteeName}
+                        onChange={(e) =>
+                          setNewBeneficiary((p) => ({
+                            ...p,
+                            trusteeName: e.target.value,
+                          }))
+                        }
+                        className={inputClasses}
+                      />
+                    </div>
                   )}
                   {beneficiaryError && (
                     <div className="sm:col-span-4 rounded-lg bg-[#fbe9e9] px-3 py-2 text-[12px] font-semibold text-[#c23b3b]">
@@ -1241,27 +1319,30 @@ export default function MemberDetail() {
               )}
 
               <div className="mb-5 flex flex-wrap gap-2">
-                {!member.report20Matched && (
-                  <button
-                    type="button"
-                    onClick={checkReport20}
-                    disabled={busy}
-                    className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] disabled:opacity-60"
-                  >
-                    Check against Report 20
-                  </button>
-                )}
+                {member.employmentCategory !== "NON_TEACHING" &&
+                  !member.report20Matched && (
+                    <button
+                      type="button"
+                      onClick={checkReport20}
+                      disabled={busy}
+                      className="rounded-[9px] border border-[#e5e9f0] px-3.5 py-2 text-[12.5px] font-semibold text-[#1e2761] disabled:opacity-60"
+                    >
+                      Check against Report 20
+                    </button>
+                  )}
                 {canReview &&
                   (["PENDING", "RETURNED"].includes(member.status) ||
                     (member.status === "FLAGGED" &&
-                      member.report20Matched)) && (
+                      (member.employmentCategory === "NON_TEACHING" ||
+                        member.report20Matched))) && (
                     <button
                       type="button"
                       onClick={() => setConfirmation({ type: "approve" })}
                       disabled={busy}
                       className="rounded-[9px] bg-[#1f9c7c] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
-                      {member.report20Matched
+                      {member.employmentCategory === "NON_TEACHING" ||
+                      member.report20Matched
                         ? "Approve → Active"
                         : "Approve → Flagged"}
                     </button>
@@ -1293,7 +1374,9 @@ export default function MemberDetail() {
                 </div>
               )}
 
-              {canReview && !member.report20Matched && (
+              {canReview &&
+                member.employmentCategory !== "NON_TEACHING" &&
+                !member.report20Matched && (
                 <>
                   {["PENDING", "RETURNED"].includes(member.status) && (
                     <div className="-mt-3 mb-5 text-[11.5px] text-[#b9791a]">

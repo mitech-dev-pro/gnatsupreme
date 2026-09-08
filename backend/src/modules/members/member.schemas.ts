@@ -39,9 +39,6 @@ export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) 
   if (!value.trusteeName) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeName"], message: "Trustee name is required for a beneficiary under 18" });
   }
-  if (!value.trusteeGhanaCardId) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeGhanaCardId"], message: "Trustee Ghana Card ID is required for a beneficiary under 18" });
-  }
 });
 
 const memberFields = {
@@ -54,6 +51,11 @@ const memberFields = {
   school: z.string().trim().min(2).max(160),
   districtId: z.coerce.number().int().positive(),
   report20Matched: z.boolean().optional(),
+  // Staff-only, set on enrollment or edit -- never exposed to member self-onboarding or
+  // self-service change requests (neither `onboardingDetailsSchema` nor
+  // `memberDetailsChangeSchema` includes this field). Gates whether Report 20 reconciliation
+  // applies to this member at all -- see reconcileReport20 in imports/report20.service.ts.
+  employmentCategory: z.enum(["TEACHING", "NON_TEACHING"]).optional(),
 };
 
 export const createMemberSchema = z.object({

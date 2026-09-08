@@ -3,9 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { CLAIM_TYPES, claimSupportsSpouse, hasRequiredDocuments, HOSPITALIZATION_MINIMUM_NIGHTS, nightsBetween, type ClaimType } from "@/lib/claimDocuments";
 import Button from "@/components/ui/Button";
-import { InputField, SelectField, TextareaField } from "@/components/ui/FormField";
+import { InputField, TextareaField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Feedback";
 import ClaimDocumentChecklist, { type UploadedClaimDocument } from "@/components/claims/ClaimDocumentChecklist";
+import { formatGhanaCardIdInput } from "@/lib/ghanaCardId";
 
 type Profile = {
   id: number;
@@ -19,7 +20,7 @@ type Profile = {
 type BenefitPlan = { benefits: { type: string; enabled: boolean; namedConditions: string[] }[] } | null;
 type ContactDetails = { fullName: string; primaryPhone: string; additionalPhone: string; email: string; gpsAddress: string; residentialAddress: string; nationality: string };
 
-const PAGE_LABELS = ["Claim details", "Claimant information", "Payment and declaration"];
+const PAGE_LABELS = ["Claim details", "Payment and declaration"];
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return <h2 className="mb-4 bg-(--surface-subtle) px-3 py-2 text-[15px] font-extrabold text-(--text-strong)">{children}</h2>;
@@ -28,7 +29,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return <div><div className="mb-1.5 text-[11.5px] font-bold text-(--text-strong)">{label}</div><div className="min-h-10 rounded-[9px] border border-(--border-default) bg-(--surface-subtle) px-3 py-2.5 text-[12.5px] font-semibold text-(--ink)">{value}</div></div>;
 }
 function Progress({ page }: { page: number }) {
-  return <div className="flex justify-center gap-2 py-5" aria-label={`Step ${page + 1} of 3`}>{PAGE_LABELS.map((label, index) => <span key={label} title={label} className={`h-2.5 rounded-full transition-[width,background-color] duration-200 ${index === page ? "w-8 bg-(--action-primary)" : index < page ? "w-2.5 bg-(--success)" : "w-2.5 bg-(--border-strong)"}`}/>)}</div>;
+  return <div className="flex justify-center gap-2 py-5" aria-label={`Step ${page + 1} of ${PAGE_LABELS.length}`}>{PAGE_LABELS.map((label, index) => <span key={label} title={label} className={`h-2.5 rounded-full transition-[width,background-color] duration-200 ${index === page ? "w-8 bg-(--action-primary)" : index < page ? "w-2.5 bg-(--success)" : "w-2.5 bg-(--border-strong)"}`}/>)}</div>;
 }
 
 export default function MemberClaimNew() {
@@ -128,7 +129,7 @@ export default function MemberClaimNew() {
 
   const setCoveredPerson = (value: "MEMBER" | "SPOUSE") => {
     setClaimantType(value);
-    const spouseCard = profile?.spouse?.ghanaCardId ?? "";
+    const spouseCard = formatGhanaCardIdInput(profile?.spouse?.ghanaCardId ?? "");
     setClaimantIdNumber(value === "SPOUSE" ? spouseCard : "");
   };
 
@@ -137,7 +138,7 @@ export default function MemberClaimNew() {
     setSubjectName(""); setRelationship(""); setDateOfEvent(""); setCause("");
     setDiagnosisDate(""); setDiagnosingHospital(""); setDiagnosingPhysician(""); setIllness(""); setIllnessOther("");
     setHospitalName(""); setAdmissionDate(""); setDischargeDate(""); setReason("");
-    setCoveredPerson(claimSupportsSpouse(type) ? claimantType : "MEMBER");
+    setCoveredPerson(claimSupportsSpouse(type) && profile?.spouse ? "SPOUSE" : "MEMBER");
   };
 
   const uploadEndpoint = "/member-portal/claims/documents";
@@ -176,12 +177,17 @@ export default function MemberClaimNew() {
 
   const leave = () => { if (window.confirm("Leave this claim? Information entered here will be lost.")) navigate("/member/claims"); };
   const paymentComplete = Boolean(paymentDetails.payeeName);
-  const page0Complete = Boolean(claimType) && nightsEligible && documentsComplete && claimantIdNumber.trim().length >= 3;
+  const page0Complete = Boolean(claimType) && nightsEligible && documentsComplete && claimantIdNumber.trim().length >= 3 && (!claimType || !claimSupportsSpouse(claimType) || Boolean(profile?.spouse));
+  // Death/TPD with no spouse on file can never be submitted -- rather than render the rest of the
+  // form (subject details, ID, documents) behind a Next button that's disabled for a reason the
+  // member can't see, hide those sections entirely and leave only the claim-type cards and the
+  // explanation visible.
+  const blockedNoSpouse = Boolean(claimType && claimSupportsSpouse(claimType) && !profile?.spouse);
 
   if (loading) return <div className="mx-auto max-w-[1180px] py-12 text-center text-[12.5px] text-(--text-muted)">Loading…</div>;
 
   return <div className="mx-auto max-w-[1180px] pb-6">
-    <div className="mb-4 flex items-center justify-between gap-3"><button type="button" onClick={leave} className="text-[11.5px] font-bold text-(--text-muted) hover:text-(--text-strong)">← Back to claims</button><span className="text-[11px] font-semibold text-(--text-muted)">Step {page + 1} of 3</span></div>
+    <div className="mb-4 flex items-center justify-between gap-3"><button type="button" onClick={leave} className="text-[11.5px] font-bold text-(--text-muted) hover:text-(--text-strong)">← Back to claims</button><span className="text-[11px] font-semibold text-(--text-muted)">Step {page + 1} of {PAGE_LABELS.length}</span></div>
     <div className="grid gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
     <main className="overflow-hidden rounded-[12px] border border-(--border-default) bg-(--surface-raised) shadow-[0_2px_6px_rgba(30,39,97,0.08)]">
       <header className="border-b border-(--border-strong) px-5 py-5 sm:px-7"><h1 ref={headingRef} tabIndex={-1} className="text-[22px] font-extrabold text-(--text-strong)">{resubmitId ? "Edit and resubmit your claim" : "File a claim"}</h1><p className="mt-1 text-[12px] text-(--text-muted)">{PAGE_LABELS[page]}</p></header>
@@ -198,7 +204,11 @@ export default function MemberClaimNew() {
               {CLAIM_TYPES.map((item) => (
                 <button key={item.value} type="button" aria-pressed={claimType === item.value} onClick={() => selectClaimType(item.value)} className={`rounded-[12px] border-1.5 p-4 text-left transition-[border-color,background-color] ${claimType === item.value ? "border-(--action-primary) bg-(--info-soft) shadow-[0_0_0_3px_rgba(31,156,124,0.14)]" : "border-(--border-default) bg-(--surface-raised) hover:border-(--action-primary)"}`}>
                   <div className="text-[15px] font-extrabold text-(--text-strong)">{item.label}</div>
-                  <div className="mt-1 text-[11px] text-(--text-muted)">{item.coverage}</div>
+                  {/* CLAIM_TYPES' "coverage" text is shared with the staff wizard, where "Member &
+                      Spouse" is accurate -- on the member portal, Death/TPD are locked to
+                      spouse-only (a member can't be the one logging in to claim their own death),
+                      so it's overridden here to avoid contradicting the restriction below. */}
+                  <div className="mt-1 text-[11px] text-(--text-muted)">{claimSupportsSpouse(item.value) ? "Spouse only" : item.coverage}</div>
                 </button>
               ))}
             </div>
@@ -206,54 +216,57 @@ export default function MemberClaimNew() {
 
           {claimType && <>
             {claimSupportsSpouse(claimType) && <div className="mt-7"><SectionTitle>Who is this claim for?</SectionTitle>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <label className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-semibold ${claimantType === "MEMBER" ? "border-(--action-primary) bg-(--info-soft) text-(--text-strong)" : "border-(--border-default) text-(--ink)"}`}><input type="radio" name="claimantType" checked={claimantType === "MEMBER"} onChange={() => setCoveredPerson("MEMBER")} className="size-4 accent-(--action-primary)"/>For me</label>
-                {profile?.spouse && <label className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-semibold ${claimantType === "SPOUSE" ? "border-(--action-primary) bg-(--info-soft) text-(--text-strong)" : "border-(--border-default) text-(--ink)"}`}><input type="radio" name="claimantType" checked={claimantType === "SPOUSE"} onChange={() => setCoveredPerson("SPOUSE")} className="size-4 accent-(--action-primary)"/>For my spouse — {profile.spouse.fullName}</label>}
-              </div>
-            </div>}
-
-            {(claimType === "DEATH" || claimType === "TOTAL_PERMANENT_DISABILITY") && <div className="mt-7"><SectionTitle>Description of the {claimType === "DEATH" ? "deceased" : "disabled person"}</SectionTitle>
-              <div className="grid gap-4 sm:grid-cols-2"><InputField label={`Name of ${claimType === "DEATH" ? "deceased" : "disabled person"}`} required value={subjectName} onChange={(event) => setSubjectName(event.target.value)}/><InputField label="Relationship to member" required value={relationship} onChange={(event) => setRelationship(event.target.value)}/></div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2"><InputField label={claimType === "DEATH" ? "Date of death" : "Date of incidence"} type="date" required max={new Date().toISOString().slice(0, 10)} value={dateOfEvent} onChange={(event) => setDateOfEvent(event.target.value)}/><InputField label={claimType === "DEATH" ? "Cause of death" : "Cause of disability"} required value={cause} onChange={(event) => setCause(event.target.value)} placeholder={claimType === "DEATH" ? "e.g. Cardiac arrest" : "e.g. Road traffic accident"}/></div>
-            </div>}
-
-            {claimType === "CRITICAL_ILLNESS" && <div className="mt-7"><SectionTitle>Diagnosis details</SectionTitle>
-              <div className="grid gap-4 sm:grid-cols-2"><InputField label="Date of diagnosis" type="date" required max={new Date().toISOString().slice(0, 10)} value={diagnosisDate} onChange={(event) => setDiagnosisDate(event.target.value)}/><InputField label="Diagnosing hospital" required value={diagnosingHospital} onChange={(event) => setDiagnosingHospital(event.target.value)} placeholder="e.g. Komfo Anokye Teaching Hospital"/></div>
-              <div className="mt-4"><InputField label="Diagnosing physician" required value={diagnosingPhysician} onChange={(event) => setDiagnosingPhysician(event.target.value)}/></div>
-              <fieldset className="mt-4"><legend className="mb-2 text-[11.5px] font-bold text-(--text-strong)">Named critical illness diagnosed <span className="text-(--danger)">*</span></legend>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {illnesses.map((item) => <label key={item} className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === item ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === item} onChange={() => setIllness(item)} className="size-4 accent-(--action-primary)"/>{item}</label>)}
-                  <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === "Others" ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === "Others"} onChange={() => setIllness("Others")} className="size-4 accent-(--action-primary)"/>Others (specify)</label>
+              {profile?.spouse ? (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <label className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-semibold ${claimantType === "SPOUSE" ? "border-(--action-primary) bg-(--info-soft) text-(--text-strong)" : "border-(--border-default) text-(--ink)"}`}><input type="radio" name="claimantType" checked={claimantType === "SPOUSE"} onChange={() => setCoveredPerson("SPOUSE")} className="size-4 accent-(--action-primary)"/>For my spouse — {profile.spouse.fullName}</label>
                 </div>
-                {illness === "Others" && <div className="mt-2"><InputField label="Specify illness" required value={illnessOther} onChange={(event) => setIllnessOther(event.target.value)} hint="Subject to approval by miLife"/></div>}
-              </fieldset>
+              ) : (
+                <Alert tone="warning">This claim type must be filed by a spouse. Add a spouse to your profile before filing a Death or Total & Permanent Disability claim.</Alert>
+              )}
             </div>}
 
-            {claimType === "HOSPITALIZATION" && <div className="mt-7"><SectionTitle>Hospitalization details</SectionTitle>
-              <InputField label="Name of hospital" required value={hospitalName} onChange={(event) => setHospitalName(event.target.value)} placeholder="e.g. Komfo Anokye Teaching Hospital"/>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2"><InputField label="Date of admission" type="date" required max={new Date().toISOString().slice(0, 10)} value={admissionDate} onChange={(event) => setAdmissionDate(event.target.value)}/><InputField label="Date of discharge" type="date" required max={new Date().toISOString().slice(0, 10)} value={dischargeDate} onChange={(event) => setDischargeDate(event.target.value)}/></div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2"><ReadOnlyField label="Number of nights admitted" value={nights === null ? "—" : `${nights} ${nights === 1 ? "night" : "nights"}`}/><InputField label="Reason for hospitalization / diagnosis" required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Malaria complications"/></div>
-              {nights !== null && <div className={`mt-4 flex items-center gap-2 rounded-[9px] px-3 py-2.5 text-[12.5px] font-bold ${nightsEligible ? "bg-(--success-soft) text-(--success)" : "bg-(--danger-soft) text-(--danger)"}`}>{nightsEligible ? `${nights} nights meets the ${HOSPITALIZATION_MINIMUM_NIGHTS}-night minimum — eligible for the hospitalization benefit` : `${nights} nights is below the ${HOSPITALIZATION_MINIMUM_NIGHTS}-night minimum required for this benefit`}</div>}
-            </div>}
+            {!blockedNoSpouse && <>
+              {(claimType === "DEATH" || claimType === "TOTAL_PERMANENT_DISABILITY") && <div className="mt-7"><SectionTitle>Description of the {claimType === "DEATH" ? "deceased" : "disabled person"}</SectionTitle>
+                <div className="grid gap-4 sm:grid-cols-2"><InputField label={`Name of ${claimType === "DEATH" ? "deceased" : "disabled person"}`} required value={subjectName} onChange={(event) => setSubjectName(event.target.value)}/><InputField label="Relationship to member" required value={relationship} onChange={(event) => setRelationship(event.target.value)}/></div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2"><InputField label={claimType === "DEATH" ? "Date of death" : "Date of incidence"} type="date" required max={new Date().toISOString().slice(0, 10)} value={dateOfEvent} onChange={(event) => setDateOfEvent(event.target.value)}/><InputField label={claimType === "DEATH" ? "Cause of death" : "Cause of disability"} required value={cause} onChange={(event) => setCause(event.target.value)} placeholder={claimType === "DEATH" ? "e.g. Cardiac arrest" : "e.g. Road traffic accident"}/></div>
+              </div>}
 
-            <div className="mt-7"><SectionTitle>Mode of identification</SectionTitle><div className="grid gap-4 sm:grid-cols-2"><ReadOnlyField label="Claimant ID type" value="Ghana Card"/><InputField label="Ghana Card number" required hint="Required to continue. Use the format GHA-000000000-0." value={claimantIdNumber} onChange={(event) => setClaimantIdNumber(event.target.value)} placeholder="GHA-000000000-0"/></div></div>
+              {claimType === "CRITICAL_ILLNESS" && <div className="mt-7"><SectionTitle>Diagnosis details</SectionTitle>
+                <div className="grid gap-4 sm:grid-cols-2"><InputField label="Date of diagnosis" type="date" required max={new Date().toISOString().slice(0, 10)} value={diagnosisDate} onChange={(event) => setDiagnosisDate(event.target.value)}/><InputField label="Diagnosing hospital" required value={diagnosingHospital} onChange={(event) => setDiagnosingHospital(event.target.value)} placeholder="e.g. Komfo Anokye Teaching Hospital"/></div>
+                <div className="mt-4"><InputField label="Diagnosing physician" required value={diagnosingPhysician} onChange={(event) => setDiagnosingPhysician(event.target.value)}/></div>
+                <fieldset className="mt-4"><legend className="mb-2 text-[11.5px] font-bold text-(--text-strong)">Named critical illness diagnosed <span className="text-(--danger)">*</span></legend>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {illnesses.map((item) => <label key={item} className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === item ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === item} onChange={() => setIllness(item)} className="size-4 accent-(--action-primary)"/>{item}</label>)}
+                    <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-3 text-[12px] ${illness === "Others" ? "border-(--action-primary) bg-(--info-soft) font-semibold text-(--text-strong)" : "border-(--border-default) text-(--ink) hover:bg-(--surface-subtle)"}`}><input type="radio" name="illness" checked={illness === "Others"} onChange={() => setIllness("Others")} className="size-4 accent-(--action-primary)"/>Others (specify)</label>
+                  </div>
+                  {illness === "Others" && <div className="mt-2"><InputField label="Specify illness" required value={illnessOther} onChange={(event) => setIllnessOther(event.target.value)} hint="Subject to approval by miLife"/></div>}
+                </fieldset>
+              </div>}
 
-            <div className="mt-7"><SectionTitle>Documents you're presenting</SectionTitle><ClaimDocumentChecklist claimType={claimType} documents={documents} uploadingSlot={uploadingSlot} error={docError} onUpload={uploadDocument} onRemove={removeDocument}/></div>
+              {claimType === "HOSPITALIZATION" && <div className="mt-7"><SectionTitle>Hospitalization details</SectionTitle>
+                <InputField label="Name of hospital" required value={hospitalName} onChange={(event) => setHospitalName(event.target.value)} placeholder="e.g. Komfo Anokye Teaching Hospital"/>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2"><InputField label="Date of admission" type="date" required max={new Date().toISOString().slice(0, 10)} value={admissionDate} onChange={(event) => setAdmissionDate(event.target.value)}/><InputField label="Date of discharge" type="date" required max={new Date().toISOString().slice(0, 10)} value={dischargeDate} onChange={(event) => setDischargeDate(event.target.value)}/></div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2"><ReadOnlyField label="Number of nights admitted" value={nights === null ? "—" : `${nights} ${nights === 1 ? "night" : "nights"}`}/><InputField label="Reason for hospitalization / diagnosis" required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Malaria complications"/></div>
+                {nights !== null && <div className={`mt-4 flex items-center gap-2 rounded-[9px] px-3 py-2.5 text-[12.5px] font-bold ${nightsEligible ? "bg-(--success-soft) text-(--success)" : "bg-(--danger-soft) text-(--danger)"}`}>{nightsEligible ? `${nights} nights meets the ${HOSPITALIZATION_MINIMUM_NIGHTS}-night minimum — eligible for the hospitalization benefit` : `${nights} nights is below the ${HOSPITALIZATION_MINIMUM_NIGHTS}-night minimum required for this benefit`}</div>}
+              </div>}
+
+              <div className="mt-7"><SectionTitle>Mode of identification</SectionTitle><div className="grid gap-4 sm:grid-cols-2"><ReadOnlyField label="Claimant ID type" value="Ghana Card"/><InputField label="Ghana Card number" required hint="Required to continue. Use the format GHA-000000000-0." value={claimantIdNumber} onChange={(event) => setClaimantIdNumber(event.target.value)} placeholder="GHA-000000000-0"/></div></div>
+
+              <div className="mt-7"><SectionTitle>Documents you're presenting</SectionTitle><ClaimDocumentChecklist claimType={claimType} documents={documents} uploadingSlot={uploadingSlot} error={docError} onUpload={uploadDocument} onRemove={removeDocument}/></div>
+            </>}
           </>}
 
-          <div className="mt-7 rounded-[9px] bg-(--surface-subtle) p-4"><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" onClick={leave}>Cancel</Button><Button type="submit" disabled={!page0Complete}>Next</Button></div></div><Progress page={page}/>
+          <div className="mt-7 rounded-[9px] bg-(--surface-subtle) p-4"><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" onClick={leave}>Cancel</Button>{!blockedNoSpouse && <Button type="submit" disabled={!page0Complete}>Next</Button>}</div></div><Progress page={page}/>
         </form>}
 
-        {page === 1 && <form onSubmit={(event) => { event.preventDefault(); setError(""); setPage(2); }}>
-          <SectionTitle>Claimant information</SectionTitle><div className="grid gap-4 sm:grid-cols-2"><InputField label="Full name" required value={contact.fullName} onChange={(event) => updateContact("fullName", event.target.value)}/><InputField label="Primary mobile number" required inputMode="tel" value={contact.primaryPhone} onChange={(event) => updateContact("primaryPhone", event.target.value)}/><InputField label="Additional contact number" inputMode="tel" value={contact.additionalPhone} onChange={(event) => updateContact("additionalPhone", event.target.value)}/><InputField label="Email address" type="email" value={contact.email} onChange={(event) => updateContact("email", event.target.value)}/><InputField label="GPS address" value={contact.gpsAddress} onChange={(event) => updateContact("gpsAddress", event.target.value)}/><InputField label="Residential address" value={contact.residentialAddress} onChange={(event) => updateContact("residentialAddress", event.target.value)}/><InputField label="Staff ID" value={profile?.controllerId ?? ""} disabled/><SelectField label="Nationality" required value={contact.nationality} onChange={(event) => updateContact("nationality", event.target.value)}><option value="Ghanaian">Ghanaian</option><option value="Other">Other</option></SelectField></div>
-          <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between"><Button variant="secondary" onClick={() => setPage(0)}>Back</Button><Button type="submit" disabled={!contact.fullName.trim() || contact.primaryPhone.trim().length < 7 || !contact.nationality}>Next</Button></div><Progress page={page}/>
-        </form>}
-
-        {page === 2 && <form onSubmit={submit}>
+        {page === 1 && <form onSubmit={submit}>
           <SectionTitle>Payment option</SectionTitle><p className="mb-4 text-[12.5px] font-semibold text-(--ink)">Approved claims are paid by cheque.</p>
-          <div className="grid gap-4 sm:grid-cols-2"><InputField label="Payee name" required value={paymentDetails.payeeName ?? ""} onChange={(event) => updatePayment("payeeName", event.target.value)}/></div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <InputField label="Payee name" required value={paymentDetails.payeeName ?? ""} onChange={(event) => updatePayment("payeeName", event.target.value)}/>
+            {!contact.primaryPhone.trim() && <InputField label="Contact phone number" required inputMode="tel" hint="We couldn't find a phone number on your profile — this is needed to reach you about this claim." value={contact.primaryPhone} onChange={(event) => updateContact("primaryPhone", event.target.value)}/>}
+          </div>
           <div className="mt-8"><SectionTitle>Declaration</SectionTitle><div className="max-w-[75ch] space-y-3 text-[12px] leading-relaxed text-(--ink)"><p>Submitting false or altered information may delay payment or result in rejection of the claim.</p><p>I confirm that the information supplied is accurate and that all attached documents are genuine. I understand this claim will be reviewed by staff before it is sent for processing.</p></div><label className="mt-5 flex cursor-pointer items-start gap-3 text-[12.5px] font-semibold text-(--ink)"><input type="checkbox" required checked={declaration} onChange={(event) => setDeclaration(event.target.checked)} className="mt-0.5 size-4 accent-(--action-primary)"/><span>I accept this declaration and confirm the claim details.</span></label><div className="mt-5"><TextareaField label="Comment" value={notes} maxLength={1000} onChange={(event) => setNotes(event.target.value)} placeholder="Add an optional comment"/></div></div>
-          <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between"><Button variant="secondary" onClick={() => setPage(1)}>Back</Button><Button type="submit" loading={busy} loadingLabel="Submitting claim..." disabled={!paymentComplete || !declaration}>{resubmitId ? "Resubmit claim" : "Submit claim"}</Button></div><Progress page={page}/>
+          <div className="mt-7 flex flex-col-reverse gap-2 rounded-[9px] bg-(--surface-subtle) p-4 sm:flex-row sm:justify-between"><Button variant="secondary" onClick={() => setPage(0)}>Back</Button><Button type="submit" loading={busy} loadingLabel="Submitting claim..." disabled={!paymentComplete || !declaration || contact.primaryPhone.trim().length < 7}>{resubmitId ? "Resubmit claim" : "Submit claim"}</Button></div><Progress page={page}/>
         </form>}
       </div>
     </main>

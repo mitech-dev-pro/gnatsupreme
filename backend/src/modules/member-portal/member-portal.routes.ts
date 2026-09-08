@@ -174,6 +174,13 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     response.status(409).json({ success: false, message: "A spouse is already recorded. Submit a change request to update it." });
     return;
   }
+  // A member enrolled by staff may already have a beneficiary on file -- this endpoint only runs
+  // because *some* completion item is missing (often just the Ghana Card ID), so don't force
+  // submitting another one just to satisfy a count that's already met.
+  if (existing._count.beneficiaries === 0 && beneficiaries.length === 0) {
+    response.status(400).json({ success: false, message: "Add at least one beneficiary" });
+    return;
+  }
   if (existing._count.beneficiaries + beneficiaries.length > 10) {
     response.status(409).json({ success: false, message: "Up to 10 beneficiaries can be recorded in total." });
     return;
@@ -197,7 +204,12 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
       where: { id: currentMember.id },
       data: {
         ghanaCardId,
-        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "NONE",
+        // Only touch this when the submission actually changes the spouse picture. A staff
+        // enrollment may already have recorded a real spouse (and set this to HAS_SPOUSE) before
+        // the member ever reaches this step -- if the member then submits no spouse here (the
+        // field is optional), that must NOT be read as "member declared no spouse" and overwrite
+        // the correct HAS_SPOUSE status while the actual spouse record is left untouched.
+        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : existing.spouse ? undefined : "NONE",
       },
     });
     const createdSpouse = spouse
@@ -291,6 +303,15 @@ memberPortalRouter.post("/spouse/marriage-certificate", receiveMarriageCertifica
   response.status(201).json({ success: true, data: file });
 });
 
+// A member can never be the one logging in to claim their own death or permanent disability --
+// the UI already hides the "For me" option for these two claim types (MemberClaimNew.tsx locks
+// the claimant choice to spouse-only), but that's a client-side convenience only. This
+// superRefine is the actual enforcement boundary: it rejects claimantType "MEMBER" for
+// DEATH/TOTAL_PERMANENT_DISABILITY regardless of what the request body says, so the rule holds
+// even against a direct API call that bypasses the wizard entirely. Staff filing the equivalent
+// claim (claims.routes.ts, a legitimate "filing on behalf of a deceased member" scenario) uses
+// its own submissionSchema built from the same claimSubmissionUnion base and is intentionally not
+// subject to this restriction.
 const memberClaimSubmissionSchema = claimSubmissionUnion({
   claimantType: z.enum(["MEMBER", "SPOUSE"]),
   claimantIdType: z.literal("GHANA_CARD"),
@@ -308,6 +329,17 @@ const memberClaimSubmissionSchema = claimSubmissionUnion({
   paymentDetails: z.record(z.string(), z.string().trim().max(150)).default({}),
   documentIds: z.array(z.number().int().positive()).max(10).default([]),
   notes: z.string().trim().max(1000).optional(),
+}).superRefine((value, ctx) => {
+  if (
+    (value.claimType === "DEATH" || value.claimType === "TOTAL_PERMANENT_DISABILITY") &&
+    value.claimantType !== "SPOUSE"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["claimantType"],
+      message: "Death and Total & Permanent Disability claims can only be filed for a spouse.",
+    });
+  }
 });
 
 const claimSelect = {

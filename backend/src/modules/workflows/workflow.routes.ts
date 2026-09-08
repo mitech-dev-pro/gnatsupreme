@@ -164,8 +164,10 @@ memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATION
       const existing = await accessibleMember(memberId, actor);
       if (!existing) { results.push({ memberId, success: false, message: "Member not found or outside your access scope" }); continue; }
       if (!(existing.status === "PENDING" || existing.status === "RETURNED" || existing.status === "FLAGGED")) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Member is no longer pending approval" }); continue; }
-      if (existing.status === "FLAGGED" && !existing.report20Matched) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Not yet matched against Report 20" }); continue; }
-      const toStatus = existing.report20Matched ? "ACTIVE" : "FLAGGED";
+      // See the single-member /:id/approve handler above for why NON_TEACHING is exempt here.
+      const exemptFromReport20 = existing.employmentCategory === "NON_TEACHING";
+      if (!exemptFromReport20 && existing.status === "FLAGGED" && !existing.report20Matched) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Not yet matched against Report 20" }); continue; }
+      const toStatus = exemptFromReport20 || existing.report20Matched ? "ACTIVE" : "FLAGGED";
       const [member, event] = await prisma.$transaction([
         prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
         prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
@@ -227,11 +229,16 @@ memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONA
     response.status(409).json({ success: false, message: "Only pending, returned, or flagged members can be approved" });
     return;
   }
-  if (existing.status === "FLAGGED" && !existing.report20Matched) {
+  // NON_TEACHING members are excluded from Report 20 reconciliation entirely (see
+  // reconcileReport20), so report20Matched can never become true for them -- gating approval on
+  // it, or blocking a FLAGGED-but-unmatched approval, would make them permanently unapprovable.
+  // Approve straight to ACTIVE for them regardless of report20Matched.
+  const exemptFromReport20 = existing.employmentCategory === "NON_TEACHING";
+  if (!exemptFromReport20 && existing.status === "FLAGGED" && !existing.report20Matched) {
     response.status(409).json({ success: false, message: "This member still isn't matched against Report 20 — check or re-run reconciliation before approving to Active" });
     return;
   }
-  const toStatus = existing.report20Matched ? "ACTIVE" : "FLAGGED";
+  const toStatus = exemptFromReport20 || existing.report20Matched ? "ACTIVE" : "FLAGGED";
   const [member, event] = await prisma.$transaction([
     prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
     prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),

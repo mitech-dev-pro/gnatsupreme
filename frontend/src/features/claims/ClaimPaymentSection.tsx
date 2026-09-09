@@ -32,19 +32,18 @@ export function ClaimPaymentSection({
       <div className="grid gap-4 sm:grid-cols-2">
         <InputField
           label="Payee name"
-          required
+          hint="Optional — can be added before the cheque is issued."
           value={paymentDetails.payeeName ?? ""}
           onChange={(event) => updatePayment("payeeName", event.target.value)}
         />
         {!contact.primaryPhone.trim() && (
           <InputField
             label="Contact phone number"
-            required
             inputMode="tel"
             hint={
               source === "STAFF"
-                ? "No phone number is on file for this claimant — needed to reach them about this claim."
-                : "We couldn't find a phone number on your profile — this is needed to reach you about this claim."
+                ? "Optional — no phone number is on file for this claimant. Add one if you have it."
+                : "Optional — we couldn't find a phone number on your profile. Add one if you have it."
             }
             value={contact.primaryPhone}
             onChange={(event) => updateContact("primaryPhone", event.target.value)}

@@ -171,16 +171,8 @@ claimsRouter.post("/submissions", async (request, response) => {
       .json({ success: false, message: "Member or covered person was not found" });
     return;
   }
-  const requiredPaymentFields: Record<string, string[]> = {
-    CHEQUE: ["payeeName"],
-  };
-  const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter(
-    (key) => !parsed.data.paymentDetails[key],
-  );
-  if (missing.length) {
-    response.status(400).json({ success: false, message: "Complete the selected payment details" });
-    return;
-  }
+  // Payee name and claimant phone are optional at submission -- they can be filled in later,
+  // before the claim is paid -- so nothing here blocks a claim that omits them.
 
   if (parsed.data.claimType === "HOSPITALIZATION") {
     const nights = nightsBetween(

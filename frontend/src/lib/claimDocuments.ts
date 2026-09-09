@@ -109,3 +109,52 @@ export const deliveryLabel = (state?: string) =>
     FAILED: "Delivery failed",
     UNKNOWN: "Delivery unconfirmed",
   })[state ?? ""] ?? "Not sent";
+
+// Claim-type-specific fields recorded in ExternalClaimSubmission.claimDetails, flattened to
+// [label, displayValue] pairs for a details view. Mirrors the per-type shapes validated in
+// backend/src/modules/claims/claims.schemas.ts. Shared by the claim detail page and modal.
+export function claimDetailFields(
+  claimType: ClaimType | null,
+  details: Record<string, unknown> | null,
+): [string, string][] {
+  if (!claimType || !details) return [];
+  const text = (value: unknown) => (typeof value === "string" ? value : value ? String(value) : "");
+  const asDate = (value: unknown) => {
+    const raw = text(value);
+    return raw
+      ? new Date(raw).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "";
+  };
+  if (claimType === "DEATH" || claimType === "TOTAL_PERMANENT_DISABILITY") {
+    return [
+      ["Subject name", text(details.subjectName)],
+      ["Relationship to member", text(details.relationship)],
+      ["Date of event", asDate(details.dateOfEvent)],
+      ["Cause", text(details.cause)],
+    ];
+  }
+  if (claimType === "CRITICAL_ILLNESS") {
+    return [
+      ["Date of diagnosis", asDate(details.diagnosisDate)],
+      ["Diagnosing hospital", text(details.diagnosingHospital)],
+      ["Diagnosing physician", text(details.diagnosingPhysician)],
+      ["Illness diagnosed", text(details.illness)],
+      ...(details.illnessOther
+        ? ([["Illness (specified)", text(details.illnessOther)]] as [string, string][])
+        : []),
+    ];
+  }
+  const admission = text(details.admissionDate);
+  const discharge = text(details.dischargeDate);
+  return [
+    ["Hospital name", text(details.hospitalName)],
+    ["Admission date", asDate(admission)],
+    ["Discharge date", asDate(discharge)],
+    ["Nights admitted", admission && discharge ? String(nightsBetween(admission, discharge)) : ""],
+    ["Reason", text(details.reason)],
+  ];
+}

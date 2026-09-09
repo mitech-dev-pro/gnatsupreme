@@ -5,7 +5,14 @@ export const claimSubmissionFields = {
   claimantIdNumber: z.string().trim().min(3, "Enter the claimant ID number").max(80),
   claimantContact: z.object({
     fullName: z.string().trim().min(2).max(120),
-    primaryPhone: z.string().trim().min(7).max(30),
+    // Optional at submission -- a phone number can be added later, before the claim is paid.
+    // When a value is given it must still look like a real number (7-30 chars).
+    primaryPhone: z
+      .string()
+      .trim()
+      .max(30)
+      .refine((value) => value === "" || value.length >= 7, "Enter a valid phone number")
+      .optional(),
     additionalPhone: z.string().trim().max(30).optional(),
     email: z.string().trim().email("Enter a valid email address").or(z.literal("")).optional(),
     gpsAddress: z.string().trim().max(120).optional(),

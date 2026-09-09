@@ -8,10 +8,11 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import api from "@/lib/api";
 import { reviewClaim } from "./claims.api";
+import { useClaimDocument } from "./useClaimDocument";
 import {
   CLAIM_DOCUMENT_MANIFEST,
+  claimDetailFields,
   deliveryLabel,
-  nightsBetween,
   type ClaimType,
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
@@ -99,37 +100,6 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function claimDetailFields(claimType: ClaimType | null, details: Record<string, unknown> | null) {
-  if (!claimType || !details) return [];
-  const text = (value: unknown) => (typeof value === "string" ? value : value ? String(value) : "");
-  if (claimType === "DEATH" || claimType === "TOTAL_PERMANENT_DISABILITY") {
-    return [
-      ["Subject name", text(details.subjectName)],
-      ["Relationship to member", text(details.relationship)],
-      ["Date of event", formatDate(text(details.dateOfEvent))],
-      ["Cause", text(details.cause)],
-    ];
-  }
-  if (claimType === "CRITICAL_ILLNESS") {
-    return [
-      ["Date of diagnosis", formatDate(text(details.diagnosisDate))],
-      ["Diagnosing hospital", text(details.diagnosingHospital)],
-      ["Diagnosing physician", text(details.diagnosingPhysician)],
-      ["Illness diagnosed", text(details.illness)],
-      ...(details.illnessOther ? [["Illness (specified)", text(details.illnessOther)]] : []),
-    ];
-  }
-  const admission = text(details.admissionDate);
-  const discharge = text(details.dischargeDate);
-  return [
-    ["Hospital name", text(details.hospitalName)],
-    ["Admission date", formatDate(admission)],
-    ["Discharge date", formatDate(discharge)],
-    ["Nights admitted", admission && discharge ? String(nightsBetween(admission, discharge)) : ""],
-    ["Reason", text(details.reason)],
-  ];
-}
-
 export default function ClaimDetail() {
   const { id } = useParams();
   const [claim, setClaim] = useState<ClaimSubmissionDetail | null>(null);
@@ -159,21 +129,7 @@ export default function ClaimDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const [documentError, setDocumentError] = useState("");
-  const openDocument = async (doc: ClaimDocument) => {
-    setDocumentError("");
-    try {
-      // The download route requires the staff bearer token, which a plain <a href> navigation
-      // wouldn't send (the token lives only in memory, attached by the api client's request
-      // interceptor) -- fetch it as a blob through `api` instead and open that.
-      const response = await api.get(`/files/${doc.storedName}`, { responseType: "blob" });
-      const url = URL.createObjectURL(response.data);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch {
-      setDocumentError(`Unable to open ${doc.originalName}.`);
-    }
-  };
+  const { open: openDocument, error: documentError } = useClaimDocument();
 
   const submitReview = async () => {
     if (!claim || !decision) return;

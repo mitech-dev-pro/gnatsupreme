@@ -332,7 +332,6 @@ export default function ClaimNew() {
     if (!dirty || window.confirm("Leave this claim? Information entered here will be lost."))
       navigate("/claims");
   };
-  const paymentComplete = Boolean(paymentDetails.payeeName);
   const page0Complete =
     Boolean(claimType) &&
     nightsEligible &&
@@ -671,9 +670,7 @@ export default function ClaimNew() {
                     type="submit"
                     loading={busy}
                     loadingLabel="Submitting claim..."
-                    disabled={
-                      !paymentComplete || !declaration || contact.primaryPhone.trim().length < 7
-                    }
+                    disabled={!declaration}
                   >
                     Submit claim
                   </Button>

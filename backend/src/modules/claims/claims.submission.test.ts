@@ -188,6 +188,22 @@ for (const role of ["SUPER_ADMIN", "NATIONAL_ADMIN", "DISTRICT_ADMIN"]) {
     assert.equal(f.remote.mock.callCount(), 1);
   });
 }
+test("a claim submits without a payee name or claimant phone", async (t) => {
+  const f = await fixture(t, "SUPER_ADMIN");
+  const req = {
+    ...f.request,
+    body: {
+      ...payload,
+      claimantContact: { fullName: "Test Member", nationality: "Ghanaian" },
+      paymentDetails: {},
+    },
+  };
+  const res = response("SUPER_ADMIN");
+  await postHandler(claimsRouter, "/submissions")(req, res);
+  assert.equal(res.code, 201);
+  assert.equal(responseData(res.body).deliveryState, "ACCEPTED");
+  assert.equal(f.remote.mock.callCount(), 1);
+});
 test("district administrator cannot submit for an inaccessible member", async (t) => {
   const f = await fixture(t, "DISTRICT_ADMIN", true);
   const res = response("DISTRICT_ADMIN");

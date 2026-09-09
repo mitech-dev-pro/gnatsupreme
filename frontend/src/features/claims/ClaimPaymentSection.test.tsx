@@ -38,7 +38,7 @@ function Form({ source, submit }: { source: "STAFF" | "MEMBER_PORTAL"; submit: (
         setDeclaration={setDeclaration}
         setNotes={setNotes}
       />
-      <Button type="submit" disabled={!declaration || !payment.payeeName}>
+      <Button type="submit" disabled={!declaration}>
         Submit claim
       </Button>
     </form>
@@ -46,13 +46,13 @@ function Form({ source, submit }: { source: "STAFF" | "MEMBER_PORTAL"; submit: (
 }
 describe("claim payment and submission controls", () => {
   it.each(["STAFF", "MEMBER_PORTAL"] as const)(
-    "requires payee and declaration for %s",
+    "submits on the declaration alone, without a payee name, for %s",
     async (source) => {
       const user = userEvent.setup();
       const submit = vi.fn();
       render(<Form source={source} submit={submit} />);
+      expect(screen.getByLabelText(/Payee name/)).not.toBeRequired();
       expect(screen.getByRole("button", { name: "Submit claim" })).toBeDisabled();
-      await user.type(screen.getByLabelText(/Payee name/), "Test Member");
       await user.click(screen.getByRole("checkbox"));
       await user.click(screen.getByRole("button", { name: "Submit claim" }));
       expect(submit).toHaveBeenCalledOnce();

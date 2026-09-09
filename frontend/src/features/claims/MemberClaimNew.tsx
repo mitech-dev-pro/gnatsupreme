@@ -300,7 +300,6 @@ export default function MemberClaimNew() {
     if (window.confirm("Leave this claim? Information entered here will be lost."))
       navigate("/member/claims");
   };
-  const paymentComplete = Boolean(paymentDetails.payeeName);
   const page0Complete =
     Boolean(claimType) &&
     nightsEligible &&
@@ -543,9 +542,7 @@ export default function MemberClaimNew() {
                     type="submit"
                     loading={busy}
                     loadingLabel="Submitting claim..."
-                    disabled={
-                      !paymentComplete || !declaration || contact.primaryPhone.trim().length < 7
-                    }
+                    disabled={!declaration}
                   >
                     {resubmitId ? "Resubmit claim" : "Submit claim"}
                   </Button>

@@ -32,7 +32,7 @@ test("shared fields retain the different staff and member death eligibility rule
   if (spouse.success) assert.equal("memberId" in spouse.data, false);
 });
 
-test("both claim entrypoints reject incomplete contact details", () => {
+test("both claim entrypoints reject a malformed contact phone but allow it to be omitted", () => {
   const invalid = {
     ...death,
     claimantType: "SPOUSE",
@@ -40,6 +40,18 @@ test("both claim entrypoints reject incomplete contact details", () => {
   };
   assert.equal(submissionSchema.safeParse(invalid).success, false);
   assert.equal(memberClaimSubmissionSchema.safeParse(invalid).success, false);
+
+  // Payee name and phone are optional at submission -- an empty phone and no paymentDetails pass.
+  const sparse = {
+    ...death,
+    claimantContact: { ...death.claimantContact, primaryPhone: "" },
+    paymentDetails: {},
+  };
+  assert.equal(submissionSchema.safeParse(sparse).success, true);
+  assert.equal(
+    memberClaimSubmissionSchema.safeParse({ ...sparse, claimantType: "SPOUSE" }).success,
+    true,
+  );
 });
 
 test("review notes and review query remain explicit", () => {

@@ -2,10 +2,24 @@ import { useEffect, useState } from "react";
 import ModalPortal from "@/components/ui/ModalPortal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { Alert } from "@/components/ui/Feedback";
+import { useClaimDocument } from "@/features/claims/useClaimDocument";
 import api from "@/lib/api";
 import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
+import {
+  CLAIM_DOCUMENT_MANIFEST,
+  claimDetailFields,
+  deliveryLabel,
+  type ClaimType,
+} from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
+
+type ClaimDocument = {
+  id: number;
+  slotKey: string | null;
+  originalName: string;
+  storedName: string;
+};
 
 type ClaimDetail = {
   id: number;
@@ -13,23 +27,36 @@ type ClaimDetail = {
   provider: string;
   status: string;
   externalStatus: string | null;
+  deliveryState: string;
   source: "STAFF" | "MEMBER_PORTAL";
-  claimType: string | null;
+  claimType: ClaimType | null;
   claimantName: string | null;
+  claimantType: "MEMBER" | "SPOUSE" | null;
   claimantIdType: string | null;
   claimantIdNumber: string | null;
   claimantContact: Record<string, string> | null;
   estimatedAmount: string | null;
+  errorMessage: string | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
   submittedAt: string | null;
+  lastSyncedAt: string | null;
   createdAt: string;
+  incidentDate: string | null;
+  claimDetails: Record<string, unknown> | null;
   paymentMethod: string | null;
   paymentDetails: Record<string, string> | null;
+  notes: string | null;
+  documents: ClaimDocument[];
   member: {
     id: number;
     controllerId: string;
     fullName: string;
     district?: { name: string | null } | null;
   };
+  submittedBy: { id: number; fullName: string } | null;
+  submittedByMember: { id: number; controllerId: string; fullName: string } | null;
+  reviewedBy: { id: number; fullName: string } | null;
 };
 
 type MankradoAssessment = {
@@ -57,6 +84,10 @@ const labelize = (value: string | null | undefined) =>
         .replace(/^./, (letter) => letter.toUpperCase())
     : "—";
 
+// camelCase JSON key -> spaced Title Case, e.g. "residentialAddress" -> "Residential Address".
+const humanizeKey = (key: string) =>
+  key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+
 const formatDate = (iso: string | null | undefined) =>
   iso
     ? new Date(iso).toLocaleDateString(undefined, {
@@ -65,9 +96,6 @@ const formatDate = (iso: string | null | undefined) =>
         day: "numeric",
       })
     : "—";
-
-const loggerLabel = (source: ClaimDetail["source"]) =>
-  source === "MEMBER_PORTAL" ? "Member portal" : "Staff portal";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -82,7 +110,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[minmax(0,11rem)_1fr] border-b border-border-default last:border-0 text-sm">
+    <div className="grid grid-cols-[minmax(0,11rem)_1fr] border-b border-border-default text-sm last:border-0">
       <div className="bg-surface-subtle px-3 py-2 font-semibold text-text-muted">{label}</div>
       <div className="px-3 py-2 font-semibold text-ink wrap-break-word">
         {value || <span className="font-normal text-text-muted">—</span>}
@@ -105,6 +133,7 @@ export default function ClaimDetailModal({
   const [assessmentError, setAssessmentError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { open: openDocument, error: docError } = useClaimDocument();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -174,6 +203,43 @@ export default function ClaimDetailModal({
   const claimStatus = assessment?.status ?? detail?.externalStatus ?? detail?.status ?? null;
   // The Mankrado date carries no timezone; keep its wall-clock value.
   const netPayableDate = assessment?.claimDate ? assessment.claimDate.replace(/\.\d+$/, "") : null;
+  const netPayable = assessmentError
+    ? assessmentError
+    : !assessment
+      ? detail?.externalClaimId
+        ? "Loading…"
+        : "—"
+      : assessment.amountPayable === null
+        ? "—"
+        : `${formatCurrency(assessment.amountPayable)}${netPayableDate ? ` · ${netPayableDate}` : ""}`;
+
+  const particulars = detail
+    ? claimDetailFields(detail.claimType, detail.claimDetails).filter(([, value]) => value)
+    : [];
+  const contactEntries = Object.entries(detail?.claimantContact ?? {}).filter(([, value]) => value);
+  const paymentEntries = Object.entries(detail?.paymentDetails ?? {}).filter(([, value]) => value);
+
+  const slotLabel = (slotKey: string | null) => {
+    if (!slotKey) return "Other document";
+    const manifest = detail?.claimType ? (CLAIM_DOCUMENT_MANIFEST[detail.claimType] ?? []) : [];
+    return manifest.find((slot) => slot.key === slotKey)?.label ?? humanizeKey(slotKey);
+  };
+  const documentGroups: [string, ClaimDocument[]][] = [];
+  for (const doc of detail?.documents ?? []) {
+    const label = slotLabel(doc.slotKey);
+    const group = documentGroups.find(([name]) => name === label);
+    if (group) group[1].push(doc);
+    else documentGroups.push([label, [doc]]);
+  }
+
+  const filedBy = detail?.submittedByMember?.fullName ?? detail?.submittedBy?.fullName ?? "";
+  const filedVia = detail?.submittedByMember
+    ? `Member portal · Staff ID ${detail.submittedByMember.controllerId}`
+    : "Staff portal";
+  const deliveryText =
+    detail?.provider === "SIMULATION"
+      ? "Historical simulation"
+      : deliveryLabel(detail?.deliveryState);
 
   return (
     <ModalPortal>
@@ -208,6 +274,17 @@ export default function ClaimDetailModal({
               <Alert tone="error">{error || "Claim not found."}</Alert>
             ) : (
               <>
+                {detail.errorMessage && (
+                  <div className="mb-4">
+                    <Alert tone="error">{detail.errorMessage}</Alert>
+                  </div>
+                )}
+                {detail.status === "RETURNED" && detail.reviewNote && (
+                  <div className="mb-4">
+                    <Alert tone="warning">{detail.reviewNote}</Alert>
+                  </div>
+                )}
+
                 <Section title="Claim history">
                   {historyError ? (
                     <div className="p-3">
@@ -264,6 +341,7 @@ export default function ClaimDetailModal({
                   <Row label="Application date" value={formatDate(detail.createdAt)} />
                   <Row label="Claim number" value={claimNumber} />
                   <Row label="Policy holder" value={detail.member.fullName} />
+                  <Row label="Staff ID" value={detail.member.controllerId} />
                   <Row label="Claim type" value={labelize(detail.claimType)} />
                   <Row
                     label="Claim status"
@@ -277,30 +355,38 @@ export default function ClaimDetailModal({
                     label="Claim amount"
                     value={detail.estimatedAmount ? formatCurrency(detail.estimatedAmount) : "—"}
                   />
-                  <Row
-                    label="Net claim payable"
-                    value={
-                      assessmentError
-                        ? assessmentError
-                        : !assessment
-                          ? detail.externalClaimId
-                            ? "Loading…"
-                            : "—"
-                          : assessment.amountPayable === null
-                            ? "—"
-                            : `${formatCurrency(assessment.amountPayable)}${netPayableDate ? ` · ${netPayableDate}` : ""}`
-                    }
-                  />
-                  <Row label="Logger" value={loggerLabel(detail.source)} />
-                  <Row label="Branch" value={detail.member.district?.name ?? "—"} />
+                  <Row label="Net claim payable" value={netPayable} />
                   {assessment?.rejectReason?.trim() && (
                     <Row label="Rejection reason" value={assessment.rejectReason} />
                   )}
                 </Section>
 
+                <Section title="Filing & delivery">
+                  <Row label="Filed by" value={filedBy} />
+                  <Row label="Filed via" value={filedVia} />
+                  <Row label="Branch" value={detail.member.district?.name ?? "—"} />
+                  <Row label="Provider" value={detail.provider} />
+                  <Row label="Delivery" value={deliveryText} />
+                  <Row label="Submitted to Mankrado" value={formatDate(detail.submittedAt)} />
+                  {detail.lastSyncedAt && (
+                    <Row label="Last synced" value={formatDate(detail.lastSyncedAt)} />
+                  )}
+                </Section>
+
+                {particulars.length > 0 && (
+                  <Section title="Claim particulars">
+                    {particulars.map(([label, value]) => (
+                      <Row key={label} label={label} value={value} />
+                    ))}
+                  </Section>
+                )}
+
                 <Section title="Claimant information">
+                  <Row label="Claimant type" value={labelize(detail.claimantType)} />
                   <Row label="Full name" value={detail.claimantName} />
-                  <Row label="Mobile number" value={detail.claimantContact?.primaryPhone ?? ""} />
+                  {contactEntries.map(([key, value]) => (
+                    <Row key={key} label={humanizeKey(key)} value={value} />
+                  ))}
                 </Section>
 
                 <Section title="Mode of identification">
@@ -310,10 +396,55 @@ export default function ClaimDetailModal({
 
                 <Section title="Selected payment mode">
                   <Row label="Payment mode" value={labelize(detail.paymentMethod)} />
-                  {detail.paymentMethod === "CHEQUE" && (
-                    <Row label="Cheque recipient" value={detail.paymentDetails?.payeeName ?? ""} />
+                  {paymentEntries.map(([key, value]) => (
+                    <Row key={key} label={humanizeKey(key)} value={value} />
+                  ))}
+                </Section>
+
+                <Section title="Documents">
+                  {docError && (
+                    <div className="border-b border-border-default p-3">
+                      <Alert tone="error">{docError}</Alert>
+                    </div>
+                  )}
+                  {documentGroups.length === 0 ? (
+                    <p className="p-3 text-sm text-text-muted">No documents attached.</p>
+                  ) : (
+                    <ul className="divide-y divide-border-default">
+                      {documentGroups.map(([label, docs]) => (
+                        <li key={label} className="px-3 py-2">
+                          <p className="mb-1 text-xs font-semibold text-text-muted">{label}</p>
+                          <span className="flex flex-wrap gap-1.5">
+                            {docs.map((doc) => (
+                              <button
+                                key={doc.id}
+                                type="button"
+                                onClick={() => void openDocument(doc)}
+                                className="rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong hover:underline"
+                              >
+                                {doc.originalName}
+                              </button>
+                            ))}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </Section>
+
+                {detail.reviewedBy && (
+                  <Section title="Review">
+                    <Row label="Reviewed by" value={detail.reviewedBy.fullName} />
+                    <Row label="Reviewed on" value={formatDate(detail.reviewedAt)} />
+                    <Row label="Review note" value={detail.reviewNote} />
+                  </Section>
+                )}
+
+                {detail.notes && (
+                  <Section title="Comment">
+                    <p className="p-3 text-sm leading-relaxed text-ink">{detail.notes}</p>
+                  </Section>
+                )}
               </>
             )}
           </div>

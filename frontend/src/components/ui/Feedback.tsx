@@ -44,6 +44,7 @@ export function EmptyState({
   );
 }
 
+/** Renders table rows only; callers must place this component inside a <tbody>. */
 export function TableSkeleton({ columns, rows = 5 }: { columns: number; rows?: number }) {
   return (
     <>

@@ -679,7 +679,13 @@ export function GeographyTab({ canEdit }: { canEdit: boolean }) {
           )}
 
           {aliasesLoading ? (
-            <TableSkeleton columns={4} />
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-140 text-left text-sm">
+                <tbody>
+                  <TableSkeleton columns={4} />
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-140 text-left text-sm">

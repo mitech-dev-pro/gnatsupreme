@@ -4,6 +4,7 @@ import { formatCurrency } from "@/lib/currency";
 import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { claimStatusTone } from "@/lib/claimStatus";
 
 type Details = {
   claimNumber: string;
@@ -98,7 +99,7 @@ export default function MankradoDetails({ externalId }: { externalId: string | n
           <div>
             <dt className="text-xs font-semibold text-text-muted">Mankrado status</dt>
             <dd className="mt-1">
-              <StatusBadge tone="info">{details.status}</StatusBadge>
+              <StatusBadge tone={claimStatusTone(details.status)}>{details.status}</StatusBadge>
             </dd>
           </div>
           {fields.map(([label, value]) => (

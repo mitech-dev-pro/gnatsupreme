@@ -496,6 +496,14 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
     where: { id: params.data.id, member: { is: memberScope(user) } },
     select: {
       ...submissionSelect,
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          district: { select: { name: true } },
+        },
+      },
       claimantType: true,
       claimantIdType: true,
       claimantIdNumber: true,

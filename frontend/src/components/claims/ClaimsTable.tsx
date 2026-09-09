@@ -3,7 +3,9 @@ import { getApiError } from "@/lib/errorExtract";
 import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { reviewClaim } from "@/features/claims/claims.api";
+import ClaimDetailModal from "@/components/claims/ClaimDetailModal";
 import { deliveryLabel } from "@/lib/claimDocuments";
+import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import { formatCurrency } from "@/lib/currency";
 import { TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,6 +18,7 @@ export type ClaimSubmission = {
   deliveryState: string;
   reviewedAt: string | null;
   status: string;
+  externalStatus: string | null;
   source: "STAFF" | "MEMBER_PORTAL";
   claimType: string | null;
   claimantName: string | null;
@@ -29,14 +32,6 @@ export type ClaimSubmission = {
 
 type Decision = ClaimDecision;
 
-const STATUS_TONES: Record<string, "info" | "success" | "warning" | "danger"> = {
-  PENDING: "warning",
-  REDIRECT_READY: "info",
-  SUBMITTED: "info",
-  RETURNED: "warning",
-  FAILED: "danger",
-  SYNCHRONIZED: "success",
-};
 const labelize = (value: string | null) =>
   value
     ? value
@@ -66,6 +61,7 @@ export default function ClaimsTable({
   onError: (message: string) => void;
   emptyState: ReactNode;
 }) {
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [reviewingId, setReviewingId] = useState<number | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -99,119 +95,133 @@ export default function ClaimsTable({
   };
 
   return (
-    <TableFrame label="Claim submissions" className="min-w-210">
-      <thead>
-        <tr className="border-b border-border-default bg-surface-subtle text-xs font-semibold uppercase tracking-wide text-text-muted">
-          <th className="px-4 py-2.5">Member</th>
-          <th className="px-4 py-2.5">Claim</th>
-          <th className="px-4 py-2.5">Reference</th>
-          <th className="px-4 py-2.5">Estimate</th>
-          <th className="px-4 py-2.5">Status</th>
-          <th className="px-4 py-2.5">Submitted</th>
-          <th className="px-4 py-2.5">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loading && rows.length === 0 ? (
-          <TableSkeleton columns={7} />
-        ) : rows.length === 0 ? (
-          <tr>
-            <td colSpan={7}>{emptyState}</td>
+    <>
+      <TableFrame label="Claim submissions" className="min-w-210">
+        <thead>
+          <tr className="border-b border-border-default bg-surface-subtle text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <th className="px-4 py-2.5">Member</th>
+            <th className="px-4 py-2.5">Claim</th>
+            <th className="px-4 py-2.5">Reference</th>
+            <th className="px-4 py-2.5">Estimate</th>
+            <th className="px-4 py-2.5">Status</th>
+            <th className="px-4 py-2.5">Submitted</th>
+            <th className="px-4 py-2.5">Action</th>
           </tr>
-        ) : (
-          rows.map((row) => (
-            <Fragment key={row.id}>
-              <tr className="border-b border-border-default last:border-0">
-                <td className="px-4 py-2.5">
-                  <Link
-                    to={`/members/${row.member.id}`}
-                    className="font-semibold text-text-strong hover:underline"
-                  >
-                    {row.member.fullName}
-                  </Link>
-                  <div className="text-xs text-text-muted">{row.member.controllerId}</div>
-                </td>
-                <td className="px-4 py-2.5">
-                  <Link
-                    to={`/claims/${row.id}`}
-                    className="font-semibold text-ink hover:underline hover:text-action-primary"
-                  >
-                    {labelize(row.claimType)}
-                  </Link>
-                  {row.claimantName && (
-                    <div className="text-xs text-text-muted">{row.claimantName}</div>
-                  )}
-                  {row.source === "MEMBER_PORTAL" && (
-                    <div className="mt-0.5 inline-block rounded-full bg-info-soft px-2 py-0.5 text-xs font-bold text-text-strong">
-                      Filed by member
+        </thead>
+        <tbody>
+          {loading && rows.length === 0 ? (
+            <TableSkeleton columns={7} />
+          ) : rows.length === 0 ? (
+            <tr>
+              <td colSpan={7}>{emptyState}</td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <Fragment key={row.id}>
+                <tr className="border-b border-border-default last:border-0">
+                  <td className="px-4 py-2.5">
+                    <Link
+                      to={`/members/${row.member.id}`}
+                      className="font-semibold text-text-strong hover:underline"
+                    >
+                      {row.member.fullName}
+                    </Link>
+                    <div className="text-xs text-text-muted">{row.member.controllerId}</div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <Link
+                      to={`/claims/${row.id}`}
+                      className="font-semibold text-ink hover:underline hover:text-action-primary"
+                    >
+                      {labelize(row.claimType)}
+                    </Link>
+                    {row.claimantName && (
+                      <div className="text-xs text-text-muted">{row.claimantName}</div>
+                    )}
+                    {row.source === "MEMBER_PORTAL" && (
+                      <div className="mt-0.5 inline-block rounded-full bg-info-soft px-2 py-0.5 text-xs font-bold text-text-strong">
+                        Filed by member
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="font-mono text-xs text-ink">
+                      {row.externalClaimId ?? "Not assigned"}
                     </div>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="font-mono text-xs text-ink">
-                    {row.externalClaimId ?? "Not assigned"}
-                  </div>
-                  <div className="text-xs text-text-muted">{row.provider}</div>
-                </td>
-                <td className="px-4 py-2.5 font-semibold text-ink">
-                  {row.estimatedAmount ? formatCurrency(row.estimatedAmount) : "Not available"}
-                </td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge tone={STATUS_TONES[row.status] ?? "info"}>
-                    {labelize(row.status)}
-                  </StatusBadge>
-                  <div className="mt-1 text-xs text-text-muted">
-                    {row.provider === "SIMULATION"
-                      ? "Historical simulation"
-                      : deliveryLabel(row.deliveryState)}
-                  </div>
-                  {row.errorMessage && (
-                    <div className="mt-0.5 text-xs text-danger">{row.errorMessage}</div>
-                  )}
-                  {row.status === "RETURNED" && row.reviewNote && (
-                    <div className="mt-0.5 text-xs text-warning">{row.reviewNote}</div>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-text-muted">{formatDate(row.submittedAt)}</td>
-                <td className="px-4 py-2.5">
-                  {row.status === "PENDING" &&
-                    row.source === "MEMBER_PORTAL" &&
-                    !row.reviewedAt &&
-                    row.deliveryState === "NOT_SENT" && (
+                    <div className="text-xs text-text-muted">{row.provider}</div>
+                  </td>
+                  <td className="px-4 py-2.5 font-semibold text-ink">
+                    {row.estimatedAmount ? formatCurrency(row.estimatedAmount) : "Not available"}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StatusBadge tone={claimStatusTone(row.externalStatus ?? row.status)}>
+                      {claimStatusLabel(row.externalStatus ?? row.status)}
+                    </StatusBadge>
+                    <div className="mt-1 text-xs text-text-muted">
+                      {row.provider === "SIMULATION"
+                        ? "Historical simulation"
+                        : deliveryLabel(row.deliveryState)}
+                    </div>
+                    {row.errorMessage && (
+                      <div className="mt-0.5 text-xs text-danger">{row.errorMessage}</div>
+                    )}
+                    {row.status === "RETURNED" && row.reviewNote && (
+                      <div className="mt-0.5 text-xs text-warning">{row.reviewNote}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-text-muted">{formatDate(row.submittedAt)}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => startReview(row)}
-                        className="rounded-lg border border-action-primary px-2.5 py-1 text-xs font-bold text-action-primary hover:bg-info-soft"
+                        onClick={() => setDetailId(row.id)}
+                        className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-bold text-text-strong hover:bg-surface-subtle"
                       >
-                        Review
+                        View details
                       </button>
-                    )}
-                </td>
-              </tr>
-              {reviewingId === row.id && (
-                <tr className="border-b border-border-default bg-surface-subtle">
-                  <td colSpan={7} className="px-4 py-4">
-                    <div className="max-w-160">
-                      <p className="mb-2 text-xs font-bold text-text-strong">
-                        Review this member-submitted claim
-                      </p>
-                      <ClaimReviewControls
-                        decision={decision}
-                        note={reviewNote}
-                        busy={reviewBusy}
-                        onDecision={setDecision}
-                        onNote={setReviewNote}
-                        onCancel={() => setReviewingId(null)}
-                        onConfirm={() => void submitReview()}
-                      />
+                      {row.status === "PENDING" &&
+                        row.source === "MEMBER_PORTAL" &&
+                        !row.reviewedAt &&
+                        row.deliveryState === "NOT_SENT" && (
+                          <button
+                            type="button"
+                            onClick={() => startReview(row)}
+                            className="rounded-lg border border-action-primary px-2.5 py-1 text-xs font-bold text-action-primary hover:bg-info-soft"
+                          >
+                            Review
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          ))
-        )}
-      </tbody>
-    </TableFrame>
+                {reviewingId === row.id && (
+                  <tr className="border-b border-border-default bg-surface-subtle">
+                    <td colSpan={7} className="px-4 py-4">
+                      <div className="max-w-160">
+                        <p className="mb-2 text-xs font-bold text-text-strong">
+                          Review this member-submitted claim
+                        </p>
+                        <ClaimReviewControls
+                          decision={decision}
+                          note={reviewNote}
+                          busy={reviewBusy}
+                          onDecision={setDecision}
+                          onNote={setReviewNote}
+                          onCancel={() => setReviewingId(null)}
+                          onConfirm={() => void submitReview()}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))
+          )}
+        </tbody>
+      </TableFrame>
+      {detailId !== null && (
+        <ClaimDetailModal submissionId={detailId} onClose={() => setDetailId(null)} />
+      )}
+    </>
   );
 }

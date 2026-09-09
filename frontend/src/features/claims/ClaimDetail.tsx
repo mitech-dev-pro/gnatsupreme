@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import api from "@/lib/api";
 import { reviewClaim } from "./claims.api";
 import {
@@ -59,15 +60,6 @@ type ClaimSubmissionDetail = {
   submittedBy: { id: number; fullName: string } | null;
   submittedByMember: { id: number; controllerId: string; fullName: string } | null;
   reviewedBy: { id: number; fullName: string } | null;
-};
-
-const STATUS_TONES: Record<string, "info" | "success" | "warning" | "danger"> = {
-  PENDING: "warning",
-  REDIRECT_READY: "info",
-  SUBMITTED: "info",
-  RETURNED: "warning",
-  FAILED: "danger",
-  SYNCHRONIZED: "success",
 };
 
 const labelize = (value: string | null | undefined) =>
@@ -236,8 +228,8 @@ export default function ClaimDetail() {
             title={`${labelize(claim.claimType)} claim`}
             description={`Filed ${formatDate(claim.createdAt)}${claim.source === "MEMBER_PORTAL" ? " · Filed by member" : ""}`}
             actions={
-              <StatusBadge tone={STATUS_TONES[claim.status] ?? "info"}>
-                {labelize(claim.status)}
+              <StatusBadge tone={claimStatusTone(claim.externalStatus ?? claim.status)}>
+                {claimStatusLabel(claim.externalStatus ?? claim.status)}
               </StatusBadge>
             }
           />

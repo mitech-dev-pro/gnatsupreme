@@ -14,7 +14,9 @@ contract, including `/claim/submit`, is the compatibility baseline.
 
 - The release smoke check and disabled Transfers route disagree. Keep the failing
   check visible until the product decision about Transfers is made.
-- CORS `allowedHeaders` omits `Idempotency-Key`, which claim submissions use.
+- Resolved after cleanup: CORS now allows `Idempotency-Key` for the configured
+  frontend origin. HTTP preflight regression tests cover staff and member claims
+  and confirm that unapproved origins receive no CORS access permission.
 - The current Mankrado provider logs outgoing form fields. Review that logging
   separately against the intended handling of personal claim information.
 

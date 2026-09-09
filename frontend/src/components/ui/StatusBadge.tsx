@@ -7,27 +7,27 @@ const tones: Record<Tone, string> = {
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",
 };
-const icons: Record<Tone, string> = {
-  neutral: "•",
-  info: "i",
-  success: "✓",
-  warning: "!",
-  danger: "×",
+const dots: Record<Tone, string> = {
+  neutral: "bg-text-muted",
+  info: "bg-action-primary",
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
 };
 export default function StatusBadge({
   tone = "neutral",
+  dot = true,
   children,
 }: {
   tone?: Tone;
+  dot?: boolean;
   children: ReactNode;
 }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${tones[tone]}`}
     >
-      <span aria-hidden="true" className="font-extrabold">
-        {icons[tone]}
-      </span>
+      {dot && <span aria-hidden="true" className={`size-1.5 rounded-full ${dots[tone]}`} />}
       {children}
     </span>
   );

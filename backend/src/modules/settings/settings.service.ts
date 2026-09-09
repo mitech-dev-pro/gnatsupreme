@@ -38,7 +38,7 @@ export async function getOrganizationSettings() {
 export const invalidateOrganizationSettings = () => deleteCacheKey(settingsCacheKey);
 
 export function settingsSnapshot(settings: Record<string, unknown>): Prisma.InputJsonValue {
-  const { updatedBy, versions, ...snapshot } = settings;
+  const { updatedBy: _updatedBy, versions: _versions, ...snapshot } = settings;
   return JSON.parse(JSON.stringify(snapshot)) as Prisma.InputJsonValue;
 }
 

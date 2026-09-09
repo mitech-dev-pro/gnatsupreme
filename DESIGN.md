@@ -20,17 +20,17 @@ colors:
 typography:
   headline:
     fontFamily: "Plus Jakarta Sans, Inter, sans-serif"
-    fontSize: "22px"
+    fontSize: "24px"
     fontWeight: 800
     lineHeight: 1.25
   title:
     fontFamily: "Plus Jakarta Sans, Inter, sans-serif"
-    fontSize: "15px"
+    fontSize: "18px"
     fontWeight: 700
     lineHeight: 1.35
   body:
     fontFamily: "Inter, system-ui, sans-serif"
-    fontSize: "13px"
+    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
   label:
@@ -39,9 +39,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.35
 rounded:
-  sm: "7px"
-  md: "9px"
-  lg: "12px"
+  sm: "4px"
+  md: "6px"
+  lg: "8px"
+  xl: "12px"
+  2xl: "16px"
+  full: "9999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -52,8 +55,8 @@ components:
   button-primary:
     backgroundColor: "{colors.assurance-teal}"
     textColor: "{colors.paper}"
-    typography: "{typography.label}"
-    rounded: "{rounded.md}"
+    typography: "{typography.body}"
+    rounded: "{rounded.lg}"
     padding: "10px 16px"
   button-primary-hover:
     backgroundColor: "{colors.assurance-teal-deep}"
@@ -61,20 +64,20 @@ components:
   button-secondary:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.authority-navy}"
-    typography: "{typography.label}"
-    rounded: "{rounded.md}"
+    typography: "{typography.body}"
+    rounded: "{rounded.lg}"
     padding: "10px 16px"
   input:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
     typography: "{typography.body}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.lg}"
     padding: "9px 12px"
   status-success:
     backgroundColor: "{colors.success-soft}"
     textColor: "{colors.success}"
     typography: "{typography.label}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.full}"
     padding: "2px 10px"
 ---
 
@@ -132,10 +135,13 @@ Authority Navy anchors structure, Assurance Teal marks action, and Quiet Slate n
 
 ### Hierarchy
 
-- **Headline** (800, 22px, 1.25): Page titles only.
-- **Title** (700, 15px, 1.35): Section and panel headings.
-- **Body** (400, 13px, 1.5): Instructions, records, and descriptions. Prose is capped at 70ch.
-- **Label** (600, 12px, 1.35): Controls, metadata, table headings, and compact actions.
+- **Page title** (`text-2xl`, 24px, 800): Page titles only.
+- **Section title** (`text-lg`, 18px, 700): Section and panel headings.
+- **Subsection title** (`text-base`, 16px, 700): Groups within a section.
+- **Body and controls** (`text-sm`, 14px): Instructions, records, descriptions, inputs, and actions. Prose is capped at 70ch.
+- **Caption** (`text-xs`, 12px, 600): Metadata, table headings, and compact labels.
+
+Use Tailwind's default text sizes without redefining its scale. Use standard spacing utilities for exact matches; preserve calculated layouts and necessary custom widths. Repeated colors and shadows belong in the semantic theme in `frontend/src/index.css`.
 
 **The Working Scale Rule.** Product hierarchy comes from weight and spacing before large type. Display-sized marketing typography is prohibited inside the application shell.
 
@@ -156,7 +162,7 @@ Components are restrained and confident. Their states are obvious without changi
 
 ### Buttons
 
-- **Shape:** Gently curved rectangle (9px radius).
+- **Shape:** Gently curved rectangle (`rounded-lg`, 8px radius).
 - **Primary:** Assurance Teal with light text and 10px by 16px padding.
 - **Hover / Focus:** Deepen the teal on hover; use a visible 3px focus halo without moving the control.
 - **Secondary:** Paper surface, Authority Navy text, and a quiet border.
@@ -169,7 +175,7 @@ Components are restrained and confident. Their states are obvious without changi
 
 ### Cards / Containers
 
-- **Corner Style:** Gently rounded working surfaces (12px radius).
+- **Corner Style:** Gently rounded working surfaces (`rounded-xl`, 12px radius).
 - **Background:** Paper over Canvas.
 - **Shadow Strategy:** Flat at rest.
 - **Border:** One-pixel quiet border.
@@ -177,7 +183,7 @@ Components are restrained and confident. Their states are obvious without changi
 
 ### Inputs / Fields
 
-- **Style:** Paper or near-paper fill, one-pixel border, and 9px radius.
+- **Style:** Paper or near-paper fill, one-pixel border, and `rounded-lg` (8px) radius.
 - **Focus:** Assurance Teal border with a soft, visible focus halo.
 - **Error / Disabled:** Error text is attached to its field; disabled controls retain readable labels and clearly reduced affordance.
 

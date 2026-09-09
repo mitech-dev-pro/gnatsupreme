@@ -136,7 +136,12 @@ authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
       include: { user: { select: { ...publicUserSelect, isActive: true } } },
     });
 
-    if (!session || session.revokedAt || session.expiresAt <= new Date() || !session.user.isActive) {
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      !session.user.isActive
+    ) {
       response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
       response.status(401).json({ success: false, message: "Refresh session is invalid" });
       return;

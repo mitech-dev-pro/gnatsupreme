@@ -9,11 +9,11 @@ import { logger } from "./logger.js";
 // after 20 attempts instead of blocking indefinitely, which BullMQ's blocking commands need.
 export function createRedisConnection() {
   if (!env.REDIS_URL) {
-    throw new Error("REDIS_URL is not configured — this call path requires Redis and should not run without it");
+    throw new Error(
+      "REDIS_URL is not configured — this call path requires Redis and should not run without it",
+    );
   }
   const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  connection.on("error", (error: Error) =>
-    logger.error({ err: error }, "Redis connection error"),
-  );
+  connection.on("error", (error: Error) => logger.error({ err: error }, "Redis connection error"));
   return connection;
 }

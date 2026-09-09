@@ -122,11 +122,19 @@ try {
     const explained = await client.query(`EXPLAIN (FORMAT JSON) ${check.sql}`);
     const indexes = collectIndexNames(explained.rows[0]["QUERY PLAN"]);
     const passes = indexes.has(check.expected);
-    console.log(`${check.name}: ${passes ? check.expected : `expected ${check.expected}, saw ${[...indexes].join(", ") || "no index"}`}`);
+    console.log(
+      `${check.name}: ${passes ? check.expected : `expected ${check.expected}, saw ${[...indexes].join(", ") || "no index"}`}`,
+    );
     if (!passes) unusedByRepresentativePlan.push(check.name);
   }
 
-  if (extension.rowCount !== 1 || missing.length || invalid.length || unusedByRepresentativePlan.length) process.exitCode = 1;
+  if (
+    extension.rowCount !== 1 ||
+    missing.length ||
+    invalid.length ||
+    unusedByRepresentativePlan.length
+  )
+    process.exitCode = 1;
 } finally {
   await client.end();
 }

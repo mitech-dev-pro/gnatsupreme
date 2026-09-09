@@ -27,7 +27,8 @@ export async function authenticateMember(request: Request, response: Response, n
         select: { id: true, controllerId: true, fullName: true, status: true },
       }),
     );
-    if (!member || (member.status !== "ACTIVE" && member.status !== "FLAGGED")) throw new Error("Inactive member");
+    if (!member || (member.status !== "ACTIVE" && member.status !== "FLAGGED"))
+      throw new Error("Inactive member");
     response.locals.member = {
       ...member,
       status: member.status as "ACTIVE" | "FLAGGED",

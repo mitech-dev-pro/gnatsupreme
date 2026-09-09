@@ -30,9 +30,21 @@ const hospitalizationDetailsSchema = z
 export function claimSubmissionUnion<T extends z.ZodRawShape>(baseFields: T) {
   return z.discriminatedUnion("claimType", [
     z.object({ claimType: z.literal("DEATH"), claimDetails: deathTpdDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("TOTAL_PERMANENT_DISABILITY"), claimDetails: deathTpdDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("CRITICAL_ILLNESS"), claimDetails: criticalIllnessDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("HOSPITALIZATION"), claimDetails: hospitalizationDetailsSchema, ...baseFields }),
+    z.object({
+      claimType: z.literal("TOTAL_PERMANENT_DISABILITY"),
+      claimDetails: deathTpdDetailsSchema,
+      ...baseFields,
+    }),
+    z.object({
+      claimType: z.literal("CRITICAL_ILLNESS"),
+      claimDetails: criticalIllnessDetailsSchema,
+      ...baseFields,
+    }),
+    z.object({
+      claimType: z.literal("HOSPITALIZATION"),
+      claimDetails: hospitalizationDetailsSchema,
+      ...baseFields,
+    }),
   ]);
 }
 
@@ -55,25 +67,49 @@ export type ClaimDocumentSlot = { key: string; label: string; tag: ClaimDocument
 // sync by hand -- this comment and its frontend counterpart both flag the pairing.
 export const CLAIM_DOCUMENT_MANIFEST: Record<string, ClaimDocumentSlot[]> = {
   DEATH: [
-    { key: "medicalCertOrDoctorReport", label: "Medical Certificate or Doctor's Report of Cause of Death", tag: "ANY_ONE_REQUIRED" },
-    { key: "deathCertOrMortuary", label: "Death Certificate or Mortuary Documentation", tag: "ANY_ONE_REQUIRED" },
+    {
+      key: "medicalCertOrDoctorReport",
+      label: "Medical Certificate or Doctor's Report of Cause of Death",
+      tag: "ANY_ONE_REQUIRED",
+    },
+    {
+      key: "deathCertOrMortuary",
+      label: "Death Certificate or Mortuary Documentation",
+      tag: "ANY_ONE_REQUIRED",
+    },
     { key: "policeReport", label: "Police Report (in case of accident)", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   TOTAL_PERMANENT_DISABILITY: [
-    { key: "doctorReport", label: "Doctor's Report of Proof of Inability to Perform Duties", tag: "REQUIRED" },
+    {
+      key: "doctorReport",
+      label: "Doctor's Report of Proof of Inability to Perform Duties",
+      tag: "REQUIRED",
+    },
     { key: "policeReport", label: "Police Report (in case of accident)", tag: "OPTIONAL" },
     { key: "marriageCert", label: "Marriage Certificate (spouse claims only)", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   CRITICAL_ILLNESS: [
-    { key: "medicalReport", label: "Medical Report / Specialist Confirmation of Diagnosis", tag: "REQUIRED" },
+    {
+      key: "medicalReport",
+      label: "Medical Report / Specialist Confirmation of Diagnosis",
+      tag: "REQUIRED",
+    },
     { key: "labResults", label: "Laboratory / Diagnostic Test Results", tag: "OPTIONAL" },
-    { key: "dischargeSummary", label: "Hospital Discharge Summary (if applicable)", tag: "OPTIONAL" },
+    {
+      key: "dischargeSummary",
+      label: "Hospital Discharge Summary (if applicable)",
+      tag: "OPTIONAL",
+    },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   HOSPITALIZATION: [
-    { key: "dischargeSummaryOrBill", label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights", tag: "REQUIRED" },
+    {
+      key: "dischargeSummaryOrBill",
+      label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights",
+      tag: "REQUIRED",
+    },
     { key: "doctorReport", label: "Doctor's Report", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
@@ -92,13 +128,18 @@ export const CLAIM_DOCUMENT_MANIFEST: Record<string, ClaimDocumentSlot[]> = {
 // copies in sync by hand.
 export function hasRequiredDocuments(claimType: string, uploadedKeys: Set<string>) {
   const manifest = CLAIM_DOCUMENT_MANIFEST[claimType] ?? [];
-  const requiredOk = manifest.filter((d) => d.tag === "REQUIRED").every((d) => uploadedKeys.has(d.key));
+  const requiredOk = manifest
+    .filter((d) => d.tag === "REQUIRED")
+    .every((d) => uploadedKeys.has(d.key));
   const anyOneGroup = manifest.filter((d) => d.tag === "ANY_ONE_REQUIRED");
   const anyOneOk = anyOneGroup.length === 0 || anyOneGroup.some((d) => uploadedKeys.has(d.key));
   return requiredOk && anyOneOk;
 }
 
-export function dateOfEventFromClaimDetails(claimType: string, claimDetails: Record<string, unknown>): Date {
+export function dateOfEventFromClaimDetails(
+  claimType: string,
+  claimDetails: Record<string, unknown>,
+): Date {
   if (claimType === "CRITICAL_ILLNESS") return claimDetails.diagnosisDate as Date;
   if (claimType === "HOSPITALIZATION") return claimDetails.admissionDate as Date;
   return claimDetails.dateOfEvent as Date;

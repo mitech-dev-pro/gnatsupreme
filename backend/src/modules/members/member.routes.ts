@@ -1,17 +1,22 @@
 import { Router, type Response } from "express";
 import type { ZodError } from "zod";
+import {
+  findAccessibleMember,
+  ghanaCardIsUsed,
+  memberInclude,
+  memberListInclude,
+  monthStart,
+  reasonLabel,
+} from "./member.service.js";
 
-import { prisma } from "../../lib/prisma.js";
-import { cachedCount } from "../../lib/cached-count.js";
 import { invalidateMemberAuth } from "../../lib/auth-cache.js";
+import { cachedCount } from "../../lib/cached-count.js";
+import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { canAccessDistrict, memberScope, resolveMemberScope } from "./member.access.js";
-import {
-  generateTempPassword,
-  hashMemberPassword,
-} from "../member-auth/member-auth.tokens.js";
+import { generateTempPassword, hashMemberPassword } from "../member-auth/member-auth.tokens.js";
+import { canAccessDistrict, resolveMemberScope } from "./member.access.js";
 import {
   beneficiaryBaseSchema,
   beneficiaryIdParamsSchema,
@@ -21,47 +26,14 @@ import {
   memberQuerySchema,
   memberSchoolsQuerySchema,
   memberStatsQuerySchema,
-  memberStatusSchema,
   spouseSchema,
   updateMemberSchema,
 } from "./member.schemas.js";
 
 export const memberRouter = Router();
 
-const memberInclude = {
-  district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
-  spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
-  beneficiaries: {
-    orderBy: { id: "asc" as const },
-    select: { id: true, fullName: true, relationship: true, dateOfBirth: true, trusteeName: true, trusteeGhanaCardId: true },
-  },
-  createdBy: { select: { id: true, fullName: true } },
-} as const;
-
-const memberListInclude = {
-  district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-  spouse: { select: { fullName: true } },
-  createdBy: { select: { id: true, fullName: true } },
-  _count: { select: { beneficiaries: true } },
-} as const;
-
 function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
-}
-
-function monthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function reasonLabel(reason: string) {
-  const labels: Record<string, string> = {
-    DEATH: "death",
-    DISABILITY: "disability",
-    RETIREMENT: "retirement",
-    RESIGNATION: "resignation",
-    OTHER: "other",
-  };
-  return labels[reason] ?? reason.toLowerCase();
 }
 
 function validationFailure(response: Response, error: ZodError) {
@@ -72,31 +44,6 @@ function validationFailure(response: Response, error: ZodError) {
   });
 }
 
-async function findAccessibleMember(id: number, user: AuthenticatedUser) {
-  return prisma.member.findFirst({
-    where: { id, ...memberScope(user) },
-    include: memberInclude,
-  });
-}
-
-async function ghanaCardIsUsed(
-  ghanaCardId: string | null | undefined,
-  exclusions: { memberId?: number; spouseId?: number } = {},
-) {
-  if (!ghanaCardId) return false;
-  const [member, spouse] = await Promise.all([
-    prisma.member.findFirst({
-      where: { ghanaCardId, ...(exclusions.memberId ? { id: { not: exclusions.memberId } } : {}) },
-      select: { id: true },
-    }),
-    prisma.spouse.findFirst({
-      where: { ghanaCardId, ...(exclusions.spouseId ? { id: { not: exclusions.spouseId } } : {}) },
-      select: { id: true },
-    }),
-  ]);
-  return Boolean(member || spouse);
-}
-
 memberRouter.use(authenticate);
 
 memberRouter.get("/", async (request, response) => {
@@ -104,7 +51,8 @@ memberRouter.get("/", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const { page, limit, search, status, regionId, districtId, school, missingFromReport20 } = query.data;
+  const { page, limit, search, status, regionId, districtId, school, missingFromReport20 } =
+    query.data;
   const requestedScope = resolveMemberScope(user, { regionId, districtId });
   const where = {
     ...requestedScope,
@@ -131,7 +79,11 @@ memberRouter.get("/", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("members", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where }, () => prisma.member.count({ where })),
+    cachedCount(
+      "members",
+      { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where },
+      () => prisma.member.count({ where }),
+    ),
   ]);
   response.json({
     success: true,
@@ -153,16 +105,17 @@ memberRouter.get("/stats", async (request, response) => {
   };
   const firstOfMonth = monthStart(new Date());
 
-  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth] = await Promise.all([
-    prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
-    prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
-    prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
-    prisma.memberWorkflowEvent.groupBy({
-      by: ["reason"],
-      where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
-      _count: { _all: true },
-    }),
-  ]);
+  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth] =
+    await Promise.all([
+      prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
+      prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
+      prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
+      prisma.memberWorkflowEvent.groupBy({
+        by: ["reason"],
+        where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
+        _count: { _all: true },
+      }),
+    ]);
 
   const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
   const totalMembers = statusGroups.reduce((total, g) => total + g._count._all, 0);
@@ -200,7 +153,9 @@ memberRouter.get("/schools", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const districtId = query.data.districtId ?? (user.role === "DISTRICT_ADMIN" ? user.districtId ?? undefined : undefined);
+  const districtId =
+    query.data.districtId ??
+    (user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : undefined);
   if (!districtId) {
     response.status(400).json({
       success: false,
@@ -237,7 +192,9 @@ memberRouter.post("/", async (request, response) => {
 
   const user = currentUser(response);
   if (!(await canAccessDistrict(user, parsed.data.districtId))) {
-    response.status(403).json({ success: false, message: "You cannot enroll members in this district" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot enroll members in this district" });
     return;
   }
 
@@ -250,7 +207,9 @@ memberRouter.post("/", async (request, response) => {
     where: { controllerId: parsed.data.controllerId },
   });
   if (duplicateController) {
-    response.status(409).json({ success: false, message: "This Controller ID is already enrolled" });
+    response
+      .status(409)
+      .json({ success: false, message: "This Controller ID is already enrolled" });
     return;
   }
   if (await ghanaCardIsUsed(parsed.data.ghanaCardId)) {
@@ -258,7 +217,9 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
   if (parsed.data.spouse && (await ghanaCardIsUsed(parsed.data.spouse.ghanaCardId))) {
-    response.status(409).json({ success: false, message: "The spouse Ghana Card ID is already in use" });
+    response
+      .status(409)
+      .json({ success: false, message: "The spouse Ghana Card ID is already in use" });
     return;
   }
   if (
@@ -266,7 +227,9 @@ memberRouter.post("/", async (request, response) => {
     parsed.data.spouse?.ghanaCardId &&
     parsed.data.ghanaCardId === parsed.data.spouse.ghanaCardId
   ) {
-    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
+    response
+      .status(400)
+      .json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
     return;
   }
 
@@ -316,7 +279,9 @@ memberRouter.patch("/:id", async (request, response) => {
     return;
   }
   if (body.data.districtId && !(await canAccessDistrict(user, body.data.districtId))) {
-    response.status(403).json({ success: false, message: "You cannot move this member to that district" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot move this member to that district" });
     return;
   }
   if (body.data.districtId) {
@@ -327,16 +292,22 @@ memberRouter.patch("/:id", async (request, response) => {
     }
   }
   if (body.data.controllerId && body.data.controllerId !== existing.controllerId) {
-    const duplicate = await prisma.member.findUnique({ where: { controllerId: body.data.controllerId } });
+    const duplicate = await prisma.member.findUnique({
+      where: { controllerId: body.data.controllerId },
+    });
     if (duplicate) {
-      response.status(409).json({ success: false, message: "This Controller ID is already enrolled" });
+      response
+        .status(409)
+        .json({ success: false, message: "This Controller ID is already enrolled" });
       return;
     }
   }
   if (body.data.email && body.data.email !== existing.email) {
     const duplicateEmail = await prisma.member.findUnique({ where: { email: body.data.email } });
     if (duplicateEmail) {
-      response.status(409).json({ success: false, message: "This email is already in use by another membership" });
+      response
+        .status(409)
+        .json({ success: false, message: "This email is already in use by another membership" });
       return;
     }
   }
@@ -364,7 +335,8 @@ memberRouter.patch("/:id", async (request, response) => {
     where: { id: existing.id },
     data: {
       ...body.data,
-      ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
+      ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
+      body.data.phone !== existing.phone
         ? { phoneVerifiedAt: null }
         : {}),
       ...clearingUpdate,
@@ -442,7 +414,8 @@ memberRouter.post(
     response.json({
       success: true,
       password,
-      message: "Password generated. Share it with the member through a secure channel — it will not be shown again.",
+      message:
+        "Password generated. Share it with the member through a secure channel — it will not be shown again.",
     });
   },
 );
@@ -474,7 +447,9 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     return;
   }
   if (body.data.ghanaCardId && body.data.ghanaCardId === member.ghanaCardId) {
-    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
+    response
+      .status(400)
+      .json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
     return;
   }
 
@@ -545,7 +520,9 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
     return;
   }
   if (member.beneficiaries.length >= 10) {
-    response.status(409).json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
+    response
+      .status(409)
+      .json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
     return;
   }
   const beneficiary = await prisma.beneficiary.create({
@@ -567,7 +544,10 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
 
 memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response) => {
   const params = beneficiaryIdParamsSchema.safeParse(request.params);
-  const body = beneficiaryBaseSchema.partial().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
+  const body = beneficiaryBaseSchema
+    .partial()
+    .refine((value) => Object.keys(value).length > 0)
+    .safeParse(request.body);
   if (!params.success) return validationFailure(response, params.error);
   if (!body.success) return validationFailure(response, body.error);
   const member = await findAccessibleMember(params.data.id, currentUser(response));
@@ -587,7 +567,9 @@ memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response
     entityType: "BENEFICIARY",
     entityId: beneficiary.id,
     description: `Updated beneficiary for ${member.fullName}`,
-    beforeData: previous ? { fullName: previous.fullName, relationship: previous.relationship } : undefined,
+    beforeData: previous
+      ? { fullName: previous.fullName, relationship: previous.relationship }
+      : undefined,
     afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
     regionId: member.district?.regionId,
     districtId: member.districtId,
@@ -604,7 +586,9 @@ memberRouter.delete("/:id/beneficiaries/:beneficiaryId", async (request, respons
     return;
   }
   if (member.beneficiaries.length === 1) {
-    response.status(409).json({ success: false, message: "A member must retain at least one beneficiary" });
+    response
+      .status(409)
+      .json({ success: false, message: "A member must retain at least one beneficiary" });
     return;
   }
   const beneficiary = member.beneficiaries.find((item) => item.id === params.data.beneficiaryId);

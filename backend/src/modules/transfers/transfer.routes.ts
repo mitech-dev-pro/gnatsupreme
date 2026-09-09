@@ -51,10 +51,7 @@ function transferScope(user: AuthenticatedUser) {
   }
   if (user.role === "DISTRICT_ADMIN") {
     return {
-      OR: [
-        { fromDistrictId: user.districtId ?? -1 },
-        { toDistrictId: user.districtId ?? -1 },
-      ],
+      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
     };
   }
   return {};
@@ -131,18 +128,23 @@ transferRouter.post("/", async (request, response) => {
     return;
   }
   if (member.status === "REMOVED") {
-    response.status(409).json({ success: false, message: "A removed member cannot be transferred" });
+    response
+      .status(409)
+      .json({ success: false, message: "A removed member cannot be transferred" });
     return;
   }
   if (!member.districtId) {
     response.status(409).json({
       success: false,
-      message: "This member has no district on file yet — assign one directly on their record before requesting a transfer",
+      message:
+        "This member has no district on file yet — assign one directly on their record before requesting a transfer",
     });
     return;
   }
   if (member.districtId === parsed.data.toDistrictId) {
-    response.status(400).json({ success: false, message: "Destination must differ from the current district" });
+    response
+      .status(400)
+      .json({ success: false, message: "Destination must differ from the current district" });
     return;
   }
   const destination = await prisma.district.findUnique({
@@ -157,7 +159,9 @@ transferRouter.post("/", async (request, response) => {
     where: { activeKey: `member:${member.id}` },
   });
   if (pending) {
-    response.status(409).json({ success: false, message: "This member already has a pending transfer" });
+    response
+      .status(409)
+      .json({ success: false, message: "This member already has a pending transfer" });
     return;
   }
 
@@ -190,11 +194,19 @@ transferRouter.post("/", async (request, response) => {
       regionId: member.district!.regionId,
       districtId: member.districtId,
     });
-    await notifyMember({ memberId: member.id, type: "TRANSFER_REQUESTED", title: "Transfer requested", message: `A transfer from ${member.district!.name} to ${destination.name} has been requested for your membership.`, idempotencyKey: `transfer:${transfer.id}:requested` });
+    await notifyMember({
+      memberId: member.id,
+      type: "TRANSFER_REQUESTED",
+      title: "Transfer requested",
+      message: `A transfer from ${member.district!.name} to ${destination.name} has been requested for your membership.`,
+      idempotencyKey: `transfer:${transfer.id}:requested`,
+    });
     response.status(201).json({ success: true, data: transfer });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
-      response.status(409).json({ success: false, message: "This member already has a pending transfer" });
+      response
+        .status(409)
+        .json({ success: false, message: "This member already has a pending transfer" });
       return;
     }
     throw error;
@@ -217,7 +229,9 @@ transferRouter.patch(
       return;
     }
     if (existing.status !== "PENDING") {
-      response.status(409).json({ success: false, message: "Only pending transfers can be reviewed" });
+      response
+        .status(409)
+        .json({ success: false, message: "Only pending transfers can be reviewed" });
       return;
     }
 
@@ -263,13 +277,20 @@ transferRouter.patch(
         beforeData: { status: existing.status, districtId: existing.fromDistrictId },
         afterData: {
           status: transfer.status,
-          districtId: body.data.decision === "APPROVED" ? transfer.toDistrictId : transfer.fromDistrictId,
+          districtId:
+            body.data.decision === "APPROVED" ? transfer.toDistrictId : transfer.fromDistrictId,
           reviewNote: transfer.reviewNote,
         },
         regionId: transfer.toDistrict.regionId,
         districtId: transfer.toDistrictId,
       });
-      await notifyMember({ memberId: transfer.memberId, type: `TRANSFER_${transfer.status}`, title: "Transfer request updated", message: `Your transfer to ${transfer.toDistrict.name} was ${transfer.status.toLowerCase()}${transfer.reviewNote ? `: ${transfer.reviewNote}` : "."}`, idempotencyKey: `transfer:${transfer.id}:${transfer.status}` });
+      await notifyMember({
+        memberId: transfer.memberId,
+        type: `TRANSFER_${transfer.status}`,
+        title: "Transfer request updated",
+        message: `Your transfer to ${transfer.toDistrict.name} was ${transfer.status.toLowerCase()}${transfer.reviewNote ? `: ${transfer.reviewNote}` : "."}`,
+        idempotencyKey: `transfer:${transfer.id}:${transfer.status}`,
+      });
       response.json({ success: true, data: transfer });
     } catch (error) {
       if (error instanceof TransferConflict) {
@@ -293,7 +314,9 @@ transferRouter.patch("/:id/cancel", async (request, response) => {
     return;
   }
   const canCancel =
-    existing.requestedById === user.id || user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
+    existing.requestedById === user.id ||
+    user.role === "SUPER_ADMIN" ||
+    user.role === "NATIONAL_ADMIN";
   if (!canCancel) {
     response.status(403).json({ success: false, message: "You cannot cancel this transfer" });
     return;
@@ -309,7 +332,9 @@ transferRouter.patch("/:id/cancel", async (request, response) => {
     },
   });
   if (updated.count !== 1) {
-    response.status(409).json({ success: false, message: "Only pending transfers can be cancelled" });
+    response
+      .status(409)
+      .json({ success: false, message: "Only pending transfers can be cancelled" });
     return;
   }
   const transfer = await prisma.memberTransfer.findUniqueOrThrow({
@@ -328,6 +353,12 @@ transferRouter.patch("/:id/cancel", async (request, response) => {
     regionId: transfer.fromDistrict.regionId,
     districtId: transfer.fromDistrictId,
   });
-  await notifyMember({ memberId: transfer.memberId, type: "TRANSFER_CANCELLED", title: "Transfer cancelled", message: `Your transfer request to ${transfer.toDistrict.name} was cancelled.`, idempotencyKey: `transfer:${transfer.id}:CANCELLED` });
+  await notifyMember({
+    memberId: transfer.memberId,
+    type: "TRANSFER_CANCELLED",
+    title: "Transfer cancelled",
+    message: `Your transfer request to ${transfer.toDistrict.name} was cancelled.`,
+    idempotencyKey: `transfer:${transfer.id}:CANCELLED`,
+  });
   response.json({ success: true, data: transfer });
 });

@@ -26,9 +26,20 @@ export const notFoundHandler: RequestHandler = (request, response) => {
 
 function databaseError(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) return null;
-  if (error.code === "P2002") return new AppError(409, "A record with these unique values already exists", "DUPLICATE_RECORD");
-  if (error.code === "P2003") return new AppError(409, "This operation conflicts with related records", "RELATED_RECORD_CONFLICT");
-  if (error.code === "P2025") return new AppError(404, "The requested record was not found", "RECORD_NOT_FOUND");
+  if (error.code === "P2002")
+    return new AppError(
+      409,
+      "A record with these unique values already exists",
+      "DUPLICATE_RECORD",
+    );
+  if (error.code === "P2003")
+    return new AppError(
+      409,
+      "This operation conflicts with related records",
+      "RELATED_RECORD_CONFLICT",
+    );
+  if (error.code === "P2025")
+    return new AppError(404, "The requested record was not found", "RECORD_NOT_FOUND");
   return null;
 }
 
@@ -40,15 +51,24 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
   const mapped =
     error instanceof AppError
       ? error
-      : databaseError(error) ??
+      : (databaseError(error) ??
         (error instanceof multer.MulterError
           ? new AppError(error.code === "LIMIT_FILE_SIZE" ? 413 : 400, error.message, error.code)
           : error instanceof SyntaxError && "body" in error
             ? new AppError(400, "Request body contains invalid JSON", "INVALID_JSON")
-            : new AppError(500, "An unexpected error occurred", "INTERNAL_SERVER_ERROR"));
+            : new AppError(500, "An unexpected error occurred", "INTERNAL_SERVER_ERROR")));
 
   const log = mapped.statusCode >= 500 ? logger.error.bind(logger) : logger.warn.bind(logger);
-  log({ err: error, requestId: request.id, method: request.method, path: request.path, statusCode: mapped.statusCode }, mapped.message);
+  log(
+    {
+      err: error,
+      requestId: request.id,
+      method: request.method,
+      path: request.path,
+      statusCode: mapped.statusCode,
+    },
+    mapped.message,
+  );
   response.status(mapped.statusCode).json({
     success: false,
     code: mapped.code,

@@ -51,11 +51,14 @@ async function deleteFilesFromDisk(storagePaths: string[]) {
     try {
       await fs.unlink(fullPath);
       removed++;
-    } catch (err: any) {
-      if (err.code === "ENOENT") {
+    } catch (err: unknown) {
+      if (err instanceof Error && "code" in err && err.code === "ENOENT") {
         missing++;
       } else {
-        console.error(`Failed to remove ${fullPath}:`, err.message);
+        console.error(
+          `Failed to remove ${fullPath}:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
     }
   }
@@ -76,8 +79,12 @@ async function main() {
   console.log(`  ${fileCount} stored file(s) (uploads)`);
   console.log(`  ${claimCount} external claim submission(s)`);
   console.log(`  ${transferCount} member transfer(s)`);
-  console.log(`  ${importJobCount} import job(s) (and their Report20Row / MemberBulkImportRow children)`);
-  console.log("Users, Regions, Districts, OrganizationSettings, BenefitPlanVersions are NOT touched.\n");
+  console.log(
+    `  ${importJobCount} import job(s) (and their Report20Row / MemberBulkImportRow children)`,
+  );
+  console.log(
+    "Users, Regions, Districts, OrganizationSettings, BenefitPlanVersions are NOT touched.\n",
+  );
 
   if (memberCount === 0 && fileCount === 0) {
     console.log("Nothing to delete.");

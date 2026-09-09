@@ -5,10 +5,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
 import { invalidateAllMemberAuth } from "../../lib/auth-cache.js";
-import {
-  normalizeDistrictName,
-  resolveDistrict,
-} from "../geography/district-match.js";
+import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 import { notifyMember } from "../notifications/notification.service.js";
 import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
 
@@ -26,20 +23,8 @@ type SourceRow = {
 };
 
 const aliases = {
-  controllerId: [
-    "controllerid",
-    "controller",
-    "employeeno",
-    "employeenumber",
-    "staffid",
-  ],
-  fullName: [
-    "fullname",
-    "name",
-    "membername",
-    "employeename",
-    "nameofemployee",
-  ],
+  controllerId: ["controllerid", "controller", "employeeno", "employeenumber", "staffid"],
+  fullName: ["fullname", "name", "membername", "employeename", "nameofemployee"],
   districtName: ["district", "districtname", "municipality", "mmda"],
   regionName: ["region", "regionname"],
   school: ["school", "schoolname", "institution", "managementunit"],
@@ -55,16 +40,13 @@ function normalizeValue(value: string | null | undefined) {
 }
 
 function field(rawData: Record<string, string>, names: readonly string[]) {
-  const entry = Object.entries(rawData).find(([header]) =>
-    names.includes(normalizeHeader(header)),
-  );
+  const entry = Object.entries(rawData).find(([header]) => names.includes(normalizeHeader(header)));
   return entry?.[1]?.trim() || null;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size)
-    chunks.push(items.slice(i, i + size));
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
   return chunks;
 }
 
@@ -74,18 +56,12 @@ export async function sha256File(filePath: string) {
   return hash.digest("hex");
 }
 
-export async function parseReport20(
-  filePath: string,
-  mimeType: string,
-): Promise<SourceRow[]> {
+export async function parseReport20(filePath: string, mimeType: string): Promise<SourceRow[]> {
   let headers: string[] | null = null;
   const rows: SourceRow[] = [];
   let dataRowCount = 0;
 
-  for await (const { rowNumber, cells } of streamSpreadsheetRows(
-    filePath,
-    mimeType,
-  )) {
+  for await (const { rowNumber, cells } of streamSpreadsheetRows(filePath, mimeType)) {
     if (rowNumber === 1) {
       headers = [];
       cells.forEach((text, column) => {
@@ -93,9 +69,7 @@ export async function parseReport20(
       });
       if (
         !headers.some((header) =>
-          aliases.controllerId.some(
-            (alias) => alias === normalizeHeader(header),
-          ),
+          aliases.controllerId.some((alias) => alias === normalizeHeader(header)),
         )
       ) {
         throw new Error("A Controller ID or Employee No column is required");
@@ -104,8 +78,7 @@ export async function parseReport20(
     }
 
     dataRowCount += 1;
-    if (dataRowCount > MAX_ROWS)
-      throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
+    if (dataRowCount > MAX_ROWS) throw new Error(`A report may contain at most ${MAX_ROWS} rows`);
 
     const rawData: Record<string, string> = {};
     headers!.forEach((header, column) => {
@@ -127,10 +100,7 @@ export async function parseReport20(
   return rows;
 }
 
-export async function reconcileReport20(
-  importJobId: number,
-  sourceRows: SourceRow[],
-) {
+export async function reconcileReport20(importJobId: number, sourceRows: SourceRow[]) {
   // Captured up front so sourceRows can be dropped once classification is done (see below) --
   // this is the only later use of its length.
   const totalRows = sourceRows.length;
@@ -152,58 +122,52 @@ export async function reconcileReport20(
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  const [members, districts, districtAliases, activeMembers] =
-    await Promise.all([
-      // NON_TEACHING members are excluded here too, not just from the activeMembers query below
-      // -- this is what feeds matchedMemberIds/changedMemberIds (see classifyRow), which drive
-      // report20Matched updates independently of the missing/reappeared logic. Without this
-      // filter, a non-teaching member whose controller ID happens to appear in an uploaded file
-      // would still get report20Matched toggled even though they're meant to be fully exempt
-      // from Report 20 reconciliation.
-      prisma.member.findMany({
-        where: {
-          controllerId: { in: controllerIds },
-          employmentCategory: "TEACHING",
-        },
-        include: { district: { select: { name: true } } },
-      }),
-      prisma.district.findMany({
-        include: { region: { select: { name: true } } },
-      }),
-      prisma.districtAlias.findMany({
-        select: { alias: true, districtId: true },
-      }),
-      // Report 20 is treated as the full national payroll file, so any currently-recognized
-      // member (ACTIVE, FLAGGED, or already INACTIVE) not seen in this run is presumed missing
-      // from payroll. INACTIVE has to stay in this query too, not just ACTIVE/FLAGGED — otherwise
-      // an inactive member could never be detected as reappeared and reactivated automatically.
-      // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
-      // are already off the books. NON_TEACHING members are excluded entirely -- Report 20 is a
-      // teaching-staff payroll file and doesn't apply to them; their status stays staff-managed.
-      prisma.member.findMany({
-        where: {
-          status: { in: ["ACTIVE", "FLAGGED", "INACTIVE"] },
-          employmentCategory: "TEACHING",
-        },
-        select: {
-          id: true,
-          controllerId: true,
-          fullName: true,
-          missingFromReport20At: true,
-          status: true,
-          report20Matched: true,
-          district: { select: { regionId: true } },
-        },
-      }),
-    ]);
-  const membersByControllerId = new Map(
-    members.map((member) => [member.controllerId, member]),
-  );
+  const [members, districts, districtAliases, activeMembers] = await Promise.all([
+    // NON_TEACHING members are excluded here too, not just from the activeMembers query below
+    // -- this is what feeds matchedMemberIds/changedMemberIds (see classifyRow), which drive
+    // report20Matched updates independently of the missing/reappeared logic. Without this
+    // filter, a non-teaching member whose controller ID happens to appear in an uploaded file
+    // would still get report20Matched toggled even though they're meant to be fully exempt
+    // from Report 20 reconciliation.
+    prisma.member.findMany({
+      where: {
+        controllerId: { in: controllerIds },
+        employmentCategory: "TEACHING",
+      },
+      include: { district: { select: { name: true } } },
+    }),
+    prisma.district.findMany({
+      include: { region: { select: { name: true } } },
+    }),
+    prisma.districtAlias.findMany({
+      select: { alias: true, districtId: true },
+    }),
+    // Report 20 is treated as the full national payroll file, so any currently-recognized
+    // member (ACTIVE, FLAGGED, or already INACTIVE) not seen in this run is presumed missing
+    // from payroll. INACTIVE has to stay in this query too, not just ACTIVE/FLAGGED — otherwise
+    // an inactive member could never be detected as reappeared and reactivated automatically.
+    // PENDING/RETURNED/REMOVED members are excluded — they aren't expected to appear yet, or
+    // are already off the books. NON_TEACHING members are excluded entirely -- Report 20 is a
+    // teaching-staff payroll file and doesn't apply to them; their status stays staff-managed.
+    prisma.member.findMany({
+      where: {
+        status: { in: ["ACTIVE", "FLAGGED", "INACTIVE"] },
+        employmentCategory: "TEACHING",
+      },
+      select: {
+        id: true,
+        controllerId: true,
+        fullName: true,
+        missingFromReport20At: true,
+        status: true,
+        report20Matched: true,
+        district: { select: { regionId: true } },
+      },
+    }),
+  ]);
+  const membersByControllerId = new Map(members.map((member) => [member.controllerId, member]));
   const aliasMap = new Map(
-    districtAliases.map((entry) => [
-      normalizeDistrictName(entry.alias),
-      entry.districtId,
-    ]),
+    districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]),
   );
 
   const seen = new Set<string>();
@@ -225,17 +189,9 @@ export async function reconcileReport20(
 
   function classifyRow(row: SourceRow): Prisma.Report20RowCreateManyInput {
     const issues: string[] = [];
-    let status:
-      | "MATCHED"
-      | "CHANGED"
-      | "UNMATCHED"
-      | "DUPLICATE"
-      | "INVALID"
-      | "ENROLLED";
+    let status: "MATCHED" | "CHANGED" | "UNMATCHED" | "DUPLICATE" | "INVALID" | "ENROLLED";
     const controllerId = row.controllerId?.replace(/\s+/g, "") ?? null;
-    const member = controllerId
-      ? membersByControllerId.get(controllerId)
-      : undefined;
+    const member = controllerId ? membersByControllerId.get(controllerId) : undefined;
 
     if (!controllerId || !/^\d{4,7}$/.test(controllerId) || !row.fullName) {
       status = "INVALID";
@@ -272,19 +228,13 @@ export async function reconcileReport20(
     } else {
       if (normalizeValue(row.fullName) !== normalizeValue(member.fullName))
         issues.push("Full name differs");
-      if (
-        row.school &&
-        normalizeValue(row.school) !== normalizeValue(member.school)
-      )
+      if (row.school && normalizeValue(row.school) !== normalizeValue(member.school))
         issues.push("School differs");
       // Not compared against the file's district column for an existing member — Report 20's
       // district data is unreliable enough that it would keep flagging real members as CHANGED
       // indefinitely. The member's district in this system (set via self-service, staff, or
       // transfer) is treated as authoritative once they already exist here.
-      if (
-        row.ghanaCardId &&
-        normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId)
-      )
+      if (row.ghanaCardId && normalizeValue(row.ghanaCardId) !== normalizeValue(member.ghanaCardId))
         issues.push("Ghana Card ID differs");
       status = issues.length ? "CHANGED" : "MATCHED";
       // Only a clean match counts toward report20Matched — CHANGED means the row was found but
@@ -372,8 +322,7 @@ export async function reconcileReport20(
       data: batch.map((entry) => entry.data),
       select: { id: true, controllerId: true },
     });
-    for (const member of created)
-      createdIdByControllerId.set(member.controllerId, member.id);
+    for (const member of created) createdIdByControllerId.set(member.controllerId, member.id);
   }
   for (const row of data) {
     if (row.status === "ENROLLED" && row.controllerId) {
@@ -396,19 +345,14 @@ export async function reconcileReport20(
     )
     .map((member) => member.id);
   const reappearedMemberIds = activeMembers
-    .filter(
-      (member) =>
-        seenControllerIds.has(member.controllerId) &&
-        member.missingFromReport20At,
-    )
+    .filter((member) => seenControllerIds.has(member.controllerId) && member.missingFromReport20At)
     .map((member) => member.id);
 
   await prisma.$transaction(
     async (tx) => {
       // Clears any rows from a previous run of this same job (see rerunReport20) before inserting fresh ones.
       await tx.report20Row.deleteMany({ where: { importJobId } });
-      for (const batch of chunk(data, 20_000))
-        await tx.report20Row.createMany({ data: batch });
+      for (const batch of chunk(data, 20_000)) await tx.report20Row.createMany({ data: batch });
       await tx.member.updateMany({
         where: { id: { in: [...matchedMemberIds] } },
         data: { report20Matched: true },
@@ -416,9 +360,7 @@ export async function reconcileReport20(
       // Anything that used to be matched but isn't any more this run — now CHANGED, or missing
       // from the file entirely — has its flag cleared so it doesn't keep reporting as matched
       // against a file that no longer agrees with it.
-      const noLongerMatchedIds = [
-        ...new Set([...changedMemberIds, ...missingMemberIds]),
-      ];
+      const noLongerMatchedIds = [...new Set([...changedMemberIds, ...missingMemberIds])];
       if (noLongerMatchedIds.length) {
         await tx.member.updateMany({
           where: { id: { in: noLongerMatchedIds } },

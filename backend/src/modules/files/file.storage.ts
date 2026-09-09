@@ -27,7 +27,8 @@ const allowedMimeTypes = new Map([
 const storage = multer.diskStorage({
   destination: (_request, _file, callback) => callback(null, memberUploadDirectory),
   filename: (_request, file, callback) => {
-    const extension = allowedMimeTypes.get(file.mimetype) ?? CLAIM_MIME_EXTENSIONS[file.mimetype]?.[0];
+    const extension =
+      allowedMimeTypes.get(file.mimetype) ?? CLAIM_MIME_EXTENSIONS[file.mimetype]?.[0];
     callback(null, `${randomUUID()}${extension ?? ""}`);
   },
 });
@@ -48,7 +49,8 @@ export const claimFileUpload = multer({
   storage,
   limits: { fileSize: CLAIM_MAX_FILE_BYTES, files: 1 },
   fileFilter: (_request, file, callback) => {
-    if (!CLAIM_MIME_EXTENSIONS[file.mimetype]) return callback(new Error("Claims accept PDF, DOC, DOCX, JPEG and JPG only."));
+    if (!CLAIM_MIME_EXTENSIONS[file.mimetype])
+      return callback(new Error("Claims accept PDF, DOC, DOCX, JPEG and JPG only."));
     callback(null, true);
   },
 });
@@ -124,15 +126,24 @@ export async function hasValidFileSignature(filePath: string, mimeType: string) 
     await handle.close();
   }
 
-  if (mimeType === "application/msword") return header.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
-  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  if (mimeType === "application/msword")
+    return header
+      .subarray(0, 8)
+      .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   if (mimeType === "application/pdf") return header.subarray(0, 5).toString() === "%PDF-";
-  if (mimeType === "image/jpeg") return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  if (mimeType === "image/jpeg")
+    return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
   if (mimeType === "image/png") {
-    return header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    return header
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   }
   if (mimeType === "image/webp") {
-    return header.subarray(0, 4).toString() === "RIFF" && header.subarray(8, 12).toString() === "WEBP";
+    return (
+      header.subarray(0, 4).toString() === "RIFF" && header.subarray(8, 12).toString() === "WEBP"
+    );
   }
   return false;
 }

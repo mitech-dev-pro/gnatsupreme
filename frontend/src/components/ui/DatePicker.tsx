@@ -1,38 +1,53 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type {
-  CSSProperties,
-  ChangeEvent,
-  KeyboardEvent,
-  MouseEvent,
-  SVGProps,
-} from "react";
+import type { CSSProperties, ChangeEvent, KeyboardEvent, MouseEvent, SVGProps } from "react";
 import ModalPortal from "./ModalPortal";
 import { cn } from "@/lib/utils";
 
 function Icon({ children, ...props }: SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
       {children}
     </svg>
   );
 }
 const CalendarIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M16 3v4M8 3v4M3.5 10h17" /></Icon>
+  <Icon {...props}>
+    <rect x="3.5" y="5" width="17" height="16" rx="2.5" />
+    <path d="M16 3v4M8 3v4M3.5 10h17" />
+  </Icon>
 );
 const ChevronLeftIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><path d="M15 6l-6 6 6 6" /></Icon>
+  <Icon {...props}>
+    <path d="M15 6l-6 6 6 6" />
+  </Icon>
 );
 const ChevronRightIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><path d="M9 6l6 6-6 6" /></Icon>
+  <Icon {...props}>
+    <path d="M9 6l6 6-6 6" />
+  </Icon>
 );
 const ChevronsLeftIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><path d="M18 6l-6 6 6 6M11 6l-6 6 6 6" /></Icon>
+  <Icon {...props}>
+    <path d="M18 6l-6 6 6 6M11 6l-6 6 6 6" />
+  </Icon>
 );
 const ChevronsRightIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><path d="M6 6l6 6-6 6M13 6l6 6-6 6" /></Icon>
+  <Icon {...props}>
+    <path d="M6 6l6 6-6 6M13 6l6 6-6 6" />
+  </Icon>
 );
 const XIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}><path d="M6 6l12 12M18 6L6 18" /></Icon>
+  <Icon {...props}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Icon>
 );
 
 interface DatePickerProps {
@@ -128,11 +143,7 @@ function endOfDay(date: Date): Date {
 
 function makeDate(year: number, month: number, day: number): Date | null {
   const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
     return null;
   }
   return date;
@@ -144,11 +155,7 @@ function parseDateText(text: string): Date | null {
 
   const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (isoMatch) {
-    return makeDate(
-      Number(isoMatch[1]),
-      Number(isoMatch[2]),
-      Number(isoMatch[3]),
-    );
+    return makeDate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
   }
 
   const gbMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
@@ -160,15 +167,11 @@ function parseDateText(text: string): Date | null {
 
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
-  return makeDate(
-    parsed.getFullYear(),
-    parsed.getMonth() + 1,
-    parsed.getDate(),
-  );
+  return makeDate(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
 }
 
 const inputClasses =
-  "w-full min-h-10 rounded-[9px] border border-(--border-default) bg-(--surface-raised) px-3 py-2 pr-9 text-[12.5px] text-(--ink) transition-[border-color,box-shadow] duration-180 focus:border-(--action-primary) focus:outline-none focus:ring-3 focus:ring-(--success-soft) disabled:cursor-not-allowed disabled:bg-(--surface-subtle) disabled:text-(--text-muted)";
+  "w-full min-h-10 rounded-lg border border-border-default bg-(--surface-raised) px-3 py-2 pr-9 text-sm text-ink transition-[border-color,box-shadow] duration-180 focus:border-action-primary focus:outline-none focus:ring-3 focus:ring-success-soft disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-text-muted";
 
 export default function DatePicker({
   value,
@@ -188,9 +191,7 @@ export default function DatePicker({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("days");
-  const [inputValue, setInputValue] = useState(() =>
-    value ? formatDate(value) : "",
-  );
+  const [inputValue, setInputValue] = useState(() => (value ? formatDate(value) : ""));
   const [inputInvalid, setInputInvalid] = useState(false);
   const [floatingStyle, setFloatingStyle] = useState<CSSProperties>({});
   const [cursor, setCursor] = useState<{ year: number; month: number }>(() => ({
@@ -384,14 +385,15 @@ export default function DatePicker({
   const yearRange = generateYearRange(cursor.year);
 
   return (
-    <div
-      ref={containerRef}
-      className={cn("relative flex w-full flex-col gap-1", className)}
-    >
+    <div ref={containerRef} className={cn("relative flex w-full flex-col gap-1", className)}>
       {label && (
-        <label htmlFor={id} className="mb-0.5 block text-[11.5px] font-bold text-(--text-strong)">
+        <label htmlFor={id} className="mb-0.5 block text-xs font-bold text-text-strong">
           {label}
-          {required && <span aria-hidden="true" className="ml-0.5 text-(--danger)">*</span>}
+          {required && (
+            <span aria-hidden="true" className="ml-0.5 text-danger">
+              *
+            </span>
+          )}
         </label>
       )}
 
@@ -411,7 +413,7 @@ export default function DatePicker({
           aria-invalid={Boolean(error || inputInvalid) || undefined}
           className={cn(
             inputClasses,
-            (inputInvalid || error) && "border-(--danger) focus:border-(--danger) focus:ring-(--danger-soft)",
+            (inputInvalid || error) && "border-danger focus:border-danger focus:ring-danger-soft",
           )}
         />
 
@@ -424,7 +426,7 @@ export default function DatePicker({
               onClick={clearDate}
               onMouseDown={(e) => e.preventDefault()}
               onKeyDown={(e) => e.key === "Enter" && clearDate(e)}
-              className="rounded p-0.5 text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+              className="rounded p-0.5 text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
             >
               <XIcon className="size-3.5" />
             </span>
@@ -438,7 +440,7 @@ export default function DatePicker({
               onClick={() => setOpen((o) => !o)}
               className={cn(
                 "transition-colors",
-                open ? "text-(--action-primary)" : "text-(--text-muted) hover:text-(--text-strong)",
+                open ? "text-action-primary" : "text-text-muted hover:text-text-strong",
               )}
             >
               <CalendarIcon className="size-4" />
@@ -446,15 +448,15 @@ export default function DatePicker({
           )}
         </span>
       </div>
-      {error && <p className="text-[11.5px] font-semibold text-(--danger)">{error}</p>}
-      {hint && !error && <p className="text-[11.5px] text-(--text-muted)">{hint}</p>}
+      {error && <p className="text-xs font-semibold text-danger">{error}</p>}
+      {hint && !error && <p className="text-xs text-text-muted">{hint}</p>}
 
       {open && (
         <ModalPortal>
           <div
             ref={popoverRef}
             style={floatingStyle}
-            className="fixed z-1000 rounded-[12px] border border-(--border-default) bg-(--surface-raised) p-3 shadow-[0_14px_34px_rgba(30,39,97,0.18)]"
+            className="fixed z-1000 rounded-xl border border-border-default bg-(--surface-raised) p-3 shadow-dropdown"
           >
             {view === "days" && (
               <>
@@ -462,24 +464,24 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={prevMonth}
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Previous month"
                   >
                     <ChevronLeftIcon className="size-4" />
                   </button>
 
-                  <div className="flex items-center rounded-[9px]">
+                  <div className="flex items-center rounded-lg">
                     <button
                       type="button"
                       onClick={() => setView("months")}
-                      className="rounded-l-[9px] px-2 py-1 text-[12.5px] font-bold text-(--text-strong) transition-colors hover:bg-(--surface-subtle) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                      className="rounded-l-lg px-2 py-1 text-sm font-bold text-text-strong transition-colors hover:bg-surface-subtle focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     >
                       {MONTH_NAMES[cursor.month]}
                     </button>
                     <button
                       type="button"
                       onClick={() => setView("years")}
-                      className="rounded-r-[9px] px-2 py-1 text-[12.5px] font-bold text-(--action-primary) transition-colors hover:bg-(--success-soft) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                      className="rounded-r-lg px-2 py-1 text-sm font-bold text-action-primary transition-colors hover:bg-success-soft focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     >
                       {cursor.year}
                     </button>
@@ -488,7 +490,7 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={nextMonth}
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Next month"
                   >
                     <ChevronRightIcon className="size-4" />
@@ -499,7 +501,7 @@ export default function DatePicker({
                   {DAY_NAMES.map((d) => (
                     <div
                       key={d}
-                      className="py-1 text-center text-[10.5px] font-bold uppercase tracking-wide text-(--text-muted)"
+                      className="py-1 text-center text-xs font-bold uppercase tracking-wide text-text-muted"
                     >
                       {d}
                     </div>
@@ -513,44 +515,39 @@ export default function DatePicker({
                     const dateObj = isCurrentMonth
                       ? new Date(cursor.year, cursor.month, day)
                       : null;
-                    const selected =
-                      value && dateObj ? isSameDay(value, dateObj) : false;
+                    const selected = value && dateObj ? isSameDay(value, dateObj) : false;
                     const todayFlag = dateObj ? isToday(dateObj) : false;
-                    const disabledFlag = isCurrentMonth
-                      ? isDisabledDay(day)
-                      : true;
+                    const disabledFlag = isCurrentMonth ? isDisabledDay(day) : true;
 
                     return (
                       <button
                         key={i}
                         type="button"
                         disabled={!isCurrentMonth || disabledFlag}
-                        onClick={() =>
-                          isCurrentMonth && !disabledFlag && selectDate(day)
-                        }
+                        onClick={() => isCurrentMonth && !disabledFlag && selectDate(day)}
                         className={cn(
-                          "relative flex h-9 w-full items-center justify-center rounded-[9px] text-[12.5px] transition-colors select-none focus:outline-none focus:ring-2 focus:ring-(--focus-ring)",
+                          "relative flex h-9 w-full items-center justify-center rounded-lg text-sm transition-colors select-none focus:outline-none focus:ring-2 focus:ring-focus-ring",
                           !isCurrentMonth
                             ? "pointer-events-none opacity-0"
                             : selected
-                              ? "bg-(--action-primary) font-bold text-(--text-on-action) shadow-sm"
+                              ? "bg-action-primary font-bold text-text-on-action shadow-sm"
                               : todayFlag
-                                ? "bg-(--success-soft) font-bold text-(--success) ring-1 ring-(--success-border)"
+                                ? "bg-success-soft font-bold text-success ring-1 ring-success-border"
                                 : disabledFlag
-                                  ? "cursor-not-allowed text-(--border-strong)"
-                                  : "text-(--ink) hover:bg-(--surface-subtle)",
+                                  ? "cursor-not-allowed text-border-strong"
+                                  : "text-ink hover:bg-surface-subtle",
                         )}
                       >
                         {isCurrentMonth ? day : ""}
                         {todayFlag && !selected && (
-                          <span className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-(--action-primary)" />
+                          <span className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-action-primary" />
                         )}
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-(--border-default) pt-3">
+                <div className="mt-3 flex items-center justify-between border-t border-border-default pt-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -559,7 +556,7 @@ export default function DatePicker({
                       onChange?.(t);
                       setOpen(false);
                     }}
-                    className="text-[11.5px] font-bold text-(--action-primary) transition-colors hover:text-(--action-primary-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="text-xs font-bold text-action-primary transition-colors hover:text-(--action-primary-hover) focus:outline-none focus:ring-2 focus:ring-focus-ring"
                   >
                     Today
                   </button>
@@ -570,7 +567,7 @@ export default function DatePicker({
                         onChange?.(null);
                         setOpen(false);
                       }}
-                      className="text-[11.5px] font-semibold text-(--text-muted) transition-colors hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                      className="text-xs font-semibold text-text-muted transition-colors hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     >
                       Clear
                     </button>
@@ -584,10 +581,8 @@ export default function DatePicker({
                 <div className="mb-3 flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={() =>
-                      setCursor((c) => ({ ...c, year: c.year - 1 }))
-                    }
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    onClick={() => setCursor((c) => ({ ...c, year: c.year - 1 }))}
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Previous year"
                   >
                     <ChevronLeftIcon className="size-4" />
@@ -595,16 +590,14 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={() => setView("years")}
-                    className="rounded-[9px] px-3 py-1 text-[12.5px] font-bold text-(--text-strong) transition-colors hover:bg-(--surface-subtle) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="rounded-lg px-3 py-1 text-sm font-bold text-text-strong transition-colors hover:bg-surface-subtle focus:outline-none focus:ring-2 focus:ring-focus-ring"
                   >
                     {cursor.year}
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      setCursor((c) => ({ ...c, year: c.year + 1 }))
-                    }
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    onClick={() => setCursor((c) => ({ ...c, year: c.year + 1 }))}
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Next year"
                   >
                     <ChevronRightIcon className="size-4" />
@@ -614,12 +607,9 @@ export default function DatePicker({
                 <div className="grid grid-cols-3 gap-1.5">
                   {MONTH_NAMES.map((name, idx) => {
                     const isSelected =
-                      value &&
-                      value.getMonth() === idx &&
-                      value.getFullYear() === cursor.year;
+                      value && value.getMonth() === idx && value.getFullYear() === cursor.year;
                     const isCurrent =
-                      today.getMonth() === idx &&
-                      today.getFullYear() === cursor.year;
+                      today.getMonth() === idx && today.getFullYear() === cursor.year;
 
                     return (
                       <button
@@ -630,12 +620,12 @@ export default function DatePicker({
                           setView("days");
                         }}
                         className={cn(
-                          "h-10 rounded-[9px] text-[12.5px] transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus-ring)",
+                          "h-10 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-focus-ring",
                           isSelected
-                            ? "bg-(--action-primary) font-bold text-(--text-on-action) shadow-sm"
+                            ? "bg-action-primary font-bold text-text-on-action shadow-sm"
                             : isCurrent
-                              ? "bg-(--success-soft) font-bold text-(--success) ring-1 ring-(--success-border)"
-                              : "text-(--ink) hover:bg-(--surface-subtle)",
+                              ? "bg-success-soft font-bold text-success ring-1 ring-success-border"
+                              : "text-ink hover:bg-surface-subtle",
                         )}
                       >
                         {SHORT_MONTH_NAMES[idx]}
@@ -644,11 +634,11 @@ export default function DatePicker({
                   })}
                 </div>
 
-                <div className="mt-3 border-t border-(--border-default) pt-3">
+                <div className="mt-3 border-t border-border-default pt-3">
                   <button
                     type="button"
                     onClick={() => setView("days")}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-(--text-muted) transition-colors hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-text-muted transition-colors hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                   >
                     <ChevronLeftIcon className="size-3.5" /> Back
                   </button>
@@ -661,23 +651,19 @@ export default function DatePicker({
                 <div className="mb-3 flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={() =>
-                      setCursor((c) => ({ ...c, year: c.year - 12 }))
-                    }
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    onClick={() => setCursor((c) => ({ ...c, year: c.year - 12 }))}
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Previous years"
                   >
                     <ChevronsLeftIcon className="size-4" />
                   </button>
-                  <span className="text-[12.5px] font-bold text-(--text-strong)">
+                  <span className="text-sm font-bold text-text-strong">
                     {yearRange[0]} - {yearRange[yearRange.length - 1]}
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setCursor((c) => ({ ...c, year: c.year + 12 }))
-                    }
-                    className="flex size-8 items-center justify-center rounded-[9px] text-(--text-muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    onClick={() => setCursor((c) => ({ ...c, year: c.year + 12 }))}
+                    className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                     aria-label="Next years"
                   >
                     <ChevronsRightIcon className="size-4" />
@@ -698,12 +684,12 @@ export default function DatePicker({
                           setView("months");
                         }}
                         className={cn(
-                          "h-10 rounded-[9px] text-[12.5px] transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus-ring)",
+                          "h-10 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-focus-ring",
                           isSelected
-                            ? "bg-(--action-primary) font-bold text-(--text-on-action) shadow-sm"
+                            ? "bg-action-primary font-bold text-text-on-action shadow-sm"
                             : isCurrent
-                              ? "bg-(--success-soft) font-bold text-(--success) ring-1 ring-(--success-border)"
-                              : "text-(--ink) hover:bg-(--surface-subtle)",
+                              ? "bg-success-soft font-bold text-success ring-1 ring-success-border"
+                              : "text-ink hover:bg-surface-subtle",
                         )}
                       >
                         {yr}
@@ -712,11 +698,11 @@ export default function DatePicker({
                   })}
                 </div>
 
-                <div className="mt-3 border-t border-(--border-default) pt-3">
+                <div className="mt-3 border-t border-border-default pt-3">
                   <button
                     type="button"
                     onClick={() => setView("months")}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-(--text-muted) transition-colors hover:text-(--text-strong) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-text-muted transition-colors hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
                   >
                     <ChevronLeftIcon className="size-3.5" /> Back
                   </button>

@@ -42,11 +42,11 @@ const Dropdown: FC<DropdownProps> = ({
   id,
   "aria-label": ariaLabel,
 }) => {
-  const flatOptions = groups ? [...(options ?? []), ...groups.flatMap((g) => g.options)] : (options ?? []);
+  const flatOptions = groups
+    ? [...(options ?? []), ...groups.flatMap((g) => g.options)]
+    : (options ?? []);
   const [isOpen, setIsOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState<"bottom" | "top">(
-    "bottom",
-  );
+  const [dropdownPosition, setDropdownPosition] = useState<"bottom" | "top">("bottom");
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -56,10 +56,7 @@ const Dropdown: FC<DropdownProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setFocusedIndex(-1);
       }
@@ -109,14 +106,12 @@ const Dropdown: FC<DropdownProps> = ({
       case "ArrowDown":
         event.preventDefault();
         if (!isOpen) setIsOpen(true);
-        else
-          setFocusedIndex((prev) => (prev < flatOptions.length - 1 ? prev + 1 : 0));
+        else setFocusedIndex((prev) => (prev < flatOptions.length - 1 ? prev + 1 : 0));
         break;
       case "ArrowUp":
         event.preventDefault();
         if (!isOpen) setIsOpen(true);
-        else
-          setFocusedIndex((prev) => (prev > 0 ? prev - 1 : flatOptions.length - 1));
+        else setFocusedIndex((prev) => (prev > 0 ? prev - 1 : flatOptions.length - 1));
         break;
       case "Enter":
       case " ":
@@ -149,22 +144,20 @@ const Dropdown: FC<DropdownProps> = ({
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-[9px] border bg-(--surface-raised) px-3 py-2 text-[12.5px] transition-[border-color,box-shadow] duration-180 focus:outline-none focus:ring-3 focus:ring-(--success-soft) ${
+        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border bg-(--surface-raised) px-3 py-2 text-sm transition-[border-color,box-shadow] duration-180 focus:outline-none focus:ring-3 focus:ring-success-soft ${
           disabled
-            ? "cursor-not-allowed border-(--border-default) bg-(--surface-subtle) text-(--text-muted)"
+            ? "cursor-not-allowed border-border-default bg-surface-subtle text-text-muted"
             : error
-              ? "border-(--danger) text-(--ink) hover:bg-(--surface-subtle)"
-              : "border-(--border-default) text-(--ink) hover:border-(--border-strong) focus:border-(--action-primary)"
+              ? "border-danger text-ink hover:bg-surface-subtle"
+              : "border-border-default text-ink hover:border-border-strong focus:border-action-primary"
         }`}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-label={ariaLabel ?? `Select ${value || placeholder}${isOptional ? " (Optional)" : ""}`}
         disabled={disabled}
       >
-        <span className={`truncate ${value ? "text-(--ink)" : "text-(--text-muted)"}`}>
-          {selectedOption
-            ? selectedOption.label
-            : placeholder + (isOptional ? " (Optional)" : "")}
+        <span className={`truncate ${value ? "text-ink" : "text-text-muted"}`}>
+          {selectedOption ? selectedOption.label : placeholder + (isOptional ? " (Optional)" : "")}
         </span>
         <svg
           viewBox="0 0 24 24"
@@ -173,7 +166,7 @@ const Dropdown: FC<DropdownProps> = ({
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`size-4 shrink-0 transition-transform ${disabled ? "text-(--border-strong)" : error ? "text-(--danger)" : "text-(--text-muted)"} ${isOpen ? "rotate-180" : ""}`}
+          className={`size-4 shrink-0 transition-transform ${disabled ? "text-border-strong" : error ? "text-danger" : "text-text-muted"} ${isOpen ? "rotate-180" : ""}`}
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -182,16 +175,14 @@ const Dropdown: FC<DropdownProps> = ({
       {isOpen && !disabled && (
         <div
           ref={listRef}
-          className={`absolute z-20 flex max-h-60 w-full flex-col overflow-auto rounded-[9px] border border-(--border-default) bg-(--surface-raised) shadow-[0_14px_34px_rgba(30,39,97,0.18)] ${
+          className={`absolute z-20 flex max-h-60 w-full flex-col overflow-auto rounded-lg border border-border-default bg-(--surface-raised) shadow-dropdown ${
             dropdownPosition === "top" ? "bottom-full mb-1" : "top-full mt-1"
           }`}
           role="listbox"
-          aria-activedescendant={
-            focusedIndex >= 0 ? `option-${focusedIndex}` : undefined
-          }
+          aria-activedescendant={focusedIndex >= 0 ? `option-${focusedIndex}` : undefined}
         >
           {flatOptions.length === 0 ? (
-            <span className="block px-3 py-2 text-[12.5px] text-(--text-muted)">
+            <span className="block px-3 py-2 text-sm text-text-muted">
               No {dropdownCategory} available
             </span>
           ) : (
@@ -214,10 +205,10 @@ const Dropdown: FC<DropdownProps> = ({
                       setIsOpen(false);
                     }}
                     onMouseEnter={() => setFocusedIndex(i)}
-                    className={`w-full cursor-pointer px-3 py-2 text-left text-[12.5px] transition-colors focus:outline-none ${
+                    className={`w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors focus:outline-none ${
                       focusedIndex === i
-                        ? "bg-(--success-soft) text-(--action-primary-hover)"
-                        : "text-(--ink) hover:bg-(--surface-subtle)"
+                        ? "bg-success-soft text-(--action-primary-hover)"
+                        : "text-ink hover:bg-surface-subtle"
                     }`}
                     role="option"
                     aria-selected={value === option.value}
@@ -232,7 +223,7 @@ const Dropdown: FC<DropdownProps> = ({
                   {(options ?? []).map(renderOption)}
                   {groups.map((group) => (
                     <div key={group.label} role="group" aria-label={group.label}>
-                      <div className="sticky top-0 bg-(--surface-raised) px-3 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-(--text-muted)">
+                      <div className="sticky top-0 bg-(--surface-raised) px-3 pt-2 pb-1 text-xs font-bold uppercase tracking-wide text-text-muted">
                         {group.label}
                       </div>
                       {group.options.map(renderOption)}

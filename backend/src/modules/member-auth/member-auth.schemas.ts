@@ -49,7 +49,5 @@ export const onboardingDetailsSchema = z.object({
   // (often just the Ghana Card ID) is missing, not necessarily the beneficiary. Whether at least
   // one beneficiary exists in total (existing + newly submitted) is checked in the route handler,
   // where the existing count is actually known.
-  beneficiaries: z
-    .array(beneficiarySchema)
-    .max(10, "Up to 10 beneficiaries can be added"),
+  beneficiaries: z.array(beneficiarySchema).max(10, "Up to 10 beneficiaries can be added"),
 });

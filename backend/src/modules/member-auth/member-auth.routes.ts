@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
+import { publicMember, sendPasswordResetEmail } from "./member-auth.profile.js";
 
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
-import { logger } from "../../lib/logger.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
 import {
   memberForgotPasswordRateLimiter,
@@ -57,28 +57,6 @@ function metadata(request: Request) {
   };
 }
 
-function publicMember(member: {
-  id: number;
-  controllerId: string;
-  fullName: string;
-  status: string;
-}) {
-  return {
-    id: member.id,
-    controllerId: member.controllerId,
-    fullName: member.fullName,
-    status: member.status,
-  };
-}
-
-// No email-sending provider is wired up yet — this stands in for it so the reset flow is fully
-// built and testable end-to-end (the token, expiry, and consumption logic below don't change once
-// a real provider is added), without blocking on picking/configuring one now. Swap the body for a
-// real send when that's ready; nothing else in this route needs to change.
-async function sendPasswordResetEmail(email: string, resetUrl: string) {
-  logger.info({ email, resetUrl }, "[stub] Would send member password reset email");
-}
-
 async function createSession(request: Request, memberId: number) {
   const refreshToken = createMemberRefreshToken();
   await prisma.memberSession.create({
@@ -108,9 +86,7 @@ memberAuthRouter.post(
     const startedAt = Date.now();
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
-      response
-        .status(400)
-        .json({ success: false, message: "Enter a Controller ID and password" });
+      response.status(400).json({ success: false, message: "Enter a Controller ID and password" });
       return;
     }
     const pad = async () => {
@@ -221,7 +197,8 @@ memberAuthRouter.post(
     if (member.passwordHash) {
       response.status(409).json({
         success: false,
-        message: "This membership already has a password set. Sign in, or use \"Forgot password?\" instead.",
+        message:
+          'This membership already has a password set. Sign in, or use "Forgot password?" instead.',
       });
       return;
     }
@@ -240,84 +217,83 @@ memberAuthRouter.post(
   },
 );
 
-memberAuthRouter.post(
-  "/setup-account",
-  memberSetupRateLimiter,
-  async (request, response) => {
-    const parsed = setupAccountSchema.safeParse(request.body);
-    if (!parsed.success) {
-      response.status(400).json({ success: false, message: "Enter valid details to continue" });
-      return;
-    }
-    const genericFailure = () =>
-      response.status(401).json({
-        success: false,
-        message:
-          "We couldn't verify those details. Please check your Controller ID and name, or contact your local district office for help.",
-      });
-
-    const member = await prisma.member.findFirst({
-      where: { controllerId: parsed.data.controllerId },
-      select: {
-        id: true,
-        controllerId: true,
-        fullName: true,
-        status: true,
-        districtId: true,
-        passwordHash: true,
-      },
-    });
-    if (!member || !["ACTIVE", "FLAGGED"].includes(member.status)) {
-      genericFailure();
-      return;
-    }
-    if (member.passwordHash) {
-      response.status(409).json({
-        success: false,
-        message: "This membership already has a password set. Sign in, or use \"Forgot password?\" instead.",
-      });
-      return;
-    }
-    if (!memberNameMatches(member.fullName, parsed.data.fullName)) {
-      genericFailure();
-      return;
-    }
-
-    const duplicateEmail = await prisma.member.findUnique({ where: { email: parsed.data.email } });
-    if (duplicateEmail) {
-      response.status(409).json({
-        success: false,
-        message: "This email is already registered to another membership.",
-      });
-      return;
-    }
-
-    await prisma.member.update({
-      where: { id: member.id },
-      data: {
-        email: parsed.data.email,
-        passwordHash: await hashMemberPassword(parsed.data.password),
-        ...(!member.districtId && parsed.data.districtId ? { districtId: parsed.data.districtId } : {}),
-      },
-    });
-    await recordAudit({
-      request,
-      action: "MEMBER_ACCOUNT_SETUP",
-      entityType: "MEMBER",
-      entityId: member.id,
-      description: `Member ${member.controllerId} completed first-login account setup`,
-      districtId: member.districtId,
+memberAuthRouter.post("/setup-account", memberSetupRateLimiter, async (request, response) => {
+  const parsed = setupAccountSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter valid details to continue" });
+    return;
+  }
+  const genericFailure = () =>
+    response.status(401).json({
+      success: false,
+      message:
+        "We couldn't verify those details. Please check your Controller ID and name, or contact your local district office for help.",
     });
 
-    const refreshToken = await createSession(request, member.id);
-    setMemberCookie(response, refreshToken);
-    response.json({
-      success: true,
-      accessToken: await createMemberAccessToken(member.id),
-      member: publicMember(member),
+  const member = await prisma.member.findFirst({
+    where: { controllerId: parsed.data.controllerId },
+    select: {
+      id: true,
+      controllerId: true,
+      fullName: true,
+      status: true,
+      districtId: true,
+      passwordHash: true,
+    },
+  });
+  if (!member || !["ACTIVE", "FLAGGED"].includes(member.status)) {
+    genericFailure();
+    return;
+  }
+  if (member.passwordHash) {
+    response.status(409).json({
+      success: false,
+      message:
+        'This membership already has a password set. Sign in, or use "Forgot password?" instead.',
     });
-  },
-);
+    return;
+  }
+  if (!memberNameMatches(member.fullName, parsed.data.fullName)) {
+    genericFailure();
+    return;
+  }
+
+  const duplicateEmail = await prisma.member.findUnique({ where: { email: parsed.data.email } });
+  if (duplicateEmail) {
+    response.status(409).json({
+      success: false,
+      message: "This email is already registered to another membership.",
+    });
+    return;
+  }
+
+  await prisma.member.update({
+    where: { id: member.id },
+    data: {
+      email: parsed.data.email,
+      passwordHash: await hashMemberPassword(parsed.data.password),
+      ...(!member.districtId && parsed.data.districtId
+        ? { districtId: parsed.data.districtId }
+        : {}),
+    },
+  });
+  await recordAudit({
+    request,
+    action: "MEMBER_ACCOUNT_SETUP",
+    entityType: "MEMBER",
+    entityId: member.id,
+    description: `Member ${member.controllerId} completed first-login account setup`,
+    districtId: member.districtId,
+  });
+
+  const refreshToken = await createSession(request, member.id);
+  setMemberCookie(response, refreshToken);
+  response.json({
+    success: true,
+    accessToken: await createMemberAccessToken(member.id),
+    member: publicMember(member),
+  });
+});
 
 memberAuthRouter.post(
   "/forgot-password",
@@ -414,81 +390,67 @@ memberAuthRouter.post("/reset-password", async (request, response) => {
   response.json({ success: true, message: "Password updated. You can now sign in." });
 });
 
-memberAuthRouter.post(
-  "/refresh",
-  refreshRateLimiter,
-  async (request, response) => {
-    const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
-    if (!token) {
-      response
-        .status(401)
-        .json({ success: false, message: "Member refresh session required" });
-      return;
-    }
-    const session = await prisma.memberSession.findUnique({
-      where: { tokenHash: hashMemberRefreshToken(token) },
-      include: {
-        member: {
-          select: {
-            id: true,
-            controllerId: true,
-            fullName: true,
-            status: true,
-          },
+memberAuthRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
+  const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as string | undefined;
+  if (!token) {
+    response.status(401).json({ success: false, message: "Member refresh session required" });
+    return;
+  }
+  const session = await prisma.memberSession.findUnique({
+    where: { tokenHash: hashMemberRefreshToken(token) },
+    include: {
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          status: true,
         },
       },
+    },
+  });
+  if (
+    !session ||
+    session.revokedAt ||
+    session.expiresAt <= new Date() ||
+    !["ACTIVE", "FLAGGED"].includes(session.member.status)
+  ) {
+    response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
+    response.status(401).json({ success: false, message: "Member refresh session is invalid" });
+    return;
+  }
+  const nextToken = createMemberRefreshToken();
+  const rotated = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.memberSession.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
-    if (
-      !session ||
-      session.revokedAt ||
-      session.expiresAt <= new Date() ||
-      !["ACTIVE", "FLAGGED"].includes(session.member.status)
-    ) {
-      response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
-      response
-        .status(401)
-        .json({ success: false, message: "Member refresh session is invalid" });
-      return;
-    }
-    const nextToken = createMemberRefreshToken();
-    const rotated = await prisma.$transaction(async (transaction) => {
-      const result = await transaction.memberSession.updateMany({
-        where: { id: session.id, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-      if (result.count !== 1) return false;
-      await transaction.memberSession.create({
-        data: {
-          tokenHash: hashMemberRefreshToken(nextToken),
-          memberId: session.memberId,
-          expiresAt: memberSessionExpiresAt(),
-          ...metadata(request),
-        },
-      });
-      return true;
+    if (result.count !== 1) return false;
+    await transaction.memberSession.create({
+      data: {
+        tokenHash: hashMemberRefreshToken(nextToken),
+        memberId: session.memberId,
+        expiresAt: memberSessionExpiresAt(),
+        ...metadata(request),
+      },
     });
-    if (!rotated) {
-      response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
-      response
-        .status(401)
-        .json({ success: false, message: "Member refresh session is invalid" });
-      return;
-    }
-    setMemberCookie(response, nextToken);
-    response.json({
-      success: true,
-      accessToken: await createMemberAccessToken(session.member.id),
-      member: publicMember(session.member),
-    });
-  },
-);
+    return true;
+  });
+  if (!rotated) {
+    response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
+    response.status(401).json({ success: false, message: "Member refresh session is invalid" });
+    return;
+  }
+  setMemberCookie(response, nextToken);
+  response.json({
+    success: true,
+    accessToken: await createMemberAccessToken(session.member.id),
+    member: publicMember(session.member),
+  });
+});
 
 memberAuthRouter.post("/logout", async (request, response) => {
-  const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as
-    | string
-    | undefined;
+  const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as string | undefined;
   if (token)
     await prisma.memberSession.updateMany({
       where: { tokenHash: hashMemberRefreshToken(token), revokedAt: null },

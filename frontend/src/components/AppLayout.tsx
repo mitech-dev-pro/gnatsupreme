@@ -16,7 +16,7 @@ export default function AppLayout() {
   }, [isSidebarOpen]);
 
   return (
-    <div className="flex h-screen bg-(--app-bg)">
+    <div className="flex h-screen bg-app-bg">
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Navbar isSidebarOpen={isSidebarOpen} onToggleSidebar={() => setIsSidebarOpen((v) => !v)} />

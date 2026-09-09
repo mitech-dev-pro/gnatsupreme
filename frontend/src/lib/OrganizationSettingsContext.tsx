@@ -66,7 +66,9 @@ export function OrganizationSettingsProvider({ children }: { children: ReactNode
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+  }, []);
 
   useEffect(() => {
     document.title = settings.portalName;
@@ -80,11 +82,16 @@ export function OrganizationSettingsProvider({ children }: { children: ReactNode
   }, [settings]);
 
   const value = useMemo(() => ({ settings, loading, refresh }), [settings, loading]);
-  return <OrganizationSettingsContext.Provider value={value}>{children}</OrganizationSettingsContext.Provider>;
+  return (
+    <OrganizationSettingsContext.Provider value={value}>
+      {children}
+    </OrganizationSettingsContext.Provider>
+  );
 }
 
 export function useOrganizationSettings() {
   const context = useContext(OrganizationSettingsContext);
-  if (!context) throw new Error("useOrganizationSettings must be used within OrganizationSettingsProvider");
+  if (!context)
+    throw new Error("useOrganizationSettings must be used within OrganizationSettingsProvider");
   return context;
 }

@@ -3,10 +3,7 @@ import { once } from "node:events";
 import { Router, type Request, type Response } from "express";
 
 import { prisma } from "../../lib/prisma.js";
-import {
-  authenticate,
-  type AuthenticatedUser,
-} from "../../middleware/authenticate.js";
+import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { memberScope } from "../members/member.access.js";
@@ -21,8 +18,7 @@ function currentUser(response: Response) {
 
 function csvCell(value: unknown) {
   if (value == null) return "";
-  let text =
-    value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
+  let text = value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
   if (/^[\t ]*[=+\-@]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
@@ -44,10 +40,7 @@ async function sendReport(
 ) {
   response.status(200);
   response.setHeader("Content-Type", "text/csv; charset=utf-8");
-  response.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${filename}"`,
-  );
+  response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   response.setHeader("X-Content-Type-Options", "nosniff");
   await write(response, `\uFEFF${csvRow(columns)}`);
   const rowCount = await produce((values) => write(response, csvRow(values)));
@@ -74,10 +67,7 @@ function transferScope(user: AuthenticatedUser) {
   }
   if (user.role === "DISTRICT_ADMIN") {
     return {
-      OR: [
-        { fromDistrictId: user.districtId ?? -1 },
-        { toDistrictId: user.districtId ?? -1 },
-      ],
+      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
     };
   }
   return {};
@@ -175,9 +165,7 @@ reportRouter.get(
       orderBy: { createdAt: "desc" },
     });
     if (!job) {
-      response
-        .status(404)
-        .json({ success: false, message: "No Report 20 import was found" });
+      response.status(404).json({ success: false, message: "No Report 20 import was found" });
       return;
     }
     await sendReport(
@@ -298,14 +286,7 @@ reportRouter.get("/removals.csv", async (request, response) => {
     request,
     response,
     "removed-members.csv",
-    [
-      "Controller ID",
-      "Full Name",
-      "School",
-      "District",
-      "Region",
-      "Last Updated",
-    ],
+    ["Controller ID", "Full Name", "School", "District", "Region", "Last Updated"],
     async (emit) => {
       let cursor: number | undefined;
       let total = 0;

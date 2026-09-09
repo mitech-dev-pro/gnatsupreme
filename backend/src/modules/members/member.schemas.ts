@@ -2,7 +2,11 @@ import { z } from "zod";
 
 import { isMinor } from "../../lib/age.js";
 
-const optionalDate = z.coerce.date().max(new Date(), "Date cannot be in the future").nullable().optional();
+const optionalDate = z.coerce
+  .date()
+  .max(new Date(), "Date cannot be in the future")
+  .nullable()
+  .optional();
 const optionalText = z.string().trim().max(120).nullable().optional();
 const ghanaCard = z
   .string()
@@ -37,13 +41,20 @@ export const beneficiaryBaseSchema = z.object({
 export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) => {
   if (!isMinor(value.dateOfBirth ?? null)) return;
   if (!value.trusteeName) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeName"], message: "Trustee name is required for a beneficiary under 18" });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["trusteeName"],
+      message: "Trustee name is required for a beneficiary under 18",
+    });
   }
 });
 
 const memberFields = {
   // Controller ID length isn't fixed — currently 4-7 digits, expected to grow over time.
-  controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
+  controllerId: z
+    .string()
+    .trim()
+    .regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
   fullName: z.string().trim().min(2).max(120),
   ghanaCardId: ghanaCard,
   phone: z.string().trim().min(7).max(30).nullable().optional(),

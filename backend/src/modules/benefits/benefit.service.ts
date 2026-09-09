@@ -24,8 +24,16 @@ export function getBenefitSchedule() {
   return withCache(scheduleKey, env.READ_CACHE_TTL_SECONDS, async () => {
     const now = new Date();
     const [current, next] = await Promise.all([
-      prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { lte: now } }, include: benefitPlanInclude, orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }] }),
-      prisma.benefitPlanVersion.findFirst({ where: { effectiveFrom: { gt: now } }, include: benefitPlanInclude, orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }] }),
+      prisma.benefitPlanVersion.findFirst({
+        where: { effectiveFrom: { lte: now } },
+        include: benefitPlanInclude,
+        orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+      }),
+      prisma.benefitPlanVersion.findFirst({
+        where: { effectiveFrom: { gt: now } },
+        include: benefitPlanInclude,
+        orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }],
+      }),
     ]);
     return { current, next };
   });

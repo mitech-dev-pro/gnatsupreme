@@ -1,48 +1,33 @@
 import { unlink } from "node:fs/promises";
 import path from "node:path";
+import {
+  idSchema,
+  issueListSchema,
+  listSchema,
+  reportMonthSchema,
+  resolveRowBodySchema,
+  resolveRowParamsSchema,
+} from "./import.http-schemas.js";
 
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { z } from "zod";
 
-import { prisma } from "../../lib/prisma.js";
 import { cachedCount } from "../../lib/cached-count.js";
+import { prisma } from "../../lib/prisma.js";
+import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { enqueueReport20Job } from "../../queues/import.queue.js";
-import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
   hasValidReport20Signature,
   report20FileUpload,
   uploadRoot,
 } from "../files/file.storage.js";
-import type { Report20WorkerData } from "./report20.worker.js";
 import { sha256File } from "./report20.service.js";
+import type { Report20WorkerData } from "./report20.worker.js";
 
 export const importRouter = Router();
-
-const idSchema = z.object({ id: z.coerce.number().int().positive() });
-const reportMonthSchema = z
-  .string()
-  .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
-  .transform((value) => new Date(`${value}-01T00:00:00.000Z`))
-  .optional();
-const listSchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-  status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]).optional(),
-});
-const issueListSchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(200).default(50),
-  status: z.enum(["MATCHED", "CHANGED", "UNMATCHED", "DUPLICATE", "INVALID", "ENROLLED"]).optional(),
-});
-const resolveRowParamsSchema = z.object({
-  id: z.coerce.number().int().positive(),
-  rowId: z.coerce.number().int().positive(),
-});
-const resolveRowBodySchema = z.object({ districtId: z.coerce.number().int().positive() });
 
 function user(response: Response) {
   return response.locals.user as AuthenticatedUser;
@@ -52,7 +37,9 @@ function receiveReport(request: Request, response: Response, next: NextFunction)
   report20FileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      response
+        .status(413)
+        .json({ success: false, message: "File exceeds the configured upload limit" });
       return;
     }
     response.status(400).json({
@@ -84,7 +71,12 @@ function queueReport20Job(
     mimeType,
     originalName,
     action,
-    actor: { id: currentUser.id, email: currentUser.email, regionId: currentUser.regionId, districtId: currentUser.districtId },
+    actor: {
+      id: currentUser.id,
+      email: currentUser.email,
+      regionId: currentUser.regionId,
+      districtId: currentUser.districtId,
+    },
     auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
   };
   return enqueueReport20Job(workerData);
@@ -99,7 +91,9 @@ importRouter.use(authenticate, authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN"));
 
 importRouter.post("/report-20", receiveReport, async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
+    response
+      .status(400)
+      .json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
     return;
   }
   const reportMonth = reportMonthSchema.safeParse(request.body.reportMonth || undefined);
@@ -110,14 +104,25 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
   }
   if (!(await hasValidReport20Signature(request.file.path, request.file.mimetype))) {
     await removeFile(request.file.path);
-    response.status(400).json({ success: false, message: "File content does not match its declared type" });
+    response
+      .status(400)
+      .json({ success: false, message: "File content does not match its declared type" });
     return;
   }
 
   const checksum = await sha256File(request.file.path);
   const duplicate = await prisma.importJob.findUnique({
     where: { type_checksum: { type: "REPORT_20", checksum } },
-    select: { id: true, status: true, createdAt: true, updatedAt: true, fileId: true, matchedRows: true, changedRows: true, file: { select: { storagePath: true } } },
+    select: {
+      id: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      fileId: true,
+      matchedRows: true,
+      changedRows: true,
+      file: { select: { storagePath: true } },
+    },
   });
   if (duplicate) {
     // Only block a re-upload once this file actually reconciled something. A failed run, or one that completed
@@ -189,17 +194,34 @@ importRouter.post("/report-20", receiveReport, async (request, response) => {
   // Queue parsing + reconciliation to run in the background; respond immediately with the
   // PENDING job so the client isn't stuck holding a connection open for a large file.
   try {
-    await queueReport20Job(request, currentUser, job, request.file.path, request.file.mimetype, storedFile.originalName, "REPORT20_IMPORTED");
-  } catch (error) {
+    await queueReport20Job(
+      request,
+      currentUser,
+      job,
+      request.file.path,
+      request.file.mimetype,
+      storedFile.originalName,
+      "REPORT20_IMPORTED",
+    );
+  } catch {
     await prisma.importJob.update({
       where: { id: job.id },
-      data: { status: "FAILED", errorMessage: "Could not queue this import for processing", completedAt: new Date() },
+      data: {
+        status: "FAILED",
+        errorMessage: "Could not queue this import for processing",
+        completedAt: new Date(),
+      },
     });
-    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    response
+      .status(503)
+      .json({ success: false, message: "The import queue is unavailable — try again shortly" });
     return;
   }
 
-  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
+  const pendingJob = await prisma.importJob.findUnique({
+    where: { id: job.id },
+    include: jobInclude,
+  });
   response.status(202).json({ success: true, data: pendingJob });
 });
 
@@ -212,10 +234,20 @@ importRouter.get("/", async (request, response) => {
   const { page, limit, status } = parsed.data;
   const where = { type: "REPORT_20" as const, ...(status ? { status } : {}) };
   const [jobs, total] = await Promise.all([
-    prisma.importJob.findMany({ where, include: jobInclude, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.importJob.findMany({
+      where,
+      include: jobInclude,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
     cachedCount("report20-imports", where, () => prisma.importJob.count({ where })),
   ]);
-  response.json({ success: true, data: jobs, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  response.json({
+    success: true,
+    data: jobs,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 });
 
 importRouter.get("/:id", async (request, response) => {
@@ -224,7 +256,10 @@ importRouter.get("/:id", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid import ID" });
     return;
   }
-  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "REPORT_20" }, include: jobInclude });
+  const job = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "REPORT_20" },
+    include: jobInclude,
+  });
   if (!job) {
     response.status(404).json({ success: false, message: "Import not found" });
     return;
@@ -260,7 +295,13 @@ importRouter.post("/:id/rerun", async (request, response) => {
   const currentUser = user(response);
   await prisma.importJob.update({
     where: { id: job.id },
-    data: { status: "PENDING", errorMessage: null, completedAt: null, totalRows: 0, processedRows: 0 },
+    data: {
+      status: "PENDING",
+      errorMessage: null,
+      completedAt: null,
+      totalRows: 0,
+      processedRows: 0,
+    },
   });
 
   try {
@@ -273,16 +314,25 @@ importRouter.post("/:id/rerun", async (request, response) => {
       job.file.originalName,
       "REPORT20_RECONCILE_RERUN",
     );
-  } catch (error) {
+  } catch {
     await prisma.importJob.update({
       where: { id: job.id },
-      data: { status: "FAILED", errorMessage: "Could not queue this rerun for processing", completedAt: new Date() },
+      data: {
+        status: "FAILED",
+        errorMessage: "Could not queue this rerun for processing",
+        completedAt: new Date(),
+      },
     });
-    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    response
+      .status(503)
+      .json({ success: false, message: "The import queue is unavailable — try again shortly" });
     return;
   }
 
-  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: jobInclude });
+  const pendingJob = await prisma.importJob.findUnique({
+    where: { id: job.id },
+    include: jobInclude,
+  });
   response.status(202).json({ success: true, data: pendingJob });
 });
 
@@ -293,18 +343,34 @@ importRouter.get("/:id/issues", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid request" });
     return;
   }
-  const exists = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "REPORT_20" }, select: { id: true } });
+  const exists = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "REPORT_20" },
+    select: { id: true },
+  });
   if (!exists) {
     response.status(404).json({ success: false, message: "Import not found" });
     return;
   }
   const { page, limit, status } = query.data;
-  const where = { importJobId: params.data.id, ...(status ? { status } : { status: { not: "MATCHED" as const } }) };
+  const where = {
+    importJobId: params.data.id,
+    ...(status ? { status } : { status: { not: "MATCHED" as const } }),
+  };
   const [rows, total] = await Promise.all([
-    prisma.report20Row.findMany({ where, include: { member: { select: { id: true, controllerId: true, fullName: true } } }, orderBy: { rowNumber: "asc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.report20Row.findMany({
+      where,
+      include: { member: { select: { id: true, controllerId: true, fullName: true } } },
+      orderBy: { rowNumber: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
     cachedCount("report20-rows", where, () => prisma.report20Row.count({ where })),
   ]);
-  response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  response.json({
+    success: true,
+    data: rows,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 });
 
 // Resolves one UNMATCHED row by hand — for cases a district alias can't safely cover, e.g. a raw
@@ -326,7 +392,9 @@ importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
     return;
   }
   if (row.status !== "UNMATCHED") {
-    response.status(409).json({ success: false, message: "Only unmatched rows can be resolved this way" });
+    response
+      .status(409)
+      .json({ success: false, message: "Only unmatched rows can be resolved this way" });
     return;
   }
   if (!row.controllerId || !row.fullName) {
@@ -336,9 +404,13 @@ importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
     });
     return;
   }
-  const existingMember = await prisma.member.findUnique({ where: { controllerId: row.controllerId } });
+  const existingMember = await prisma.member.findUnique({
+    where: { controllerId: row.controllerId },
+  });
   if (existingMember) {
-    response.status(409).json({ success: false, message: "A member with this Controller ID already exists" });
+    response
+      .status(409)
+      .json({ success: false, message: "A member with this Controller ID already exists" });
     return;
   }
   const district = await prisma.district.findUnique({ where: { id: body.data.districtId } });
@@ -365,7 +437,9 @@ importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
       data: {
         memberId: createdMember.id,
         status: "ENROLLED",
-        issues: ["Manually resolved by staff during review and enrolled with the selected district"],
+        issues: [
+          "Manually resolved by staff during review and enrolled with the selected district",
+        ],
       },
     });
     await tx.importJob.update({

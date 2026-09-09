@@ -12,7 +12,11 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { enqueueMemberImportJob } from "../../queues/import.queue.js";
 import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { hasValidReport20Signature, memberImportFileUpload, uploadRoot } from "../files/file.storage.js";
+import {
+  hasValidReport20Signature,
+  memberImportFileUpload,
+  uploadRoot,
+} from "../files/file.storage.js";
 import { bulkRawFields } from "./member-import.service.js";
 import type { MemberImportWorkerData } from "./member-import.worker.js";
 import { sha256File } from "./report20.service.js";
@@ -22,7 +26,9 @@ const idSchema = z.object({ id: z.coerce.number().int().positive() });
 const rowQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
-  status: z.enum(["READY", "INVALID", "DUPLICATE", "EXISTING", "OUT_OF_SCOPE", "IMPORTED", "FAILED"]).optional(),
+  status: z
+    .enum(["READY", "INVALID", "DUPLICATE", "EXISTING", "OUT_OF_SCOPE", "IMPORTED", "FAILED"])
+    .optional(),
 });
 const listSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -38,10 +44,14 @@ function receiveFile(request: Request, response: Response, next: NextFunction) {
   memberImportFileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      response
+        .status(413)
+        .json({ success: false, message: "File exceeds the configured upload limit" });
       return;
     }
-    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "Upload failed" });
+    response
+      .status(400)
+      .json({ success: false, message: error instanceof Error ? error.message : "Upload failed" });
   });
 }
 
@@ -70,34 +80,58 @@ memberImportRouter.get("/members", async (request, response) => {
     return;
   }
   const { page, limit, status } = parsed.data;
-  const where = { type: "MEMBER_BULK" as const, ...jobScope(user(response)), ...(status ? { status } : {}) };
+  const where = {
+    type: "MEMBER_BULK" as const,
+    ...jobScope(user(response)),
+    ...(status ? { status } : {}),
+  };
   const [jobs, total] = await Promise.all([
     prisma.importJob.findMany({
       where,
-      include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } },
+      include: {
+        file: { select: { originalName: true, downloadPath: true, sizeBytes: true } },
+        uploadedBy: { select: { id: true, fullName: true } },
+      },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("member-imports", { where, userId: user(response).id }, () => prisma.importJob.count({ where })),
+    cachedCount("member-imports", { where, userId: user(response).id }, () =>
+      prisma.importJob.count({ where }),
+    ),
   ]);
-  response.json({ success: true, data: jobs, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  response.json({
+    success: true,
+    data: jobs,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 });
 
 memberImportRouter.post("/members", receiveFile, async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
+    response
+      .status(400)
+      .json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
     return;
   }
   if (!(await hasValidReport20Signature(request.file.path, request.file.mimetype))) {
     await removeFile(request.file.path);
-    response.status(400).json({ success: false, message: "File content does not match its declared type" });
+    response
+      .status(400)
+      .json({ success: false, message: "File content does not match its declared type" });
     return;
   }
   const checksum = await sha256File(request.file.path);
   const duplicate = await prisma.importJob.findUnique({
     where: { type_checksum: { type: "MEMBER_BULK", checksum } },
-    select: { id: true, status: true, updatedAt: true, fileId: true, importedRows: true, file: { select: { storagePath: true } } },
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+      fileId: true,
+      importedRows: true,
+      file: { select: { storagePath: true } },
+    },
   });
   if (duplicate) {
     // Only block a re-upload once something was actually enrolled from this file. A failed run, or one that
@@ -105,7 +139,11 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
     // after a fix), shouldn't permanently lock the file out of being retried.
     if (duplicate.importedRows > 0) {
       await removeFile(request.file.path);
-      response.status(409).json({ success: false, message: "This exact member file has already been uploaded", duplicateImport: duplicate });
+      response.status(409).json({
+        success: false,
+        message: "This exact member file has already been uploaded",
+        duplicateImport: duplicate,
+      });
       return;
     }
     // A PENDING/PROCESSING duplicate might still be actively worked on by the queue -- deleting its
@@ -145,11 +183,24 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
           uploadedById: currentUser.id,
         },
       });
-      return transaction.importJob.create({ data: { type: "MEMBER_BULK", checksum, fileId: file.id, uploadedById: currentUser.id, status: "PROCESSING", startedAt: new Date() } });
+      return transaction.importJob.create({
+        data: {
+          type: "MEMBER_BULK",
+          checksum,
+          fileId: file.id,
+          uploadedById: currentUser.id,
+          status: "PROCESSING",
+          startedAt: new Date(),
+        },
+      });
     });
   } catch (error) {
     await removeFile(request.file.path);
-    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "The member import job could not be created" });
+    response.status(400).json({
+      success: false,
+      message:
+        error instanceof Error ? error.message : "The member import job could not be created",
+    });
     return;
   }
 
@@ -173,13 +224,22 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
     logger.error({ err: error, importJobId: jobId }, "Could not queue member import job");
     await prisma.importJob.update({
       where: { id: jobId },
-      data: { status: "FAILED", errorMessage: "Could not queue this import for processing", completedAt: new Date() },
+      data: {
+        status: "FAILED",
+        errorMessage: "Could not queue this import for processing",
+        completedAt: new Date(),
+      },
     });
-    response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+    response
+      .status(503)
+      .json({ success: false, message: "The import queue is unavailable — try again shortly" });
     return;
   }
 
-  const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId }, include: { file: { select: { originalName: true, downloadPath: true } } } });
+  const pendingJob = await prisma.importJob.findUnique({
+    where: { id: jobId },
+    include: { file: { select: { originalName: true, downloadPath: true } } },
+  });
   response.status(202).json({ success: true, data: pendingJob });
 });
 
@@ -189,7 +249,13 @@ memberImportRouter.get("/members/:id", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid import ID" });
     return;
   }
-  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "MEMBER_BULK", ...jobScope(user(response)) }, include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } } });
+  const job = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "MEMBER_BULK", ...jobScope(user(response)) },
+    include: {
+      file: { select: { originalName: true, downloadPath: true, sizeBytes: true } },
+      uploadedBy: { select: { id: true, fullName: true } },
+    },
+  });
   if (!job) {
     response.status(404).json({ success: false, message: "Member import not found" });
     return;
@@ -204,7 +270,10 @@ memberImportRouter.get("/members/:id/rows", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid request" });
     return;
   }
-  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "MEMBER_BULK", ...jobScope(user(response)) }, select: { id: true } });
+  const job = await prisma.importJob.findFirst({
+    where: { id: params.data.id, type: "MEMBER_BULK", ...jobScope(user(response)) },
+    select: { id: true },
+  });
   if (!job) {
     response.status(404).json({ success: false, message: "Member import not found" });
     return;
@@ -212,10 +281,19 @@ memberImportRouter.get("/members/:id/rows", async (request, response) => {
   const { page, limit, status } = query.data;
   const where = { importJobId: job.id, ...(status ? { status } : {}) };
   const [rows, total] = await Promise.all([
-    prisma.memberBulkImportRow.findMany({ where, orderBy: { rowNumber: "asc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.memberBulkImportRow.findMany({
+      where,
+      orderBy: { rowNumber: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
     cachedCount("member-import-rows", where, () => prisma.memberBulkImportRow.count({ where })),
   ]);
-  response.json({ success: true, data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  response.json({
+    success: true,
+    data: rows,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 });
 
 // Committing can mean creating up to MAX_ROWS members one at a time; run it off the request/response
@@ -231,10 +309,17 @@ memberImportRouter.get("/members/:id/rows", async (request, response) => {
 // than decremented by this run's count alone, so a resumed run converges on the correct total
 // instead of leaving stale "still ready" rows from whatever a crashed earlier attempt didn't get
 // to account for.
-function runMemberImportCommit(jobId: number, currentUser: AuthenticatedUser, auditRequest: Request) {
+function runMemberImportCommit(
+  jobId: number,
+  currentUser: AuthenticatedUser,
+  auditRequest: Request,
+) {
   const PROGRESS_EVERY = 200;
   void (async () => {
-    const rows = await prisma.memberBulkImportRow.findMany({ where: { importJobId: jobId, status: "READY" }, orderBy: { rowNumber: "asc" } });
+    const rows = await prisma.memberBulkImportRow.findMany({
+      where: { importJobId: jobId, status: "READY" },
+      orderBy: { rowNumber: "asc" },
+    });
     let imported = 0;
     let failed = 0;
     let processed = 0;
@@ -244,29 +329,94 @@ function runMemberImportCommit(jobId: number, currentUser: AuthenticatedUser, au
         const member = await prisma.$transaction(async (transaction) => {
           const created = await transaction.member.create({
             data: {
-              controllerId: row.controllerId!, fullName: row.fullName!, school: row.school!, districtId: row.districtId!, ghanaCardId: row.ghanaCardId, phone: row.phone, report20Matched: row.report20Matched, status: "PENDING", createdById: currentUser.id,
-              ...(extra.spouseName ? { spouseDeclarationStatus: "HAS_SPOUSE", spouse: { create: { fullName: extra.spouseName, ghanaCardId: extra.spouseGhanaCardId } } } : {}),
-              beneficiaries: { create: { fullName: extra.beneficiaryName!, relationship: extra.beneficiaryRelationship!, dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth), trusteeName: extra.trusteeName } },
+              controllerId: row.controllerId!,
+              fullName: row.fullName!,
+              school: row.school!,
+              districtId: row.districtId!,
+              ghanaCardId: row.ghanaCardId,
+              phone: row.phone,
+              report20Matched: row.report20Matched,
+              status: "PENDING",
+              createdById: currentUser.id,
+              ...(extra.spouseName
+                ? {
+                    spouseDeclarationStatus: "HAS_SPOUSE",
+                    spouse: {
+                      create: { fullName: extra.spouseName, ghanaCardId: extra.spouseGhanaCardId },
+                    },
+                  }
+                : {}),
+              beneficiaries: {
+                create: {
+                  fullName: extra.beneficiaryName!,
+                  relationship: extra.beneficiaryRelationship!,
+                  dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth),
+                  trusteeName: extra.trusteeName,
+                },
+              },
             },
           });
-          await transaction.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "IMPORTED", memberId: created.id } });
+          await transaction.memberBulkImportRow.update({
+            where: { id: row.id },
+            data: { status: "IMPORTED", memberId: created.id },
+          });
           return created;
         });
         imported += 1;
-        await recordAudit({ request: auditRequest, actor: currentUser, action: "MEMBER_BULK_ENROLLED", entityType: "MEMBER", entityId: member.id, description: `Bulk enrolled ${member.fullName} (${member.controllerId})`, afterData: { importJobId: jobId, rowNumber: row.rowNumber, status: member.status }, districtId: member.districtId });
+        await recordAudit({
+          request: auditRequest,
+          actor: currentUser,
+          action: "MEMBER_BULK_ENROLLED",
+          entityType: "MEMBER",
+          entityId: member.id,
+          description: `Bulk enrolled ${member.fullName} (${member.controllerId})`,
+          afterData: { importJobId: jobId, rowNumber: row.rowNumber, status: member.status },
+          districtId: member.districtId,
+        });
       } catch (error) {
         failed += 1;
-        await prisma.memberBulkImportRow.update({ where: { id: row.id }, data: { status: "FAILED", issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"] } });
+        await prisma.memberBulkImportRow.update({
+          where: { id: row.id },
+          data: {
+            status: "FAILED",
+            issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"],
+          },
+        });
       }
       processed += 1;
       if (processed % PROGRESS_EVERY === 0) {
         await prisma.importJob.update({ where: { id: jobId }, data: { processedRows: processed } });
       }
     }
-    const remainingReady = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
-    const updated = await prisma.importJob.update({ where: { id: jobId }, data: { status: "COMPLETED", completedAt: new Date(), processedRows: processed, importedRows: { increment: imported }, readyRows: remainingReady, invalidRows: { increment: failed } } });
-    await recordAudit({ request: auditRequest, actor: currentUser, action: "MEMBER_IMPORT_COMMITTED", entityType: "IMPORT_JOB", entityId: jobId, description: `Committed bulk member import ${jobId}`, afterData: { imported, failed, status: updated.status } });
-  })().catch((error) => logger.error({ err: error, importJobId: jobId }, "Unhandled error while committing member import job"));
+    const remainingReady = await prisma.memberBulkImportRow.count({
+      where: { importJobId: jobId, status: "READY" },
+    });
+    const updated = await prisma.importJob.update({
+      where: { id: jobId },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        processedRows: processed,
+        importedRows: { increment: imported },
+        readyRows: remainingReady,
+        invalidRows: { increment: failed },
+      },
+    });
+    await recordAudit({
+      request: auditRequest,
+      actor: currentUser,
+      action: "MEMBER_IMPORT_COMMITTED",
+      entityType: "IMPORT_JOB",
+      entityId: jobId,
+      description: `Committed bulk member import ${jobId}`,
+      afterData: { imported, failed, status: updated.status },
+    });
+  })().catch((error) =>
+    logger.error(
+      { err: error, importJobId: jobId },
+      "Unhandled error while committing member import job",
+    ),
+  );
 }
 
 memberImportRouter.post("/members/:id/commit", async (request, response) => {
@@ -276,14 +426,26 @@ memberImportRouter.post("/members/:id/commit", async (request, response) => {
     return;
   }
   const currentUser = user(response);
-  const job = await prisma.importJob.findFirst({ where: { id: params.data.id, type: "MEMBER_BULK", status: "COMPLETED", ...jobScope(currentUser) } });
+  const job = await prisma.importJob.findFirst({
+    where: {
+      id: params.data.id,
+      type: "MEMBER_BULK",
+      status: "COMPLETED",
+      ...jobScope(currentUser),
+    },
+  });
   if (!job) {
     response.status(404).json({ success: false, message: "Validated member import not found" });
     return;
   }
   const jobId = job.id;
-  const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: jobId, status: "READY" } });
-  await prisma.importJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt: new Date(), totalRows: readyCount, processedRows: 0 } });
+  const readyCount = await prisma.memberBulkImportRow.count({
+    where: { importJobId: jobId, status: "READY" },
+  });
+  await prisma.importJob.update({
+    where: { id: jobId },
+    data: { status: "PROCESSING", startedAt: new Date(), totalRows: readyCount, processedRows: 0 },
+  });
   runMemberImportCommit(jobId, currentUser, request);
 
   const pendingJob = await prisma.importJob.findUnique({ where: { id: jobId } });
@@ -314,14 +476,26 @@ memberImportRouter.post("/members/:id/rerun", async (request, response) => {
   if (!isStaleImportJob(job)) {
     response.status(409).json({
       success: false,
-      message: job.status === "PENDING" || job.status === "PROCESSING" ? "This import is still being processed" : "Only a stalled import can be retried",
+      message:
+        job.status === "PENDING" || job.status === "PROCESSING"
+          ? "This import is still being processed"
+          : "Only a stalled import can be retried",
     });
     return;
   }
 
   const stagedRowCount = await prisma.memberBulkImportRow.count({ where: { importJobId: job.id } });
   if (stagedRowCount === 0) {
-    await prisma.importJob.update({ where: { id: job.id }, data: { status: "PROCESSING", startedAt: new Date(), errorMessage: null, totalRows: 0, processedRows: 0 } });
+    await prisma.importJob.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        startedAt: new Date(),
+        errorMessage: null,
+        totalRows: 0,
+        processedRows: 0,
+      },
+    });
     const memberImportWorkerData: MemberImportWorkerData = {
       importJobId: job.id,
       filePath: path.join(uploadRoot, job.file.storagePath),
@@ -334,16 +508,42 @@ memberImportRouter.post("/members/:id/rerun", async (request, response) => {
       await enqueueMemberImportJob(memberImportWorkerData);
     } catch (error) {
       logger.error({ err: error, importJobId: job.id }, "Could not queue member import retry");
-      await prisma.importJob.update({ where: { id: job.id }, data: { status: "FAILED", errorMessage: "Could not queue this retry for processing", completedAt: new Date() } });
-      response.status(503).json({ success: false, message: "The import queue is unavailable — try again shortly" });
+      await prisma.importJob.update({
+        where: { id: job.id },
+        data: {
+          status: "FAILED",
+          errorMessage: "Could not queue this retry for processing",
+          completedAt: new Date(),
+        },
+      });
+      response
+        .status(503)
+        .json({ success: false, message: "The import queue is unavailable — try again shortly" });
       return;
     }
   } else {
-    const readyCount = await prisma.memberBulkImportRow.count({ where: { importJobId: job.id, status: "READY" } });
-    await prisma.importJob.update({ where: { id: job.id }, data: { status: "PROCESSING", startedAt: new Date(), errorMessage: null, totalRows: readyCount, processedRows: 0 } });
+    const readyCount = await prisma.memberBulkImportRow.count({
+      where: { importJobId: job.id, status: "READY" },
+    });
+    await prisma.importJob.update({
+      where: { id: job.id },
+      data: {
+        status: "PROCESSING",
+        startedAt: new Date(),
+        errorMessage: null,
+        totalRows: readyCount,
+        processedRows: 0,
+      },
+    });
     runMemberImportCommit(job.id, currentUser, request);
   }
 
-  const pendingJob = await prisma.importJob.findUnique({ where: { id: job.id }, include: { file: { select: { originalName: true, downloadPath: true, sizeBytes: true } }, uploadedBy: { select: { id: true, fullName: true } } } });
+  const pendingJob = await prisma.importJob.findUnique({
+    where: { id: job.id },
+    include: {
+      file: { select: { originalName: true, downloadPath: true, sizeBytes: true } },
+      uploadedBy: { select: { id: true, fullName: true } },
+    },
+  });
   response.status(202).json({ success: true, data: pendingJob });
 });

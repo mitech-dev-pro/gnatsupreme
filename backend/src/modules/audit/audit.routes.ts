@@ -49,9 +49,7 @@ auditRouter.get("/", async (request, response) => {
     ...(action ? { action } : {}),
     ...(entityType ? { entityType } : {}),
     ...(entityId ? { entityId } : {}),
-    ...(search
-      ? { description: { contains: search, mode: "insensitive" as const } }
-      : {}),
+    ...(search ? { description: { contains: search, mode: "insensitive" as const } } : {}),
     ...(from || to
       ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
       : {}),

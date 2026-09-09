@@ -20,7 +20,12 @@ const fileParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 const storedNameParamsSchema = z.object({
   storedName: z.string().regex(/^[0-9a-f-]{36}\.(pdf|jpg|png|webp|csv|xlsx|doc|docx)$/),
 });
-const categorySchema = z.enum(["MEMBER_DOCUMENT", "MARRIAGE_CERTIFICATE", "CLAIM_DOCUMENT", "OTHER"]);
+const categorySchema = z.enum([
+  "MEMBER_DOCUMENT",
+  "MARRIAGE_CERTIFICATE",
+  "CLAIM_DOCUMENT",
+  "OTHER",
+]);
 
 function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
@@ -51,7 +56,9 @@ function receiveSingleFile(request: Request, response: Response, next: NextFunct
   memberFileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      response
+        .status(413)
+        .json({ success: false, message: "File exceeds the configured upload limit" });
       return;
     }
     response.status(400).json({
@@ -100,13 +107,17 @@ memberFileRouter.post(
   receiveSingleFile,
   async (request, response) => {
     if (!request.file) {
-      response.status(400).json({ success: false, message: "Attach one file using the 'file' field" });
+      response
+        .status(400)
+        .json({ success: false, message: "Attach one file using the 'file' field" });
       return;
     }
 
     if (!(await hasValidFileSignature(request.file.path, request.file.mimetype))) {
       await removeUploadedFile(request.file.path);
-      response.status(400).json({ success: false, message: "File content does not match its declared type" });
+      response
+        .status(400)
+        .json({ success: false, message: "File content does not match its declared type" });
       return;
     }
 
@@ -132,15 +143,35 @@ memberFileRouter.post(
     }
 
     if (category.data === "CLAIM_DOCUMENT") {
-      try { validateClaimFile({ originalName: request.file.originalname, mimeType: request.file.mimetype, sizeBytes: request.file.size }); }
-      catch (error) { await removeUploadedFile(request.file.path); response.status(400).json({ success: false, message: (error as Error).message }); return; }
-    } else if (["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(request.file.mimetype)) {
-      await removeUploadedFile(request.file.path); response.status(400).json({ success: false, message: "Word files are supported for claim documents only." }); return;
+      try {
+        validateClaimFile({
+          originalName: request.file.originalname,
+          mimeType: request.file.mimetype,
+          sizeBytes: request.file.size,
+        });
+      } catch (error) {
+        await removeUploadedFile(request.file.path);
+        response.status(400).json({ success: false, message: (error as Error).message });
+        return;
+      }
+    } else if (
+      [
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ].includes(request.file.mimetype)
+    ) {
+      await removeUploadedFile(request.file.path);
+      response
+        .status(400)
+        .json({ success: false, message: "Word files are supported for claim documents only." });
+      return;
     }
     const storagePath = path.posix.join("member-files", request.file.filename);
     const downloadPath = `/api/files/${request.file.filename}`;
     const slotKey =
-      category.data === "CLAIM_DOCUMENT" && typeof request.body.slotKey === "string" && request.body.slotKey.trim()
+      category.data === "CLAIM_DOCUMENT" &&
+      typeof request.body.slotKey === "string" &&
+      request.body.slotKey.trim()
         ? request.body.slotKey.trim().slice(0, 80)
         : null;
 
@@ -216,8 +247,21 @@ fileRouter.get("/:storedName", async (request, response) => {
     return;
   }
   if (file.category === "CLAIM_DOCUMENT") {
-    const attached = await prisma.externalClaimSubmission.findFirst({ where: { documentIds: { has: file.id }, NOT: { status: "RETURNED", deliveryState: "NOT_SENT" } }, select: { id: true } });
-    if (attached) { response.status(409).json({ success: false, message: "Documents on a filed claim cannot be deleted. Request a return for correction first." }); return; }
+    const attached = await prisma.externalClaimSubmission.findFirst({
+      where: {
+        documentIds: { has: file.id },
+        NOT: { status: "RETURNED", deliveryState: "NOT_SENT" },
+      },
+      select: { id: true },
+    });
+    if (attached) {
+      response.status(409).json({
+        success: false,
+        message:
+          "Documents on a filed claim cannot be deleted. Request a return for correction first.",
+      });
+      return;
+    }
   }
   const filePath = absoluteStoragePath(file.storagePath);
   if (!filePath) {
@@ -257,10 +301,16 @@ fileRouter.delete("/:id", async (request, response) => {
     return;
   }
   if (file.importJob) {
-    response.status(409).json({ success: false, message: "Import source files cannot be deleted independently" });
+    response
+      .status(409)
+      .json({ success: false, message: "Import source files cannot be deleted independently" });
     return;
   }
-  if (file.uploadedById !== user.id && user.role !== "SUPER_ADMIN" && user.role !== "NATIONAL_ADMIN") {
+  if (
+    file.uploadedById !== user.id &&
+    user.role !== "SUPER_ADMIN" &&
+    user.role !== "NATIONAL_ADMIN"
+  ) {
     response.status(403).json({ success: false, message: "You cannot delete this file" });
     return;
   }

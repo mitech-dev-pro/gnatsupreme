@@ -36,8 +36,15 @@ export interface ClaimsProvider {
 
 export class ClaimsProviderUnavailableError extends Error {}
 export type ExternalClaim = {
-  id: string; staffId?: string; status?: string; submittedAt?: string; claimType?: string;
-  claimNumber?: string; name?: string | null; claimDate?: string | null; amountPayable?: string | null;
+  id: string;
+  staffId?: string;
+  status?: string;
+  submittedAt?: string;
+  claimType?: string;
+  claimNumber?: string;
+  name?: string | null;
+  claimDate?: string | null;
+  amountPayable?: string | null;
 };
 export type ExternalClaimDetails = ExternalClaim & {
   claimNumber: string;
@@ -47,6 +54,11 @@ export type ExternalClaimDetails = ExternalClaim & {
   rejectReason: string | null;
 };
 export class ClaimsDeliveryError extends Error {
-  constructor(public readonly outcome: "FAILED" | "UNKNOWN", public readonly code: string, message: string) { super(message); }
+  constructor(
+    public readonly outcome: "FAILED" | "UNKNOWN",
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
 }
-

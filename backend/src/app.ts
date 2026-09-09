@@ -39,7 +39,12 @@ app.use(logSlowRequests);
 
 if (env.API_DOCS_ENABLED) {
   app.get("/api/openapi.json", (_request, response) => response.json(openApiDocument));
-  app.use("/api/docs", helmet({ contentSecurityPolicy: false }), swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  app.use(
+    "/api/docs",
+    helmet({ contentSecurityPolicy: false }),
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument),
+  );
 }
 
 if (env.NODE_ENV === "production") {

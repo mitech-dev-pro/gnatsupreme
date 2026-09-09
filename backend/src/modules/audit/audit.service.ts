@@ -4,9 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
-type AuditRequestSource =
-  | Request
-  | { ip?: string | null; userAgent?: string | null };
+type AuditRequestSource = Request | { ip?: string | null; userAgent?: string | null };
 
 function isExpressRequest(source: AuditRequestSource): source is Request {
   return typeof (source as Request).get === "function";
@@ -14,10 +12,7 @@ function isExpressRequest(source: AuditRequestSource): source is Request {
 
 type AuditInput = {
   request: AuditRequestSource;
-  actor?: Pick<
-    AuthenticatedUser,
-    "id" | "email" | "regionId" | "districtId"
-  > | null;
+  actor?: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null;
   actorEmail?: string | null;
   action: string;
   entityType: string;

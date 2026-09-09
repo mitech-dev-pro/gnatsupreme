@@ -60,13 +60,17 @@ export default function NotificationBell() {
 
   const markAllRead = async () => {
     await api.patch("/notifications/read-all");
-    setItems((prev) => prev.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })));
+    setItems((prev) =>
+      prev.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })),
+    );
     setUnreadCount(0);
   };
 
   const markRead = async (id: number) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, readAt: item.readAt ?? new Date().toISOString() } : item)),
+      prev.map((item) =>
+        item.id === id ? { ...item, readAt: item.readAt ?? new Date().toISOString() } : item,
+      ),
     );
     setUnreadCount((prev) => Math.max(0, prev - 1));
     try {
@@ -81,7 +85,7 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={handleToggle}
-        className="relative flex h-9 w-9 items-center justify-center rounded-[9px] border border-[#e5e9f0] bg-white transition-colors hover:border-[#1e2761]"
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border-default bg-white transition-colors hover:border-text-strong"
         aria-label="Notifications"
       >
         <svg
@@ -89,13 +93,13 @@ export default function NotificationBell() {
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          className="h-4.25 w-4.25 text-[#1e2761]"
+          className="h-4.25 w-4.25 text-text-strong"
         >
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.7 21a2 2 0 0 1-3.4 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#c23b3b] px-1 text-[9px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-xs font-bold text-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -104,14 +108,14 @@ export default function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-59" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-[calc(100%+8px)] z-60 w-80 overflow-hidden rounded-[10px] border border-[#e5e9f0] bg-white shadow-[0_12px_30px_rgba(23,27,38,0.22)]">
-            <div className="flex items-center justify-between border-b border-[#e5e9f0] px-3.5 py-2.5">
-              <span className="text-[12.5px] font-bold text-[#1e2761]">Notifications</span>
+          <div className="absolute right-0 top-[calc(100%+8px)] z-60 w-80 overflow-hidden rounded-xl border border-border-default bg-white shadow-popover">
+            <div className="flex items-center justify-between border-b border-border-default px-3.5 py-2.5">
+              <span className="text-sm font-bold text-text-strong">Notifications</span>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={markAllRead}
-                  className="text-[11px] font-semibold text-[#1f9c7c] hover:underline"
+                  className="text-xs font-semibold text-action-primary hover:underline"
                 >
                   Mark all read
                 </button>
@@ -120,11 +124,9 @@ export default function NotificationBell() {
 
             <div className="max-h-96 overflow-y-auto">
               {loading ? (
-                <div className="px-3.5 py-6 text-center text-[12px] text-[#5b6472]">
-                  Loading…
-                </div>
+                <div className="px-3.5 py-6 text-center text-xs text-text-muted">Loading…</div>
               ) : items.length === 0 ? (
-                <div className="px-3.5 py-6 text-center text-[12px] text-[#5b6472]">
+                <div className="px-3.5 py-6 text-center text-xs text-text-muted">
                   No notifications yet.
                 </div>
               ) : (
@@ -133,24 +135,18 @@ export default function NotificationBell() {
                     key={item.id}
                     type="button"
                     onClick={() => !item.readAt && markRead(item.id)}
-                    className={`block w-full border-b border-[#e5e9f0] px-3.5 py-2.5 text-left transition-colors last:border-0 hover:bg-[#fafbfd] ${
+                    className={`block w-full border-b border-border-default px-3.5 py-2.5 text-left transition-colors last:border-0 hover:bg-surface-hover ${
                       item.readAt ? "" : "bg-[#f3fbf8]"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-[12px] font-semibold text-[#171b26]">
-                        {item.title}
-                      </span>
+                      <span className="text-xs font-semibold text-ink">{item.title}</span>
                       {!item.readAt && (
-                        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1f9c7c]" />
+                        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-action-primary" />
                       )}
                     </div>
-                    <div className="mt-0.5 text-[11.5px] text-[#5b6472]">
-                      {item.message}
-                    </div>
-                    <div className="mt-1 text-[10.5px] text-[#9aa2c4]">
-                      {timeAgo(item.createdAt)}
-                    </div>
+                    <div className="mt-0.5 text-xs text-text-muted">{item.message}</div>
+                    <div className="mt-1 text-xs text-nav-muted">{timeAgo(item.createdAt)}</div>
                   </button>
                 ))
               )}

@@ -23,7 +23,11 @@ export async function processMemberImportJob(data: MemberImportWorkerData) {
     await prisma.importJob
       .update({
         where: { id: data.importJobId },
-        data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed", completedAt: new Date() },
+        data: {
+          status: "FAILED",
+          errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed",
+          completedAt: new Date(),
+        },
       })
       .catch(() => undefined);
     return;
@@ -37,7 +41,12 @@ export async function processMemberImportJob(data: MemberImportWorkerData) {
     entityId: data.importJobId,
     description: `Validated bulk member import ${data.originalName}`,
     afterData: completed
-      ? { totalRows: completed.totalRows, readyRows: completed.readyRows, invalidRows: completed.invalidRows, duplicateRows: completed.duplicateRows }
+      ? {
+          totalRows: completed.totalRows,
+          readyRows: completed.readyRows,
+          invalidRows: completed.invalidRows,
+          duplicateRows: completed.duplicateRows,
+        }
       : undefined,
   });
 }

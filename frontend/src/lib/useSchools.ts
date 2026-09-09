@@ -15,7 +15,9 @@ export function useSchools(districtId: string, enabled: boolean) {
     setLoading(true);
     (async () => {
       try {
-        const res = await api.get("/members/schools", { params: { districtId: districtId || undefined } });
+        const res = await api.get("/members/schools", {
+          params: { districtId: districtId || undefined },
+        });
         if (!cancelled) setSchools(res.data.data);
       } finally {
         if (!cancelled) setLoading(false);

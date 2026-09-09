@@ -80,12 +80,7 @@ const mainNavItems: { label: string; to: string; icon: ReactNode }[] = [
     label: "Reports",
     to: "/reports",
     icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M3 12h4l2.5 6 4-14L16 12h5" />
       </svg>
     ),
@@ -99,12 +94,7 @@ const settingsIcon = (
   </svg>
 );
 
-const ALL_STAFF_ROLES = [
-  "SUPER_ADMIN",
-  "NATIONAL_ADMIN",
-  "REGIONAL_ADMIN",
-  "DISTRICT_ADMIN",
-];
+const ALL_STAFF_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"];
 
 const adminItems: {
   label: string;
@@ -126,12 +116,7 @@ const adminItems: {
     lock: "Regional+",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"],
     icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M10.6 3.5h2.8l.5 2.4a7 7 0 0 1 1.8 1l2.3-.9 1.4 2.4-1.8 1.6a7 7 0 0 1 0 2.1l1.8 1.6-1.4 2.4-2.3-.9a7 7 0 0 1-1.8 1l-.5 2.4h-2.8l-.5-2.4a7 7 0 0 1-1.8-1l-2.3.9-1.4-2.4 1.8-1.6a7 7 0 0 1 0-2.1L4.6 8.4 6 6l2.3.9a7 7 0 0 1 1.8-1z" />
         <circle cx="12" cy="12" r="2.6" />
       </svg>
@@ -143,12 +128,7 @@ const adminItems: {
     lock: "National",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN"],
     icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="4.5" width="18" height="12" rx="2" />
         <path d="M8 20h8M12 16.5V20" />
       </svg>
@@ -157,11 +137,9 @@ const adminItems: {
 ];
 
 const navItemBase =
-  "flex items-center gap-2.75 rounded-[9px] px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
-const navItemActive =
-  "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
-const navSoonBadge =
-  "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-[#9aa2c4]";
+  "flex items-center gap-2.75 rounded-lg px-3 py-2.5 text-sm font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
+const navItemActive = "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
+const navSoonBadge = "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-xs text-nav-muted";
 
 function NavGroup({
   id,
@@ -191,9 +169,7 @@ function NavGroup({
         aria-controls={id}
         className={`w-full ${navItemBase}`}
       >
-        <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-          {icon}
-        </span>
+        <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">{icon}</span>
         {label}
         <svg
           viewBox="0 0 24 24"
@@ -220,12 +196,11 @@ function NavGroup({
               to={item.to}
               onClick={onNavigate}
               className={() => {
-                const isActive =
-                  location.pathname + location.search === item.to;
-                return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
+                const isActive = location.pathname + location.search === item.to;
+                return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-sm font-medium no-underline transition-colors ${
                   isActive
                     ? "bg-white/8 font-semibold text-white"
-                    : "text-[#9aa2c4] hover:bg-white/6 hover:text-white"
+                    : "text-nav-muted hover:bg-white/6 hover:text-white"
                 }`;
               }}
             >
@@ -235,7 +210,7 @@ function NavGroup({
           ) : (
             <span
               key={item.target}
-              className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-[#9aa2c4] opacity-60"
+              className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-sm font-medium text-nav-muted opacity-60"
             >
               <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
               {item.label}
@@ -257,12 +232,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
   const { settings } = useOrganizationSettings();
-  const canImportReport20 = user
-    ? ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role)
-    : false;
-  const importsItems = canImportReport20
-    ? [...baseImportsItems, report20Item]
-    : baseImportsItems;
+  const canImportReport20 = user ? ["SUPER_ADMIN", "NATIONAL_ADMIN"].includes(user.role) : false;
+  const importsItems = canImportReport20 ? [...baseImportsItems, report20Item] : baseImportsItems;
   const [membersExpanded, setMembersExpanded] = useState(
     () =>
       (location.pathname.startsWith("/members") &&
@@ -287,40 +258,32 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         tabIndex={isOpen ? 0 : -1}
         onClick={onClose}
         className={`fixed inset-0 z-75 border-0 bg-[rgba(23,27,38,0.45)] p-0 transition-opacity md:hidden ${
-          isOpen
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0"
+          isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
       <aside
         id="app-sidebar"
         style={{ backgroundColor: settings.primaryColor }}
-        className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-[#1e2761] pt-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-80 flex w-59 shrink-0 flex-col bg-text-strong pt-5 text-[#c9cee6] transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-1 text-[13px] font-extrabold text-[#1e2761] shadow-[0_1px_3px_rgba(8,13,42,0.22)]">
+          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-sm font-extrabold text-text-strong shadow-nav">
             {settings.sidebarMark}
           </div> */}
           <div className="leading-[1.15]">
-            {/* <div className="text-[14.5px] font-bold text-white">
+            {/* <div className="text-base font-bold text-white">
               {settings.portalName}
             </div> */}
-            <div className="text-[14.5px] font-bold text-white">
-              GNAT Supreme Care
-            </div>
-            <div className="text-[12.5px] font-medium text-white mb-1">
-              Group Insurance Scheme
-            </div>
-            <div className="text-[10.5px] tracking-[0.3px] text-[#9aa2c4]">
-              Member Portal · v1.0
-            </div>
+            <div className="text-base font-bold text-white">GNAT Supreme Care</div>
+            <div className="text-sm font-medium text-white mb-1">Group Insurance Scheme</div>
+            <div className="text-xs tracking-[0.3px] text-nav-muted">Member Portal · v1.0</div>
           </div>
         </div>
 
         <nav className="flex-1 px-2.5">
-          <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-[#7a81a8]">
+          <div className="px-3 pb-1.5 pt-2.5 text-xs font-semibold tracking-[1.2px] text-nav-subtle">
             MAIN
           </div>
 
@@ -328,9 +291,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             to="/"
             end
             onClick={onClose}
-            className={({ isActive }) =>
-              `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
-            }
+            className={({ isActive }) => `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`}
           >
             <svg
               viewBox="0 0 24 24"
@@ -383,9 +344,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               key={item.label}
               to={item.to}
               onClick={onClose}
-              className={({ isActive }) =>
-                `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`
-              }
+              className={({ isActive }) => `mb-0.5 ${navItemBase} ${isActive ? navItemActive : ""}`}
             >
               <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
                 {item.icon}
@@ -394,7 +353,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </NavLink>
           ))}
 
-          <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-[#7a81a8]">
+          <div className="px-3 pb-1.5 pt-2.5 text-xs font-semibold tracking-[1.2px] text-nav-subtle">
             ADMINISTRATION
           </div>
 
@@ -428,7 +387,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </nav>
 
-        <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-[#7a81a8]">
+        <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-xs text-nav-subtle">
           {settings.schemeSponsor} &copy; {new Date().getFullYear()}
           {/* <br />
           Underwritten by {settings.underwriter} */}

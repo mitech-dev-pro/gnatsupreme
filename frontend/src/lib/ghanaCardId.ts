@@ -26,9 +26,7 @@ export function formatGhanaCardIdInput(rawInputValue: string): string {
  * rebuilding the whole string on every keystroke would otherwise always jump the caret to the
  * end -- breaking the normal "backspace to fix one digit in the middle" editing pattern.
  */
-export function applyGhanaCardIdChange(
-  event: React.ChangeEvent<HTMLInputElement>,
-): string {
+export function applyGhanaCardIdChange(event: React.ChangeEvent<HTMLInputElement>): string {
   const input = event.target;
   const raw = input.value;
   const caretRaw = input.selectionStart ?? raw.length;

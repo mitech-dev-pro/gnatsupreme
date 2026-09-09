@@ -36,9 +36,7 @@ type MemberAuthContextType = {
   logout: () => Promise<void>;
 };
 
-const MemberAuthContext = createContext<MemberAuthContextType | undefined>(
-  undefined,
-);
+const MemberAuthContext = createContext<MemberAuthContextType | undefined>(undefined);
 
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
@@ -46,10 +44,12 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
   const refreshStarted = useRef(false);
 
+  const memberId = member?.id;
+
   // Runs once per new member session (login, setup, or a page-load refresh) — not on every
   // render — so a stale re-check can't undo the optimistic markProfileComplete() below.
   useEffect(() => {
-    if (!member) {
+    if (!memberId) {
       setProfileComplete(null);
       return;
     }
@@ -57,7 +57,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
       .get("/member-portal/profile")
       .then((res) => setProfileComplete(Boolean(res.data.data.profileCompletion?.complete)))
       .catch(() => setProfileComplete(null));
-  }, [member?.id]);
+  }, [memberId]);
 
   const markProfileComplete = useCallback(() => setProfileComplete(true), []);
 
@@ -147,7 +147,6 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
 
 export function useMemberAuth() {
   const ctx = useContext(MemberAuthContext);
-  if (!ctx)
-    throw new Error("useMemberAuth must be used within a MemberAuthProvider");
+  if (!ctx) throw new Error("useMemberAuth must be used within a MemberAuthProvider");
   return ctx;
 }

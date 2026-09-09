@@ -1,3 +1,4 @@
+import { getApiErrorStatus, getNestedApiErrorCode } from "@/lib/errorExtract";
 import axios from "axios";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -47,12 +48,12 @@ const REFRESH_PROBE_PATHS = ["/auth/refresh", "/member-auth/refresh"];
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const code = error?.response?.data?.error?.code;
+    const code = getNestedApiErrorCode(error);
     const requestUrl = error?.config?.url ?? "";
     const isRefreshProbe = REFRESH_PROBE_PATHS.some((path) => requestUrl.endsWith(path));
 
     if (
-      (code === "UNAUTHENTICATED" || error?.response?.status === 401) &&
+      (code === "UNAUTHENTICATED" || getApiErrorStatus(error) === 401) &&
       !isRefreshProbe &&
       !isPublicPath(window.location.pathname)
     ) {

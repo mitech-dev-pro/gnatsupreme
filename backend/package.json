@@ -25,7 +25,12 @@
     "verify:performance": "npm run verify:performance-indexes && npm run verify:performance-runtime",
     "performance:slow-queries": "node scripts/report-slow-queries.mjs",
     "postinstall": "prisma generate",
-    "test:claims": "tsc && node --test --test-isolation=none dist/modules/claims/*.test.js"
+    "test:claims": "tsc && node --test --test-isolation=none dist/modules/claims/*.test.js",
+    "format": "prettier --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.{ts,mjs}\" \"*.{json,ts,mjs}\"",
+    "format:check": "prettier --ignore-path ../.prettierignore --check \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.{ts,mjs}\" \"*.{json,ts,mjs}\"",
+    "lint": "oxlint src scripts",
+    "quality:check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "test": "tsc && node --test --test-isolation=none dist/modules/**/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -62,6 +67,8 @@
     "@types/node": "^26.2.0",
     "@types/pg": "^8.23.1",
     "@types/swagger-ui-express": "^4.1.8",
+    "oxlint": "^1.82.0",
+    "prettier": "^3.9.6",
     "prisma": "^7.9.1",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"

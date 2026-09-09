@@ -27,8 +27,17 @@ function currentUser(response: Response) {
 }
 
 function transferScope(user: AuthenticatedUser) {
-  if (user.role === "REGIONAL_ADMIN") return { OR: [{ fromDistrict: { regionId: user.regionId ?? -1 } }, { toDistrict: { regionId: user.regionId ?? -1 } }] };
-  if (user.role === "DISTRICT_ADMIN") return { OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }] };
+  if (user.role === "REGIONAL_ADMIN")
+    return {
+      OR: [
+        { fromDistrict: { regionId: user.regionId ?? -1 } },
+        { toDistrict: { regionId: user.regionId ?? -1 } },
+      ],
+    };
+  if (user.role === "DISTRICT_ADMIN")
+    return {
+      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
+    };
   return {};
 }
 
@@ -56,7 +65,10 @@ const memberAggregateColumns = `
 async function aggregateMembers(user: AuthenticatedUser, firstMonth: Date) {
   if (user.role === "DISTRICT_ADMIN") {
     const districtId = user.districtId ?? -1;
-    const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(`SELECT ${memberAggregateColumns} FROM members m WHERE m.district_id = $1`, districtId);
+    const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(
+      `SELECT ${memberAggregateColumns} FROM members m WHERE m.district_id = $1`,
+      districtId,
+    );
     const enrollments = await prisma.$queryRaw<EnrollmentAggregate[]>`
       SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*) AS count
       FROM members WHERE district_id = ${districtId} AND created_at >= ${firstMonth}
@@ -66,7 +78,10 @@ async function aggregateMembers(user: AuthenticatedUser, firstMonth: Date) {
 
   if (user.role === "REGIONAL_ADMIN") {
     const regionId = user.regionId ?? -1;
-    const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(`SELECT ${memberAggregateColumns} FROM members m JOIN districts d ON d.id = m.district_id WHERE d.region_id = $1`, regionId);
+    const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(
+      `SELECT ${memberAggregateColumns} FROM members m JOIN districts d ON d.id = m.district_id WHERE d.region_id = $1`,
+      regionId,
+    );
     const enrollments = await prisma.$queryRaw<EnrollmentAggregate[]>`
       SELECT TO_CHAR(DATE_TRUNC('month', m.created_at), 'YYYY-MM') AS month, COUNT(*) AS count
       FROM members m JOIN districts d ON d.id = m.district_id
@@ -75,7 +90,9 @@ async function aggregateMembers(user: AuthenticatedUser, firstMonth: Date) {
     return { summary: summary!, enrollments };
   }
 
-  const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(`SELECT ${memberAggregateColumns} FROM members m`);
+  const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(
+    `SELECT ${memberAggregateColumns} FROM members m`,
+  );
   const enrollments = await prisma.$queryRaw<EnrollmentAggregate[]>`
     SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*) AS count
     FROM members WHERE created_at >= ${firstMonth}
@@ -93,25 +110,59 @@ async function loadDashboard(user: AuthenticatedUser) {
   const firstMonth = monthStart(new Date());
   firstMonth.setUTCMonth(firstMonth.getUTCMonth() - 11);
 
-  const [{ summary, enrollments }, totalSpouses, totalBeneficiaries, pendingTransfers, recentActivity, latestImport, claimStatusGroups] = await Promise.all([
+  const [
+    { summary, enrollments },
+    totalSpouses,
+    totalBeneficiaries,
+    pendingTransfers,
+    recentActivity,
+    latestImport,
+    claimStatusGroups,
+  ] = await Promise.all([
     aggregateMembers(user, firstMonth),
     prisma.spouse.count({ where: { member: { is: scope } } }),
     prisma.beneficiary.count({ where: { member: { is: scope } } }),
     prisma.memberTransfer.count({ where: { ...transferScope(user), status: "PENDING" } }),
-    prisma.auditLog.findMany({ where: auditScope(user), include: { actor: { select: { id: true, fullName: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10 }),
-    elevated ? prisma.importJob.findFirst({
-      where: { type: "REPORT_20" },
-      select: { id: true, status: true, reportMonth: true, totalRows: true, matchedRows: true, changedRows: true, unmatchedRows: true, duplicateRows: true, invalidRows: true, completedAt: true, file: { select: { originalName: true } } },
-      orderBy: { createdAt: "desc" },
-    }) : Promise.resolve(null),
-    prisma.externalClaimSubmission.groupBy({ by: ["status"], where: { member: { is: scope } }, _count: { _all: true } }),
+    prisma.auditLog.findMany({
+      where: auditScope(user),
+      include: { actor: { select: { id: true, fullName: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 10,
+    }),
+    elevated
+      ? prisma.importJob.findFirst({
+          where: { type: "REPORT_20" },
+          select: {
+            id: true,
+            status: true,
+            reportMonth: true,
+            totalRows: true,
+            matchedRows: true,
+            changedRows: true,
+            unmatchedRows: true,
+            duplicateRows: true,
+            invalidRows: true,
+            completedAt: true,
+            file: { select: { originalName: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve(null),
+    prisma.externalClaimSubmission.groupBy({
+      by: ["status"],
+      where: { member: { is: scope } },
+      _count: { _all: true },
+    }),
   ]);
 
   const totalMembers = number(summary.total);
   const report20Matched = number(summary.report20Matched);
-  const latestImportMatchRate = latestImport && latestImport.totalRows
-    ? latestImport.matchedRows === latestImport.totalRows ? 100 : Math.floor((latestImport.matchedRows / latestImport.totalRows) * 1000) / 10
-    : 0;
+  const latestImportMatchRate =
+    latestImport && latestImport.totalRows
+      ? latestImport.matchedRows === latestImport.totalRows
+        ? 100
+        : Math.floor((latestImport.matchedRows / latestImport.totalRows) * 1000) / 10
+      : 0;
   const enrollmentCounts = new Map(enrollments.map((row) => [row.month, number(row.count)]));
   const enrollmentGrowth = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(firstMonth);
@@ -132,7 +183,12 @@ async function loadDashboard(user: AuthenticatedUser) {
       missingFromReport20: number(summary.missingFromReport20),
     },
     coverage: { spouses: totalSpouses, beneficiaries: totalBeneficiaries },
-    report20: { matchedMembers: report20Matched, unmatchedMembers: Math.max(totalMembers - report20Matched, 0), matchRate: latestImportMatchRate, latestImport },
+    report20: {
+      matchedMembers: report20Matched,
+      unmatchedMembers: Math.max(totalMembers - report20Matched, 0),
+      matchRate: latestImportMatchRate,
+      latestImport,
+    },
     transfers: { pending: pendingTransfers },
     claims: Object.fromEntries(claimStatusGroups.map((group) => [group.status, group._count._all])),
     enrollmentGrowth,
@@ -145,5 +201,8 @@ dashboardRouter.use(authenticate);
 dashboardRouter.get("/", async (_request, response) => {
   const user = currentUser(response);
   const key = `dashboard:v2:${user.role}:${user.regionId ?? 0}:${user.districtId ?? 0}`;
-  response.json({ success: true, data: await withCache(key, env.READ_CACHE_TTL_SECONDS, () => loadDashboard(user)) });
+  response.json({
+    success: true,
+    data: await withCache(key, env.READ_CACHE_TTL_SECONDS, () => loadDashboard(user)),
+  });
 });

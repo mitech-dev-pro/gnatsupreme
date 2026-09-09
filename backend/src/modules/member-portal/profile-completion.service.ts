@@ -31,16 +31,10 @@ type CompletionSnapshot = {
   pendingRequests: Array<{ type: string; proposedData: unknown }>;
 };
 
-export function calculateProfileCompletion(
-  member: CompletionSnapshot,
-): ProfileCompletion {
-  const memberDetails = member.pendingRequests.find(
-    (request) => request.type === "MEMBER_DETAILS",
-  );
+export function calculateProfileCompletion(member: CompletionSnapshot): ProfileCompletion {
+  const memberDetails = member.pendingRequests.find((request) => request.type === "MEMBER_DETAILS");
   const pendingDetails = proposedObject(memberDetails?.proposedData ?? null);
-  const hasPendingSpouse = member.pendingRequests.some(
-    (request) => request.type === "SPOUSE",
-  );
+  const hasPendingSpouse = member.pendingRequests.some((request) => request.type === "SPOUSE");
   const hasPendingBeneficiary = member.pendingRequests.some(
     (request) => request.type === "BENEFICIARY_ADD",
   );
@@ -71,11 +65,7 @@ export function calculateProfileCompletion(
       key: "beneficiary",
       label: "At least one beneficiary",
       status:
-        member.beneficiaryCount > 0
-          ? "COMPLETE"
-          : hasPendingBeneficiary
-            ? "PENDING"
-            : "MISSING",
+        member.beneficiaryCount > 0 ? "COMPLETE" : hasPendingBeneficiary ? "PENDING" : "MISSING",
       requestType: "BENEFICIARY_ADD",
     },
   ];
@@ -90,9 +80,7 @@ export function calculateProfileCompletion(
   };
 }
 
-export async function getMemberProfileCompletion(
-  memberId: number,
-): Promise<ProfileCompletion> {
+export async function getMemberProfileCompletion(memberId: number): Promise<ProfileCompletion> {
   const member = await prisma.member.findUniqueOrThrow({
     where: { id: memberId },
     select: {

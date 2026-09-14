@@ -43,7 +43,7 @@ export default function ClaimHistory() {
     <div>
       <PageHeader
         title="Claim history"
-        description="Look up a member's Staff ID to view their full Mankrado claim history."
+        description="Look up a member's Staff ID to view their full claim history."
       />
 
       <section className="max-w-md rounded-xl border border-border-default bg-(--surface-raised) p-5">

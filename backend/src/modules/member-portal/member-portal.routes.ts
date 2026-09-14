@@ -24,6 +24,8 @@ import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
 import { onboardingDetailsSchema } from "../member-auth/member-auth.schemas.js";
 import { notifyMember, notifyStaffForMember } from "../notifications/notification.service.js";
+import { claimsProvider } from "../claims/mankrado.provider.js";
+import { ClaimsProviderUnavailableError } from "../claims/claims.provider.js";
 import { getOrganizationSettings, publicBranding } from "../settings/settings.service.js";
 import { getMemberProfileCompletion } from "./profile-completion.service.js";
 import { hasValidFileSignature, memberFileUpload, uploadRoot } from "../files/file.storage.js";
@@ -423,6 +425,27 @@ memberPortalRouter.get("/claims", async (_request, response) => {
     orderBy: { createdAt: "desc" },
   });
   response.json({ success: true, data: claims });
+});
+
+// Registered before /claims/:id -- Express matches in declaration order (unlike React Router,
+// it does not rank a static segment over a dynamic one), so this would otherwise be swallowed by
+// the :id route and fail its "must be a positive integer" parse.
+// Mirrors the staff GET /claims/history/:staffId endpoint (claims.routes.ts) but scoped to the
+// authenticated member's own controllerId -- no staffId param, so a member can never look up
+// another member's Mankrado history the way a staff request could deliberately or accidentally do.
+memberPortalRouter.get("/claims/history", async (_request, response) => {
+  const currentMember = member(response);
+  try {
+    const history = await claimsProvider.history(currentMember.controllerId);
+    if (history.some((item) => item.staffId && item.staffId !== currentMember.controllerId))
+      throw new Error("History member mismatch");
+    response.json({ success: true, data: history });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message: "Mankrado history is unavailable. Local claims remain saved.",
+    });
+  }
 });
 
 memberPortalRouter.get("/claims/:id", async (request, response) => {

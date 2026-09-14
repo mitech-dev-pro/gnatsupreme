@@ -33,8 +33,7 @@ export default function MankradoHistory({
         if (!controller.signal.aborted) setItems(response.data.data);
       })
       .catch(() => {
-        if (!controller.signal.aborted)
-          setError("Mankrado history could not be loaded. Your local claim remains saved.");
+        if (!controller.signal.aborted) setError("No claims found for this staff ID");
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
@@ -44,11 +43,11 @@ export default function MankradoHistory({
   return (
     <section
       className="mt-5 border-t border-border-default pt-5"
-      aria-label="Mankrado history"
+      aria-label="Claim history"
       aria-busy={busy}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-extrabold text-text-strong">Mankrado claim history</h2>
+        <h2 className="text-lg font-extrabold text-text-strong">Claim History</h2>
         <Button
           variant="secondary"
           size="sm"
@@ -61,16 +60,16 @@ export default function MankradoHistory({
       {error && <Alert tone="warning">{error}</Alert>}
       {busy && (
         <p role="status" className="text-xs text-text-muted">
-          Loading Mankrado history...
+          Loading Claim history...
         </p>
       )}
       {items?.length === 0 && (
-        <p className="text-xs text-text-muted">No claims returned by Mankrado for this member.</p>
+        <p className="text-xs text-text-muted">No claims returned for this member.</p>
       )}
       {items && items.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <caption className="sr-only">Mankrado claims for Staff ID {staffId}</caption>
+            <caption className="sr-only">Claims for Staff ID {staffId}</caption>
             <thead>
               <tr>
                 <th scope="col" className="p-2">
@@ -86,7 +85,7 @@ export default function MankradoHistory({
                   Amount payable (GHS)
                 </th>
                 <th scope="col" className="p-2">
-                  Mankrado status
+                  Claim status
                 </th>
               </tr>
             </thead>
@@ -97,8 +96,8 @@ export default function MankradoHistory({
                   <td className="p-2">{item.name || "Not provided"}</td>
                   <td className="whitespace-nowrap p-2">{item.claimDate ?? "Not provided"}</td>
                   <td className="p-2 text-right tabular-nums">
-                    {item.amountPayable === null
-                      ? "Not provided"
+                    {item.amountPayable === "0.00"
+                      ? "Not available yet"
                       : formatCurrency(item.amountPayable)}
                   </td>
                   <td className="p-2">{item.status}</td>

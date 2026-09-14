@@ -73,6 +73,14 @@ export type ClaimItem = {
   submittedAt: string | null;
   createdAt: string;
 };
+export type ClaimHistoryItem = {
+  id: string;
+  claimNumber: string;
+  name: string | null;
+  claimDate: string | null;
+  amountPayable: string | null;
+  status: string;
+};
 export const CLAIM_TYPE_LABELS: Record<string, string> = {
   DEATH: "Death Claim",
   TOTAL_PERMANENT_DISABILITY: "Total & Permanent Disability",

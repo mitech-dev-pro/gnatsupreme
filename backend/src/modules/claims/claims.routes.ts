@@ -385,11 +385,6 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   response.json({ success: true, data: updated });
 });
 
-// Covers both an initial send (NOT_SENT, e.g. an earlier delivery attempt never actually
-// started) and a retry after a failed or unconfirmed attempt (FAILED/UNKNOWN) -- deliverClaim's
-// own atomic claim guard accepts the same three states, so this route is just the access-scoped
-// entry point into it. SENDING and ACCEPTED are excluded there: a delivery already in flight or
-// already accepted can never be re-claimed by this route.
 claimsRouter.post("/submissions/:id/send", async (request, response) => {
   const params = idSchema.safeParse(request.params);
   if (!params.success) {

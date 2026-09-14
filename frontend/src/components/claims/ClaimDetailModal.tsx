@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ModalPortal from "@/components/ui/ModalPortal";
 import StatusBadge from "@/components/ui/StatusBadge";
+import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 import { useClaimDocument } from "@/features/claims/useClaimDocument";
 import api from "@/lib/api";
@@ -122,9 +123,13 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 export default function ClaimDetailModal({
   submissionId,
   onClose,
+  onChanged,
 }: {
   submissionId: number;
   onClose: () => void;
+  // Notifies the caller (e.g. the table row this modal was opened from) that the claim's status
+  // may have changed -- e.g. after a retried delivery -- so it can refresh its own data too.
+  onChanged?: () => void | Promise<void>;
 }) {
   const [detail, setDetail] = useState<ClaimDetail | null>(null);
   const [assessment, setAssessment] = useState<MankradoAssessment | null>(null);
@@ -133,6 +138,8 @@ export default function ClaimDetailModal({
   const [assessmentError, setAssessmentError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryError, setRetryError] = useState("");
   const { open: openDocument, error: docError } = useClaimDocument();
 
   useEffect(() => {
@@ -143,8 +150,7 @@ export default function ClaimDetailModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const load = (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     setDetail(null);
@@ -153,8 +159,8 @@ export default function ClaimDetailModal({
     setHistoryError("");
     setAssessmentError("");
 
-    api
-      .get(`/claims/submissions/${submissionId}`, { signal: controller.signal })
+    return api
+      .get(`/claims/submissions/${submissionId}`, { signal })
       .then((response) => {
         const data = response.data.data as ClaimDetail;
         setDetail(data);
@@ -167,37 +173,58 @@ export default function ClaimDetailModal({
         }
 
         void api
-          .get(`/claims/history/${encodeURIComponent(data.member.controllerId)}`, {
-            signal: controller.signal,
-          })
+          .get(`/claims/history/${encodeURIComponent(data.member.controllerId)}`, { signal })
           .then((res) => setHistory(res.data.data))
           .catch(() => {
-            if (!controller.signal.aborted)
-              setHistoryError("Mankrado history is unavailable right now.");
+            if (!signal?.aborted) setHistoryError("Mankrado history is unavailable right now.");
           });
 
         if (data.externalClaimId) {
           void api
-            .get(`/claims/claimdetails/${encodeURIComponent(data.externalClaimId)}`, {
-              signal: controller.signal,
-            })
+            .get(`/claims/claimdetails/${encodeURIComponent(data.externalClaimId)}`, { signal })
             .then((res) => setAssessment(res.data.data))
             .catch(() => {
-              if (!controller.signal.aborted)
+              if (!signal?.aborted)
                 setAssessmentError("Live Mankrado assessment is unavailable right now.");
             });
         }
       })
       .catch((caught: unknown) => {
-        if (!controller.signal.aborted)
+        if (!signal?.aborted)
           setError(getApiError(caught)?.message || "This claim could not be loaded.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!signal?.aborted) setLoading(false);
       });
+  };
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissionId]);
+
+  const retrySubmission = async () => {
+    setRetryBusy(true);
+    setRetryError("");
+    try {
+      await api.post(`/claims/submissions/${submissionId}/send`);
+      await load();
+      await onChanged?.();
+    } catch (caught: unknown) {
+      setRetryError(getApiError(caught)?.message || "Delivery could not be started.");
+    } finally {
+      setRetryBusy(false);
+    }
+  };
+  const canRetry =
+    detail?.provider === "MANKRADO" &&
+    (detail.deliveryState === "NOT_SENT" ||
+      detail.deliveryState === "FAILED" ||
+      detail.deliveryState === "UNKNOWN") &&
+    detail.status === "PENDING" &&
+    (detail.source === "STAFF" || Boolean(detail.reviewedAt));
 
   const claimNumber = detail?.externalClaimId ?? assessment?.claimNumber ?? null;
   const claimStatus = assessment?.status ?? detail?.externalStatus ?? detail?.status ?? null;
@@ -274,6 +301,20 @@ export default function ClaimDetailModal({
               <Alert tone="error">{error || "Claim not found."}</Alert>
             ) : (
               <>
+                {canRetry && (
+                  <div className="mb-4">
+                    <Button loading={retryBusy} onClick={() => void retrySubmission()}>
+                      {detail.deliveryState === "NOT_SENT"
+                        ? "Send saved claim"
+                        : "Retry submission"}
+                    </Button>
+                    {retryError && (
+                      <div className="mt-2">
+                        <Alert tone="error">{retryError}</Alert>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {detail.errorMessage && (
                   <div className="mb-4">
                     <Alert tone="error">{detail.errorMessage}</Alert>

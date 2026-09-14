@@ -49,7 +49,7 @@ export const CLAIM_DOCUMENT_MANIFEST: Record<ClaimType, ClaimDocumentSlot[]> = {
   ],
   HOSPITALIZATION: [
     {
-      key: "dischargeSummaryOrBill",
+      key: " dischargeSummaryOrBill",
       label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights",
       tag: "REQUIRED",
     },

@@ -1,5 +1,7 @@
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import { Alert } from "@/components/ui/Feedback";
 import api from "@/lib/api";
+import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import { deliveryLabel } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
@@ -16,6 +18,7 @@ import {
   type BenefitPlan,
   type ChangeRequest,
   CLAIM_TYPE_LABELS,
+  type ClaimHistoryItem,
   type ClaimItem,
   formatDate,
   type MemberNotification,
@@ -41,6 +44,8 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   const [unreadCount, setUnreadCount] = useState(0);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [claims, setClaims] = useState<ClaimItem[]>([]);
+  const [claimHistory, setClaimHistory] = useState<ClaimHistoryItem[] | null>(null);
+  const [claimHistoryError, setClaimHistoryError] = useState("");
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [editingSpouse, setEditingSpouse] = useState(false);
@@ -93,6 +98,23 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
     }
   };
 
+  // Mankrado's own record of every claim on file for this member -- a live external call
+  // (unlike loadClaims, which only reads what this app itself has stored), so it's kept
+  // separate: a slow or unavailable Mankrado response never blocks the rest of the page, it just
+  // shows its own inline message where the history would be.
+  const loadClaimHistory = async () => {
+    setClaimHistoryError("");
+    try {
+      const res = await api.get("/member-portal/claims/history");
+      setClaimHistory(res.data.data);
+    } catch (caught: unknown) {
+      setClaimHistory([]);
+      setClaimHistoryError(
+        getApiError(caught)?.message || "Claim history is unavailable right now.",
+      );
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -122,6 +144,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
     })();
     void loadRequests();
     void loadClaims();
+    void loadClaimHistory();
     return () => {
       cancelled = true;
     };
@@ -331,7 +354,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                           </div>
                         </div>
                       </header>
-                      <ul className="divide-y divide-(--border-default)">
+                      <ul className="divide-y divide-border-default">
                         {profileCompletion.items.map((item) => (
                           <li
                             key={item.key}
@@ -544,7 +567,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     <h3 className="text-base font-bold uppercase tracking-[0.08em] text-text-muted">
                       Personal and contact details
                     </h3>
-                    <dl className="mt-3 divide-y divide-(--border-default)">
+                    <dl className="mt-3 divide-y divide-border-default">
                       {[
                         ["Full legal name", profile.fullName],
                         ["Ghana Card ID", profile.ghanaCardId ?? "Not provided"],
@@ -552,7 +575,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       ].map(([label, value]) => (
                         <div key={label} className="grid gap-1 py-3 sm:grid-cols-[150px_1fr]">
                           <dt className="text-xs text-text-muted">{label}</dt>
-                          <dd className="break-words text-sm font-semibold text-ink">
+                          <dd className="wrap-wrap-break-word text-sm font-semibold text-ink">
                             {value}
                             {label === "Phone number" && profile.phoneVerifiedAt && (
                               <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-bold text-success">
@@ -568,7 +591,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     <h3 className="text-base font-bold uppercase tracking-[0.08em] text-text-muted">
                       Membership context
                     </h3>
-                    <dl className="mt-3 divide-y divide-(--border-default)">
+                    <dl className="mt-3 divide-y divide-border-default">
                       {[
                         ["School or institution", profile.school],
                         [settings.subRegionLabel, profile.district?.name ?? "Not yet assigned"],
@@ -700,14 +723,14 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   ))}
               </div>
               {profile.spouse ? (
-                <dl className="mt-4 divide-y divide-(--border-default) text-sm">
+                <dl className="mt-4 divide-y divide-border-default text-sm">
                   <div className="py-2.5">
                     <dt className="text-text-muted">Full Name</dt>
                     <dd className="mt-0.5 font-semibold text-ink">{profile.spouse.fullName}</dd>
                   </div>
                   <div className="py-2.5">
                     <dt className="text-text-muted">Ghana Card ID</dt>
-                    <dd className="mt-0.5 break-words font-semibold text-ink">
+                    <dd className="mt-0.5 wrap-break-word font-semibold text-ink">
                       {profile.spouse.ghanaCardId ?? "Not provided"}
                     </dd>
                   </div>
@@ -914,7 +937,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-(--border-default)">
+                  <tbody className="divide-y divide-border-default">
                     {benefitPlan.benefits
                       .filter((benefit) => benefit.enabled)
                       .map((benefit) => (
@@ -980,7 +1003,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 </p>
               </header>
               {!requestComposer && (
-                <div className="grid grid-cols-1 divide-y divide-(--border-default) sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                <div className="grid grid-cols-1 divide-y divide-border-default sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                   <button
                     type="button"
                     disabled={Boolean(profilePending)}
@@ -1136,7 +1159,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   No requests match this filter.
                 </p>
               ) : (
-                <ol className="divide-y divide-(--border-default)">
+                <ol className="divide-y divide-border-default">
                   {visibleRequests.map((request) => (
                     <li key={request.id}>
                       <details className="group">
@@ -1190,7 +1213,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                     {REQUEST_FIELD_LABELS[field] ??
                                       field.replaceAll(/([A-Z])/g, " $1")}
                                   </dt>
-                                  <dd className="mt-0.5 break-words text-sm font-semibold text-ink">
+                                  <dd className="mt-0.5 wrap-break-word text-sm font-semibold text-ink">
                                     {requestValue(value)}
                                   </dd>
                                 </div>
@@ -1329,7 +1352,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   <p className="text-sm text-text-muted">You haven't submitted any claims yet.</p>
                 </div>
               ) : (
-                <ul className="divide-y divide-(--border-default)">
+                <ul className="divide-y divide-border-default">
                   {claims.map((claim) => {
                     const statusLabel =
                       claim.status === "PENDING" &&
@@ -1391,6 +1414,69 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                               Edit &amp; resubmit
                             </button>
                           )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="border-t border-border-default px-4 py-4 sm:px-5">
+                <h3 className="text-sm font-bold text-text-strong">Claim history</h3>
+                <p className="mt-1 text-xs text-text-muted">
+                  Every claim on file for you with {settings.schemeSponsor || "the insurer"}.
+                </p>
+              </div>
+              {claimHistoryError ? (
+                <div className="px-4 pb-4 sm:px-5">
+                  <Alert tone="warning">{claimHistoryError}</Alert>
+                </div>
+              ) : claimHistory === null ? (
+                <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
+                  Loading claim history…
+                </p>
+              ) : claimHistory.length === 0 ? (
+                <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
+                  No claims have been returned for you yet.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border-default border-t border-border-default">
+                  {claimHistory.map((item, index) => {
+                    const tone = claimStatusTone(item.status);
+                    const toneClass =
+                      tone === "success"
+                        ? "text-success"
+                        : tone === "danger"
+                          ? "text-danger"
+                          : tone === "warning"
+                            ? "text-warning"
+                            : tone === "info"
+                              ? "text-ink"
+                              : "text-text-muted";
+                    return (
+                      <li
+                        key={`${item.claimNumber}:${index}`}
+                        className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                      >
+                        <div>
+                          <div className="text-sm font-bold text-ink">
+                            {item.name?.trim() || "Claim"}{" "}
+                            <span className="font-mono text-xs font-normal text-text-muted">
+                              {item.claimNumber}
+                            </span>
+                          </div>
+                          <div className={`mt-0.5 text-xs font-semibold ${toneClass}`}>
+                            {claimStatusLabel(item.status)}
+                          </div>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <div className="text-sm font-semibold text-ink">
+                            {item.amountPayable
+                              ? formatCurrency(item.amountPayable)
+                              : "Not available yet"}
+                          </div>
+                          <div className="text-xs text-text-muted">
+                            {item.claimDate ?? "Date not provided"}
+                          </div>
                         </div>
                       </li>
                     );

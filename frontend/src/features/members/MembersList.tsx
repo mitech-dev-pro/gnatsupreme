@@ -32,7 +32,7 @@ type MemberStats = {
   newThisMonth: number;
   activeCoverage: number;
   activeCoveragePct: number;
-  pendingApproval: number;
+  registeredMembers: number;
   report20Mismatch: number;
   removedThisMonth: number;
   removedBreakdownNote: string;
@@ -68,10 +68,11 @@ const STAT_ICONS = {
     </>
   ),
   check: <path d="M20 6 9 17l-5-5" />,
-  clock: (
+  userCheck: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
+      <path d="M13 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="m17 11 2 2 4-4" />
     </>
   ),
   alert: (
@@ -111,13 +112,13 @@ function StatCards({ stats, loading }: { stats: MemberStats | null; loading: boo
           noteTone: "green",
         },
         {
-          key: "pending",
-          icon: STAT_ICONS.clock,
-          iconTone: "amber",
-          value: stats.pendingApproval,
-          label: "Pending Approval",
-          note: "Awaiting regional review",
-          noteTone: "amber",
+          key: "registered",
+          icon: STAT_ICONS.userCheck,
+          iconTone: "navy",
+          value: stats.registeredMembers,
+          label: `Registered Member${stats.registeredMembers < 2 ? "" : "s"}`,
+          note: "Completed self-service sign-up",
+          noteTone: "neutral",
         },
         {
           key: "mismatch",

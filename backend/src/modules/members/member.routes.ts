@@ -105,7 +105,7 @@ memberRouter.get("/stats", async (request, response) => {
   };
   const firstOfMonth = monthStart(new Date());
 
-  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth] =
+  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth, registeredMembers] =
     await Promise.all([
       prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
       prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
@@ -115,6 +115,10 @@ memberRouter.get("/stats", async (request, response) => {
         where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
         _count: { _all: true },
       }),
+      // "Registered" means the member has completed self-service account setup (set a
+      // password via /member-auth/setup-account) -- distinct from totalMembers, which counts
+      // every member record regardless of whether they've ever activated a portal account.
+      prisma.member.count({ where: { ...scope, passwordHash: { not: null } } }),
     ]);
 
   const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
@@ -140,7 +144,7 @@ memberRouter.get("/stats", async (request, response) => {
       newThisMonth,
       activeCoverage: activeCount,
       activeCoveragePct,
-      pendingApproval: statusCounts.PENDING ?? 0,
+      registeredMembers,
       report20Mismatch: missingFromReport20Count,
       removedThisMonth: removedTotal,
       removedBreakdownNote,

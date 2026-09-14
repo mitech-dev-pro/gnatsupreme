@@ -136,7 +136,7 @@ function StatCards({
           icon: STAT_ICONS.userCheck,
           iconTone: "navy",
           value: stats.registeredMembers,
-          label: "Registered Members",
+          label: `Registered Member${stats.registeredMembers < 2 ? "" : "s"}`,
           note: "Completed self-service sign-up",
           noteTone: "neutral",
         },

@@ -191,7 +191,9 @@ export default function ClaimDetail() {
           />
 
           {claim.provider === "MANKRADO" &&
-            claim.deliveryState === "NOT_SENT" &&
+            (claim.deliveryState === "NOT_SENT" ||
+              claim.deliveryState === "FAILED" ||
+              claim.deliveryState === "UNKNOWN") &&
             claim.status === "PENDING" &&
             (claim.source === "STAFF" || claim.reviewedAt) && (
               <div className="mb-4">
@@ -212,7 +214,7 @@ export default function ClaimDetail() {
                     }
                   }}
                 >
-                  Send saved claim
+                  {claim.deliveryState === "NOT_SENT" ? "Send saved claim" : "Retry submission"}
                 </Button>
                 {reviewError && <Alert tone="error">{reviewError}</Alert>}
               </div>

@@ -5,14 +5,24 @@ import {
   type ExternalClaim,
   type ExternalClaimDetails,
 } from "./claims.provider.js";
+// Shared by history and details -- both come from the same Mankrado claim record, and a live
+// sandbox response confirmed history's claimDate uses this same "date time" shape (not a bare
+// ISO date), so treat them identically rather than letting the two schemas drift apart again.
+const claimDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,7})?$/)
+  .nullable();
 // Validate grouping before removing commas so malformed amounts cannot silently change value.
+// Confirmed from a live sandbox response: Mankrado sends a claim not yet assessed as ".00" --
+// a decimal point with no leading digit -- so the integer part must be optional, not just the
+// fractional part.
 const payableSchema = z
   .union([
     z
       .string()
       .trim()
-      .regex(/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/)
-      .transform((amount) => amount.replaceAll(",", "")),
+      .regex(/^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?|\.\d+)$/)
+      .transform((amount) => amount.replaceAll(",", "").replace(/^\./, "0.")),
     z.number().finite().nonnegative().transform(String),
   ])
   .nullable();
@@ -45,7 +55,7 @@ export function parseHistory(value: unknown): ExternalClaim[] {
             .union([z.string().trim().min(1), z.number().int().safe().nonnegative()])
             .transform(String),
           name: z.string().nullable(),
-          claimDate: z.iso.date().nullable(),
+          claimDate: claimDateSchema,
           amountPayable: payableSchema,
           claimStatus: z.string().trim().min(1),
           staff_id: z.string().optional(),
@@ -73,10 +83,7 @@ export function parseDetails(value: unknown, requestedId: string): ExternalClaim
       details: z.object({
         claimNumber: z.string().trim().min(1),
         name: z.string().nullable(),
-        claimDate: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,7})?$/)
-          .nullable(),
+        claimDate: claimDateSchema,
         amountPayable: payableSchema,
         claimStatus: z.string().trim().min(1),
         rejectReason: z.string().nullable(),

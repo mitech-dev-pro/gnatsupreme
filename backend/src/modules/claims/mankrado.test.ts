@@ -259,9 +259,9 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
     db: {
       externalClaimSubmission: {
         updateMany: async ({ where, data }) => {
-          assert.equal(where?.deliveryState, "NOT_SENT");
+          assert.deepEqual(where?.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
           if (
-            row.deliveryState !== "NOT_SENT" ||
+            !["NOT_SENT", "FAILED", "UNKNOWN"].includes(row.deliveryState) ||
             row.provider !== "MANKRADO" ||
             row.status !== "PENDING" ||
             (row.source === "MEMBER_PORTAL" && !row.reviewedAt)
@@ -309,11 +309,16 @@ test("member claims require review and historical simulations are never sent", a
   await deliverClaim(1, approved.dependencies);
   assert.equal(approved.sends(), 1);
 });
-test("uncertain outcomes preserve review state and cannot be resent", async () => {
+test("an uncertain (UNKNOWN) outcome preserves review state and can be retried", async () => {
   const fixture = deliveryFixture({}, true);
   await deliverClaim(1, fixture.dependencies);
-  await deliverClaim(1, fixture.dependencies);
   assert.equal(fixture.sends(), 1);
+  assert.equal(fixture.row.deliveryState, "UNKNOWN");
+  assert.equal(fixture.row.status, "PENDING");
+  // A second attempt is allowed to reach the provider again -- UNKNOWN is retryable, unlike
+  // SENDING/ACCEPTED (see the earlier atomic-delivery test for those exclusions).
+  await deliverClaim(1, fixture.dependencies);
+  assert.equal(fixture.sends(), 2);
   assert.equal(fixture.row.deliveryState, "UNKNOWN");
   assert.equal(fixture.row.status, "PENDING");
 });

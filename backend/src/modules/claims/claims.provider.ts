@@ -6,6 +6,7 @@ export type ClaimSubmissionInput = {
     fullName: string;
   };
   claimType: string;
+  // claimantId: string;
   claimantType: string;
   claimantName: string;
   claimantIdType: string;

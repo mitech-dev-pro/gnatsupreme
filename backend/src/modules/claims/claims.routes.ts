@@ -385,7 +385,11 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   response.json({ success: true, data: updated });
 });
 
-// Recovery only for saved claims for which no external attempt has started.
+// Covers both an initial send (NOT_SENT, e.g. an earlier delivery attempt never actually
+// started) and a retry after a failed or unconfirmed attempt (FAILED/UNKNOWN) -- deliverClaim's
+// own atomic claim guard accepts the same three states, so this route is just the access-scoped
+// entry point into it. SENDING and ACCEPTED are excluded there: a delivery already in flight or
+// already accepted can never be re-claimed by this route.
 claimsRouter.post("/submissions/:id/send", async (request, response) => {
   const params = idSchema.safeParse(request.params);
   if (!params.success) {
@@ -398,16 +402,16 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       id: params.data.id,
       provider: "MANKRADO",
       status: "PENDING",
-      deliveryState: "NOT_SENT",
+      deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
       member: { is: memberScope(user) },
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },
-    select: { id: true },
+    select: { id: true, deliveryState: true },
   });
   if (!claim) {
     response.status(409).json({
       success: false,
-      message: "No accessible unsent claim is ready for delivery. Refresh its status.",
+      message: "No accessible claim is ready for delivery. Refresh its status.",
     });
     return;
   }
@@ -417,6 +421,7 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       .json({ success: false, message: "Mankrado submissions are not configured." });
     return;
   }
+  const wasRetry = claim.deliveryState !== "NOT_SENT";
   const delivered = await deliverClaim(claim.id);
   await recordAudit({
     request,
@@ -424,7 +429,9 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     action: "CLAIM_DELIVERY_RECORDED",
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
-    description: "Recorded delivery of a previously unsent claim",
+    description: wasRetry
+      ? "Retried delivery of a claim after a previous failed or unconfirmed attempt"
+      : "Recorded delivery of a previously unsent claim",
     afterData: { deliveryState: delivered.deliveryState },
   });
   response.json({ success: true, data: delivered });

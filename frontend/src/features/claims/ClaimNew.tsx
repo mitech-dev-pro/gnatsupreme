@@ -472,7 +472,7 @@ export default function ClaimNew() {
                         type="button"
                         aria-pressed={claimType === item.value}
                         onClick={() => selectClaimType(item.value)}
-                        className={`rounded-xl border-1.5 p-4 text-left transition-[border-color,background-color] ${claimType === item.value ? "border-action-primary bg-info-soft shadow-selected" : "border-border-default bg-(--surface-raised) hover:border-action-primary"}`}
+                        className={`rounded-xl border-1.5 p-4 text-left bg-slate-200/50 transition-[border-color,background-color] ${claimType === item.value ? "border-action-primary bg-info-soft shadow-selected" : "border-border-default bg-(--surface-raised) hover:border-action-primary"}`}
                       >
                         <div className="text-base font-extrabold text-text-strong">
                           {item.label}

@@ -25,7 +25,9 @@ export const CLAIM_TYPE_VALUES: Record<string, string> = {
 // claimantIdType, ghanaCardNumber, claimant, mobileNumber, paymentMethod, and
 // per-claim-type detail keys (hospitalName, dischargeDate, reason, ...) are sent as-is.
 // admissionDate is the one detail key that still needs renaming (see override below).
-// No staff/member ID field is sent -- Mankrado matches the member by ghanaCardNumber.
+// staffId (the member's Controller ID -- the same value the history/details lookups use in
+// their URL path) is now sent alongside ghanaCardNumber, matching the history endpoint's own
+// identification scheme rather than relying on ghanaCardNumber matching alone.
 // Fields beyond that confirmed set (submissionReference, memberName, claimantType,
 // notes) are kept as extras: harmless if Mankrado ignores unknown fields, and may still
 // matter for reconciliation/audit on their side even though the confirmed test omitted
@@ -52,6 +54,7 @@ export function submissionForm(input: ClaimSubmissionInput) {
   };
   const fields = {
     claimType: CLAIM_TYPE_VALUES[input.claimType] ?? input.claimType,
+    staffId: input.member.controllerId,
     claimantIdType: input.claimantIdType,
     ghanaCardNumber: input.claimantIdNumber,
     claimant: input.claimantName,

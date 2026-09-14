@@ -79,7 +79,7 @@ export async function deliverClaim(
     where: {
       id,
       provider: "MANKRADO",
-      deliveryState: "NOT_SENT",
+      deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
       status: "PENDING",
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },

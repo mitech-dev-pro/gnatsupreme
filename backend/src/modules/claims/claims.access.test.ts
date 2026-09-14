@@ -134,7 +134,7 @@ test("detail sync stores external status without changing local review status", 
   assert.equal(res.code, 200);
 });
 
-test("saved-claim recovery is scoped and cannot retry previously attempted claims", async (t) => {
+test("saved-claim recovery is scoped and only reaches a claim in a deliverable state", async (t) => {
   stub(
     t,
     prisma.externalClaimSubmission,
@@ -144,7 +144,12 @@ test("saved-claim recovery is scoped and cannot retry previously attempted claim
         where: Prisma.ExternalClaimSubmissionWhereInput;
       },
     ) => {
-      assert.equal(args.where.deliveryState, "NOT_SENT");
+      // NOT_SENT (never attempted) plus FAILED/UNKNOWN (a previous attempt that was rejected or
+      // never got a confirmed outcome) are all retryable from here -- SENDING and ACCEPTED are
+      // deliberately not in this set, since a delivery already in flight or already accepted
+      // must never be reachable through this route. See claims.delivery.test.ts for deliverClaim's
+      // own enforcement of the same boundary.
+      assert.deepEqual(args.where.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
       assert.equal(args.where.provider, "MANKRADO");
       assert.equal(args.where.member?.is?.districtId, 9);
       assert.deepEqual(args.where.OR?.[1], { source: "MEMBER_PORTAL", reviewedAt: { not: null } });

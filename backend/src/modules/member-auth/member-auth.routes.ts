@@ -38,8 +38,14 @@ export const memberAuthRouter = Router();
 
 const memberCookieOptions = {
   httpOnly: true,
-  secure: env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  // SameSite=None requires Secure regardless of environment -- always true, since a cookie
+  // that needs cross-site delivery only makes sense over HTTPS anyway (Chrome exempts
+  // http://localhost from the Secure requirement, so local dev is unaffected).
+  secure: true,
+  // "None", not "Lax" -- the frontend and API are commonly deployed on different registrable
+  // domains, and Chrome blocks a Lax Set-Cookie outright when the response is cross-site and
+  // isn't a top-level navigation, so Lax silently dropped this cookie in that topology.
+  sameSite: "none" as const,
   // Not scoped to "/api/member-auth" -- that couples the cookie to wherever a given
   // deployment's reverse proxy happens to mount the API, which broke refresh entirely on a
   // deployment whose proxy used a different prefix even though every other (Bearer-token)

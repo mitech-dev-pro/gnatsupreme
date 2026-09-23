@@ -99,6 +99,11 @@ export const memberQuerySchema = z.object({
   districtId: z.coerce.number().int().positive().optional(),
   school: z.string().trim().max(160).optional(),
   missingFromReport20: z.coerce.boolean().optional(),
+  // A plain z.coerce.boolean() can't distinguish "not registered" from "no filter" -- coercing
+  // any non-empty string (including the literal "false") to true is exactly the trap
+  // missingFromReport20 above works around by never sending "false" at all. Registered has a
+  // real "false" state to filter on, so it needs the three-way enum instead.
+  registered: z.enum(["true", "false"]).optional(),
 });
 
 export const memberSchoolsQuerySchema = z.object({

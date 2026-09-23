@@ -51,7 +51,7 @@ memberRouter.get("/", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const { page, limit, search, status, regionId, districtId, school, missingFromReport20 } =
+  const { page, limit, search, status, regionId, districtId, school, missingFromReport20, registered } =
     query.data;
   const requestedScope = resolveMemberScope(user, { regionId, districtId });
   const where = {
@@ -59,6 +59,13 @@ memberRouter.get("/", async (request, response) => {
     ...(status ? { status } : {}),
     ...(school ? { school } : {}),
     ...(missingFromReport20 ? { missingFromReport20At: { not: null } } : {}),
+    // "Registered" mirrors /stats' registeredMembers count: has the member completed
+    // self-service account setup (passwordHash set via /member-auth/setup-account)?
+    ...(registered === "true"
+      ? { passwordHash: { not: null } }
+      : registered === "false"
+        ? { passwordHash: null }
+        : {}),
     ...(search
       ? {
           OR: [

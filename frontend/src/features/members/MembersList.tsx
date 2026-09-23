@@ -276,11 +276,12 @@ export default function MembersList() {
   const districtId = params.get("districtId") ?? "";
   const school = params.get("school") ?? "";
   const missingFromReport20 = params.get("missingFromReport20") === "1";
+  const registered = params.get("registered") ?? "";
   const limit = [5, 10, 20].includes(Number(params.get("limit")))
     ? Number(params.get("limit"))
     : 10;
   const filtered = Boolean(
-    search || status || regionId || districtId || school || missingFromReport20,
+    search || status || regionId || districtId || school || missingFromReport20 || registered,
   );
   const pageTitle = PAGE_TITLES[status] ?? "Members";
 
@@ -330,6 +331,7 @@ export default function MembersList() {
             districtId: districtId || undefined,
             school: school || undefined,
             missingFromReport20: missingFromReport20 || undefined,
+            registered: registered || undefined,
           },
         });
         setRows(response.data.data);
@@ -342,7 +344,7 @@ export default function MembersList() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [districtId, limit, missingFromReport20, page, regionId, school, search, status],
+    [districtId, limit, missingFromReport20, page, registered, regionId, school, search, status],
   );
 
   useEffect(() => {
@@ -391,6 +393,12 @@ export default function MembersList() {
   const onDistrictChange = (value: string) =>
     updateParams({ districtId: value || null, school: null, page: null });
   const onSchoolChange = (value: string) => updateParams({ school: value || null, page: null });
+  const onStatusChange = (value: string) => {
+    if (value === "REGISTERED") updateParams({ status: null, registered: "true", page: null });
+    else if (value === "NOT_REGISTERED")
+      updateParams({ status: null, registered: "false", page: null });
+    else updateParams({ status: value || null, registered: null, page: null });
+  };
   const clearFilters = () => {
     setSearchInput("");
     setParams({});
@@ -453,8 +461,8 @@ export default function MembersList() {
         </form>
         <Dropdown
           className="w-47.5"
-          value={status}
-          onChange={(value) => updateParams({ status: value || null, page: null })}
+          value={status || (registered === "true" ? "REGISTERED" : registered === "false" ? "NOT_REGISTERED" : "")}
+          onChange={onStatusChange}
           aria-label="Filter by status"
           options={[
             { value: "", label: "All statuses" },
@@ -462,6 +470,15 @@ export default function MembersList() {
               value: item,
               label: item.charAt(0) + item.slice(1).toLowerCase(),
             })),
+          ]}
+          groups={[
+            {
+              label: "Registration",
+              options: [
+                { value: "REGISTERED", label: "Registered" },
+                { value: "NOT_REGISTERED", label: "Not registered" },
+              ],
+            },
           ]}
         />
         {canSeeRegion && (

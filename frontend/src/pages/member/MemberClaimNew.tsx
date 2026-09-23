@@ -13,6 +13,7 @@ type Profile = {
   controllerId: string;
   fullName: string;
   phone: string | null;
+  ghanaCardId: string | null;
   district: { id: number; name: string; region: { id: number; name: string } } | null;
   spouse: { fullName: string; ghanaCardId: string | null } | null;
 };
@@ -129,8 +130,8 @@ export default function MemberClaimNew() {
 
   const setCoveredPerson = (value: "MEMBER" | "SPOUSE") => {
     setClaimantType(value);
-    const spouseCard = formatGhanaCardIdInput(profile?.spouse?.ghanaCardId ?? "");
-    setClaimantIdNumber(value === "SPOUSE" ? spouseCard : "");
+    const selected = value === "SPOUSE" ? profile?.spouse : profile;
+    setClaimantIdNumber(formatGhanaCardIdInput(selected?.ghanaCardId ?? ""));
   };
 
   const selectClaimType = (type: ClaimType) => {

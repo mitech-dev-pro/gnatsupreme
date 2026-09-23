@@ -7,6 +7,7 @@ import MemberProtectedRoute from "@/components/MemberProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import AppLoading from "@/components/ui/AppLoading";
 import RoleProtectedRoute from "@/components/RoleProtectedRoute";
+import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 
 const Login = lazy(() => import("@/pages/auth/Login"));
 const ResetPassword = lazy(() => import("@/pages/auth/ResetPassword"));
@@ -39,6 +40,7 @@ const REGIONAL_ROLES = [...NATIONAL_ROLES, "REGIONAL_ADMIN"];
 
 export default function App() {
   return (
+    <ChunkErrorBoundary>
     <AuthProvider>
       <MemberAuthProvider>
         <Suspense fallback={<AppLoading label="Loading page" />}>
@@ -94,5 +96,6 @@ export default function App() {
         </Suspense>
       </MemberAuthProvider>
     </AuthProvider>
+    </ChunkErrorBoundary>
   );
 }

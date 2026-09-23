@@ -40,7 +40,11 @@ const memberCookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === "production",
   sameSite: "lax" as const,
-  path: "/api/member-auth",
+  // Not scoped to "/api/member-auth" -- that couples the cookie to wherever a given
+  // deployment's reverse proxy happens to mount the API, which broke refresh entirely on a
+  // deployment whose proxy used a different prefix even though every other (Bearer-token)
+  // request worked fine.
+  path: "/",
 };
 
 function setMemberCookie(response: Response, token: string) {

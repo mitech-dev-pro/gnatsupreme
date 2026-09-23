@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import api, { setMemberAccessToken } from "@/lib/api";
+import api, { decodeJwtExpiry, setMemberAccessToken } from "@/lib/api";
 import { isMemberPortalPath } from "@/lib/utils";
 
 export type MemberUser = {
@@ -38,13 +38,45 @@ type MemberAuthContextType = {
 
 const MemberAuthContext = createContext<MemberAuthContextType | undefined>(undefined);
 
+// How long before the access token's real expiry to proactively refresh it, so an active
+// session never gets caught by surprise mid-request.
+const REFRESH_BUFFER_MS = 2 * 60 * 1_000;
+
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
   const refreshStarted = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const memberId = member?.id;
+
+  const scheduleRefresh = useCallback((token: string) => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    const expiresAt = decodeJwtExpiry(token);
+    if (!expiresAt) return;
+    const delay = Math.max(expiresAt - Date.now() - REFRESH_BUFFER_MS, 5_000);
+    refreshTimer.current = setTimeout(() => {
+      (async () => {
+        try {
+          const res = await api.post("/member-auth/refresh");
+          setMemberAccessToken(res.data.accessToken);
+          setMember(res.data.member);
+          scheduleRefresh(res.data.accessToken);
+        } catch {
+          setMemberAccessToken(null);
+          setMember(null);
+        }
+      })();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, delay);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, []);
 
   // Runs once per new member session (login, setup, or a page-load refresh) — not on every
   // render — so a stale re-check can't undo the optimistic markProfileComplete() below.
@@ -75,6 +107,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
         const res = await api.post("/member-auth/refresh");
         setMemberAccessToken(res.data.accessToken);
         setMember(res.data.member);
+        scheduleRefresh(res.data.accessToken);
       } catch {
         setMemberAccessToken(null);
         setMember(null);
@@ -82,14 +115,18 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     })();
-  }, []);
+  }, [scheduleRefresh]);
 
-  const login = useCallback(async (controllerId: string, password: string) => {
-    const res = await api.post("/member-auth/login", { controllerId, password });
-    setMemberAccessToken(res.data.accessToken);
-    setMember(res.data.member);
-    return res.data.member as MemberUser;
-  }, []);
+  const login = useCallback(
+    async (controllerId: string, password: string) => {
+      const res = await api.post("/member-auth/login", { controllerId, password });
+      setMemberAccessToken(res.data.accessToken);
+      setMember(res.data.member);
+      scheduleRefresh(res.data.accessToken);
+      return res.data.member as MemberUser;
+    },
+    [scheduleRefresh],
+  );
 
   const setupAccount = useCallback(
     async (input: {
@@ -102,9 +139,10 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
       const res = await api.post("/member-auth/setup-account", input);
       setMemberAccessToken(res.data.accessToken);
       setMember(res.data.member);
+      scheduleRefresh(res.data.accessToken);
       return res.data.member as MemberUser;
     },
-    [],
+    [scheduleRefresh],
   );
 
   const forgotPassword = useCallback(async (controllerId: string) => {
@@ -118,6 +156,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
     try {
       await api.post("/member-auth/logout");
     } finally {

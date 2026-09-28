@@ -2,7 +2,11 @@ import { z } from "zod";
 
 import { isMinor } from "../../lib/age.js";
 
-const optionalDate = z.coerce.date().max(new Date(), "Date cannot be in the future").nullable().optional();
+const optionalDate = z.coerce
+  .date()
+  .max(new Date(), "Date cannot be in the future")
+  .nullable()
+  .optional();
 const optionalText = z.string().trim().max(120).nullable().optional();
 const ghanaCard = z
   .string()
@@ -34,12 +38,18 @@ export const beneficiaryBaseSchema = z.object({
   trusteeGhanaCardId: ghanaCard,
 });
 
-export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) => {
-  if (!isMinor(value.dateOfBirth ?? null)) return;
-  if (!value.trusteeName) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["trusteeName"], message: "Trustee name is required for a beneficiary under 18" });
-  }
-});
+export const beneficiarySchema = beneficiaryBaseSchema.superRefine(
+  (value, ctx) => {
+    if (!isMinor(value.dateOfBirth ?? null)) return;
+    if (!value.trusteeName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["trusteeName"],
+        message: "Trustee name is required for a beneficiary under 18",
+      });
+    }
+  },
+);
 
 const memberFields = {
   // Not digits-only -- non-teaching staff IDs are alphanumeric (e.g. "GNATNT2020001",
@@ -54,7 +64,13 @@ const memberFields = {
   fullName: z.string().trim().min(2).max(120),
   ghanaCardId: ghanaCard,
   phone: z.string().trim().min(7).max(30).nullable().optional(),
-  email: z.string().trim().toLowerCase().email("Enter a valid email address").nullable().optional(),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email address")
+    .nullable()
+    .optional(),
   school: z.string().trim().min(2).max(160),
   // Required for TEACHING, optional for NON_TEACHING (which uses placeOfWork/regionId instead) --
   // see createMemberSchema's refinement below. A DISTRICT_ADMIN caller always has this forced to
@@ -85,7 +101,11 @@ export const createMemberSchema = z
   })
   .superRefine((value, ctx) => {
     if (!value.gender) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gender"], message: "Select a gender" });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["gender"],
+        message: "Select a gender",
+      });
     }
     const category = value.employmentCategory ?? "TEACHING";
     if (category === "TEACHING") {
@@ -116,13 +136,25 @@ export const createMemberSchema = z
 export const updateMemberSchema = z
   .object(memberFields)
   .partial()
-  .refine((value) => Object.keys(value).length > 0, "Provide at least one field to update");
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "Provide at least one field to update",
+  );
 
 export const memberStatusSchema = z.object({
-  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"]),
+  status: z.enum([
+    "ACTIVE",
+    "PENDING",
+    "FLAGGED",
+    "RETURNED",
+    "REMOVED",
+    "INACTIVE",
+  ]),
 });
 
-export const memberIdParamsSchema = z.object({ id: z.coerce.number().int().positive() });
+export const memberIdParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
 export const beneficiaryIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
   beneficiaryId: z.coerce.number().int().positive(),
@@ -132,7 +164,9 @@ export const memberQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().trim().max(120).optional(),
-  status: z.enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"]).optional(),
+  status: z
+    .enum(["ACTIVE", "PENDING", "FLAGGED", "RETURNED", "REMOVED", "INACTIVE"])
+    .optional(),
   regionId: z.coerce.number().int().positive().optional(),
   districtId: z.coerce.number().int().positive().optional(),
   school: z.string().trim().max(160).optional(),

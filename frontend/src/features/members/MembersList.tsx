@@ -268,6 +268,19 @@ export default function MembersList() {
   const [selected, setSelected] = useState<number[]>([]);
   const [stats, setStats] = useState<MemberStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  // Starts open when a filter is already active (e.g. from a shared/bookmarked URL) so the
+  // applied filters aren't hidden behind a click; otherwise starts collapsed.
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    Boolean(
+      params.get("status") ||
+        params.get("regionId") ||
+        params.get("districtId") ||
+        params.get("school") ||
+        params.get("missingFromReport20") ||
+        params.get("registered") ||
+        params.get("employmentCategory"),
+    ),
+  );
 
   const page = Math.max(1, Number(params.get("page")) || 1);
   const search = params.get("search") ?? "";
@@ -291,6 +304,15 @@ export default function MembersList() {
       registered ||
       employmentCategory,
   );
+  // Status and Registration share one dropdown, so they count as a single active facet.
+  const activeFilterCount = [
+    status || registered,
+    regionId,
+    districtId,
+    school,
+    employmentCategory,
+    missingFromReport20,
+  ].filter(Boolean).length;
   const pageTitle = PAGE_TITLES[status] ?? "Members";
 
   const isDistrictAdmin = user?.role === "DISTRICT_ADMIN";
@@ -465,7 +487,7 @@ export default function MembersList() {
 
       <StatCards stats={stats} loading={statsLoading} />
 
-      <section className="members-toolbar" aria-label="Member filters">
+      <section className="members-toolbar" aria-label="Member search">
         <form onSubmit={submitSearch} className="members-search">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -479,103 +501,19 @@ export default function MembersList() {
           />
           <button type="submit">Search</button>
         </form>
-        <Dropdown
-          className="w-47.5"
-          value={status || (registered === "true" ? "REGISTERED" : registered === "false" ? "NOT_REGISTERED" : "")}
-          onChange={onStatusChange}
-          aria-label="Filter by status"
-          options={[
-            { value: "", label: "All statuses" },
-            ...STATUSES.map((item) => ({
-              value: item,
-              label: item.charAt(0) + item.slice(1).toLowerCase(),
-            })),
-          ]}
-          groups={[
-            {
-              label: "Registration",
-              options: [
-                { value: "REGISTERED", label: "Registered" },
-                { value: "NOT_REGISTERED", label: "Not registered" },
-              ],
-            },
-          ]}
-        />
-        {canSeeRegion && (
-          <Dropdown
-            className="w-42.5"
-            value={regionId}
-            onChange={onRegionChange}
-            aria-label="Filter by region"
-            options={[
-              { value: "", label: "All regions" },
-              ...regionOptions.map((r) => ({
-                value: String(r.id),
-                label: r.name,
-              })),
-            ]}
-          />
-        )}
-        {canSeeDistrict && (
-          <Dropdown
-            className="w-47.5"
-            value={districtId}
-            onChange={onDistrictChange}
-            aria-label="Filter by district"
-            options={
-              regionId
-                ? [
-                    { value: "", label: "All districts" },
-                    ...districtsForRegion.map((d) => ({
-                      value: String(d.id),
-                      label: d.name,
-                    })),
-                  ]
-                : [{ value: "", label: "All districts" }]
-            }
-            groups={
-              regionId
-                ? undefined
-                : regions.map((region) => ({
-                    label: region,
-                    options: districts
-                      .filter((item) => item.region.name === region)
-                      .map((item) => ({
-                        value: String(item.id),
-                        label: item.name,
-                      })),
-                  }))
-            }
-          />
-        )}
-        <Dropdown
-          className="w-47.5"
-          value={school}
-          onChange={onSchoolChange}
-          aria-label="Filter by school"
-          disabled={!schoolsEnabled}
-          dropdownCategory="schools"
-          placeholder={schoolsEnabled ? "All schools" : "Select a district first"}
-          options={
-            schoolsEnabled
-              ? [
-                  { value: "", label: "All schools" },
-                  ...schools.map((s) => ({ value: s, label: s })),
-                ]
-              : []
-          }
-        />
-        <Dropdown
-          className="w-47.5"
-          value={employmentCategory}
-          onChange={(value) => updateParams({ employmentCategory: value || null, page: null })}
-          aria-label="Filter by employment category"
-          options={[
-            { value: "", label: "Teaching and non-teaching" },
-            { value: "TEACHING", label: "Teaching" },
-            { value: "NON_TEACHING", label: "Non-teaching staff" },
-          ]}
-        />
+        <button
+          type="button"
+          className="members-button"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          Filters
+          {activeFilterCount > 0 && (
+            <b aria-hidden="true" className="members-filters-count">
+              {activeFilterCount}
+            </b>
+          )}
+        </button>
         <label className="members-page-size">
           <span>Show</span>
           <Dropdown
@@ -589,34 +527,136 @@ export default function MembersList() {
             }))}
           />
         </label>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12.5,
-            color: "#5b6472",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={missingFromReport20}
-            onChange={(event) =>
-              updateParams({
-                missingFromReport20: event.target.checked ? "1" : null,
-                page: null,
-              })
+      </section>
+
+      {filtersOpen && (
+        <section className="members-toolbar" aria-label="Member filters">
+          <Dropdown
+            className="w-47.5"
+            value={status || (registered === "true" ? "REGISTERED" : registered === "false" ? "NOT_REGISTERED" : "")}
+            onChange={onStatusChange}
+            aria-label="Filter by status"
+            options={[
+              { value: "", label: "All statuses" },
+              ...STATUSES.map((item) => ({
+                value: item,
+                label: item.charAt(0) + item.slice(1).toLowerCase(),
+              })),
+            ]}
+            groups={[
+              {
+                label: "Registration",
+                options: [
+                  { value: "REGISTERED", label: "Registered" },
+                  { value: "NOT_REGISTERED", label: "Not registered" },
+                ],
+              },
+            ]}
+          />
+          {canSeeRegion && (
+            <Dropdown
+              className="w-42.5"
+              value={regionId}
+              onChange={onRegionChange}
+              aria-label="Filter by region"
+              options={[
+                { value: "", label: "All regions" },
+                ...regionOptions.map((r) => ({
+                  value: String(r.id),
+                  label: r.name,
+                })),
+              ]}
+            />
+          )}
+          {canSeeDistrict && (
+            <Dropdown
+              className="w-47.5"
+              value={districtId}
+              onChange={onDistrictChange}
+              aria-label="Filter by district"
+              options={
+                regionId
+                  ? [
+                      { value: "", label: "All districts" },
+                      ...districtsForRegion.map((d) => ({
+                        value: String(d.id),
+                        label: d.name,
+                      })),
+                    ]
+                  : [{ value: "", label: "All districts" }]
+              }
+              groups={
+                regionId
+                  ? undefined
+                  : regions.map((region) => ({
+                      label: region,
+                      options: districts
+                        .filter((item) => item.region.name === region)
+                        .map((item) => ({
+                          value: String(item.id),
+                          label: item.name,
+                        })),
+                    }))
+              }
+            />
+          )}
+          <Dropdown
+            className="w-47.5"
+            value={school}
+            onChange={onSchoolChange}
+            aria-label="Filter by school"
+            disabled={!schoolsEnabled}
+            dropdownCategory="schools"
+            placeholder={schoolsEnabled ? "All schools" : "Select a district first"}
+            options={
+              schoolsEnabled
+                ? [
+                    { value: "", label: "All schools" },
+                    ...schools.map((s) => ({ value: s, label: s })),
+                  ]
+                : []
             }
           />
-          Missing from Report 20
-        </label>
-        {filtered && (
-          <button className="members-clear" type="button" onClick={clearFilters}>
-            Clear filters
-          </button>
-        )}
-      </section>
+          <Dropdown
+            className="w-47.5"
+            value={employmentCategory}
+            onChange={(value) => updateParams({ employmentCategory: value || null, page: null })}
+            aria-label="Filter by employment category"
+            options={[
+              { value: "", label: "Teaching and non-teaching" },
+              { value: "TEACHING", label: "Teaching" },
+              { value: "NON_TEACHING", label: "Non-teaching staff" },
+            ]}
+          />
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12.5,
+              color: "#5b6472",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={missingFromReport20}
+              onChange={(event) =>
+                updateParams({
+                  missingFromReport20: event.target.checked ? "1" : null,
+                  page: null,
+                })
+              }
+            />
+            Missing from Report 20
+          </label>
+          {filtered && (
+            <button className="members-clear" type="button" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </section>
+      )}
 
       {selectedDistrict && (
         <div className="members-filter-note">

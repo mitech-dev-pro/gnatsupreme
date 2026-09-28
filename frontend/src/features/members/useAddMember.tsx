@@ -1,6 +1,12 @@
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
+import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
+import {
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 import { isMinor } from "@/lib/utils";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -13,10 +19,12 @@ import {
 } from "./AddMember.model";
 export function useAddMember() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { districts, loading: districtsLoading } = useDistricts();
   const [controllerId, setControllerId] = useState("");
   const [fullName, setFullName] = useState("");
-  const [ghanaCardId, setGhanaCardId] = useState("");
+  const [gender, setGender] = useState<"" | "MALE" | "FEMALE">("");
+  const [ghanaCardId, setGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [phone, setPhone] = useState("");
   const [school, setSchool] = useState("");
   const [employmentCategory, setEmploymentCategory] = useState<"TEACHING" | "NON_TEACHING">(
@@ -24,9 +32,12 @@ export function useAddMember() {
   );
   const [districtId, setDistrictId] = useState("");
   const [districtSearch, setDistrictSearch] = useState("");
+  // Only relevant when employmentCategory is NON_TEACHING and District isn't set.
+  const [placeOfWork, setPlaceOfWork] = useState("");
+  const [regionId, setRegionId] = useState("");
   const [includeSpouse, setIncludeSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
+  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([emptyBeneficiary()]);
   const [errors, setErrors] = useState<Errors>({});
   const [submitError, setSubmitError] = useState("");
@@ -39,13 +50,37 @@ export function useAddMember() {
   const employmentSection = useRef<HTMLElement>(null);
   const householdSection = useRef<HTMLElement>(null);
   const selectedDistrict = districts.find((item) => String(item.id) === districtId);
+  const isNonTeaching = employmentCategory === "NON_TEACHING";
+  // REGIONAL_ADMIN/DISTRICT_ADMIN never pick a region themselves -- it's always their own, fixed
+  // and read-only (mirrors resolveMemberRegionId server-side). Only SUPER_ADMIN/NATIONAL_ADMIN,
+  // who have no fixed region, get a real picker.
+  const needsRegionPicker = user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN";
+  const regionOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [districts]);
+  const ownRegionName = useMemo(() => {
+    if (user?.role === "REGIONAL_ADMIN") {
+      return regionOptions.find((r) => r.id === user.regionId)?.name ?? "";
+    }
+    if (user?.role === "DISTRICT_ADMIN") {
+      return districts.find((item) => item.id === user.districtId)?.region.name ?? "";
+    }
+    return "";
+  }, [user, districts, regionOptions]);
   const isDirty = Boolean(
     controllerId ||
     fullName ||
-    ghanaCardId ||
+    gender ||
+    hasGhanaCardIdDigits(ghanaCardId) ||
     phone ||
     school ||
     districtId ||
+    placeOfWork ||
+    regionId ||
     includeSpouse ||
     beneficiaries.some((item) => item.fullName || item.dateOfBirth || item.trusteeName),
   );
@@ -71,9 +106,10 @@ export function useAddMember() {
   const requiredValues = [
     controllerId,
     fullName,
-    school,
-    districtId,
-    beneficiaries[0]?.fullName ?? "",
+    gender,
+    ...(isNonTeaching
+      ? [placeOfWork, ...(needsRegionPicker ? [regionId] : [])]
+      : [school, districtId, beneficiaries[0]?.fullName ?? ""]),
     ...(includeSpouse ? [spouseName] : []),
   ];
   const completedRequired = requiredValues.filter((value) => value.trim()).length;
@@ -87,21 +123,36 @@ export function useAddMember() {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const validate = () => {
     const next: Errors = {};
-    if (!/^\d{4,7}$/.test(controllerId.trim()))
-      next.controllerId = "Enter a Controller ID containing 4 to 7 digits.";
+    if (!/^[A-Za-z0-9]{4,20}$/.test(controllerId.trim()))
+      next.controllerId = "Enter a Controller ID with 4 to 20 letters/digits.";
     if (fullName.trim().length < 2) next.fullName = "Enter the member's full legal name.";
-    if (ghanaCardId && !GHANA_CARD.test(ghanaCardId))
+    if (!gender) next.gender = "Select a gender.";
+    if (hasGhanaCardIdDigits(ghanaCardId) && !GHANA_CARD.test(ghanaCardId))
       next.ghanaCardId = "Use the format GHA-000000000-0.";
     if (phone && phone.trim().length < 7) next.phone = "Enter a valid phone number.";
-    if (school.trim().length < 2) next.school = "Enter the member's school.";
-    if (!districtId) next.districtId = "Select a district.";
+    if (isNonTeaching) {
+      if (placeOfWork.trim().length < 2)
+        next.placeOfWork = "Enter the member's place of work.";
+      if (needsRegionPicker && !regionId) next.regionId = "Select a region.";
+    } else {
+      if (school.trim().length < 2) next.school = "Enter the member's school.";
+      if (!districtId) next.districtId = "Select a district.";
+    }
     if (includeSpouse && spouseName.trim().length < 2)
       next.spouseName = "Enter the spouse's full name.";
-    if (spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId))
+    if (hasGhanaCardIdDigits(spouseGhanaCardId) && !GHANA_CARD.test(spouseGhanaCardId))
       next.spouseGhanaCardId = "Use the format GHA-000000000-0.";
-    if (ghanaCardId && spouseGhanaCardId && ghanaCardId === spouseGhanaCardId)
+    if (
+      hasGhanaCardIdDigits(ghanaCardId) &&
+      hasGhanaCardIdDigits(spouseGhanaCardId) &&
+      ghanaCardId === spouseGhanaCardId
+    )
       next.spouseGhanaCardId = "Member and spouse cannot use the same Ghana Card ID.";
+    // Non-teaching staff aren't required to have a beneficiary on file -- an untouched default
+    // draft shouldn't block submission, though anything actually filled in still gets validated.
     beneficiaries.forEach((item, index) => {
+      if (isNonTeaching && !item.fullName.trim() && !item.dateOfBirth && !item.trusteeName.trim())
+        return;
       if (item.fullName.trim().length < 2)
         next[`beneficiaries.${index}.fullName`] = "Enter the beneficiary's full name.";
       if (item.dateOfBirth && item.dateOfBirth > new Date().toISOString().slice(0, 10))
@@ -143,23 +194,28 @@ export function useAddMember() {
       const response = await api.post("/members", {
         controllerId: controllerId.trim(),
         fullName: fullName.trim(),
-        ghanaCardId: ghanaCardId || null,
+        gender,
+        ghanaCardId: ghanaCardIdOrNull(ghanaCardId),
         phone: phone.trim() || null,
         school: school.trim(),
         employmentCategory,
-        districtId: Number(districtId),
+        districtId: districtId ? Number(districtId) : null,
+        placeOfWork: isNonTeaching ? placeOfWork.trim() : null,
+        regionId: isNonTeaching && needsRegionPicker && regionId ? Number(regionId) : undefined,
         spouse: includeSpouse
           ? {
               fullName: spouseName.trim(),
-              ghanaCardId: spouseGhanaCardId || null,
+              ghanaCardId: ghanaCardIdOrNull(spouseGhanaCardId),
             }
           : null,
-        beneficiaries: beneficiaries.map((item) => ({
-          fullName: item.fullName.trim(),
-          relationship: item.relationship,
-          dateOfBirth: item.dateOfBirth || null,
-          trusteeName: item.trusteeName.trim() || null,
-        })),
+        beneficiaries: beneficiaries
+          .filter((item) => item.fullName.trim())
+          .map((item) => ({
+            fullName: item.fullName.trim(),
+            relationship: item.relationship,
+            dateOfBirth: item.dateOfBirth || null,
+            trusteeName: item.trusteeName.trim() || null,
+          })),
       });
       setCreated(response.data.data);
       setReviewing(false);
@@ -182,15 +238,18 @@ export function useAddMember() {
   const startAnother = () => {
     setControllerId("");
     setFullName("");
-    setGhanaCardId("");
+    setGender("");
+    setGhanaCardId(GHANA_CARD_ID_PREFIX);
     setPhone("");
     setSchool("");
     setEmploymentCategory("TEACHING");
     setDistrictId("");
     setDistrictSearch("");
+    setPlaceOfWork("");
+    setRegionId("");
     setIncludeSpouse(false);
     setSpouseName("");
-    setSpouseGhanaCardId("");
+    setSpouseGhanaCardId(GHANA_CARD_ID_PREFIX);
     setBeneficiaries([emptyBeneficiary()]);
     setErrors({});
     setSubmitError("");
@@ -205,6 +264,8 @@ export function useAddMember() {
     setControllerId,
     fullName,
     setFullName,
+    gender,
+    setGender,
     ghanaCardId,
     setGhanaCardId,
     phone,
@@ -217,6 +278,14 @@ export function useAddMember() {
     setDistrictId,
     districtSearch,
     setDistrictSearch,
+    placeOfWork,
+    setPlaceOfWork,
+    regionId,
+    setRegionId,
+    isNonTeaching,
+    needsRegionPicker,
+    regionOptions,
+    ownRegionName,
     includeSpouse,
     setIncludeSpouse,
     spouseName,

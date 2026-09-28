@@ -16,10 +16,13 @@ export const querySchema = z.object({
 });
 export const idSchema = z.object({ id: z.coerce.number().int().positive() });
 export const lookupSchema = z.object({
+  // Not digits-only -- see member.schemas.ts's memberFields.controllerId (non-teaching staff IDs
+  // are alphanumeric, same ID space as teaching staff's numeric Controller ID).
   staffId: z
     .string()
     .trim()
-    .regex(/^\d{4,7}$/, "Staff ID must contain 4 to 7 digits"),
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{4,20}$/, "Staff ID must be 4 to 20 letters/digits"),
 });
 export const estimateSchema = z.object({
   memberId: z.coerce.number().int().positive(),

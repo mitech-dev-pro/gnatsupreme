@@ -254,7 +254,9 @@ transferRouter.patch(
         if (body.data.decision === "APPROVED") {
           const moved = await transaction.member.updateMany({
             where: { id: existing.memberId, districtId: existing.fromDistrictId },
-            data: { districtId: existing.toDistrictId },
+            // regionId must move with districtId -- otherwise this member silently drops out of
+            // (or stays wrongly in) a REGIONAL_ADMIN's scope, which now filters on regionId.
+            data: { districtId: existing.toDistrictId, regionId: existing.toDistrict.regionId },
           });
           if (moved.count !== 1) {
             throw new TransferConflict("Member is no longer in the source district");

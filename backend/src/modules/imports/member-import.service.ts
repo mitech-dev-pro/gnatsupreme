@@ -3,12 +3,18 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
+import { resolveMemberRegionId } from "../members/member-region.js";
 import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
 
 const MAX_ROWS = 300_000;
 const aliases = {
   controllerId: ["controllerid", "employeeno", "employeenumber", "staffid"],
   fullName: ["fullname", "nameofemployee", "employeename", "name"],
+  // Composition fallback only -- used when a file has no fullName-alias column at all (the real
+  // non-teaching files split the name this way instead of a single Fullname column).
+  surname: ["surname", "sur_name", "lastname"],
+  firstname: ["firstname", "first_name", "givenname"],
+  otherNames: ["othernames", "other_names", "middlename"],
   school: ["school", "schoolname", "managementunit", "institution"],
   district: ["district", "districtname", "municipality", "mmda"],
   region: ["region", "regionname"],
@@ -20,6 +26,10 @@ const aliases = {
   beneficiaryRelationship: ["beneficiaryrelationship", "relationship"],
   beneficiaryDateOfBirth: ["beneficiarydateofbirth", "beneficiarydob"],
   trusteeName: ["trusteename"],
+  employmentCategory: ["employmentcategory", "stafftype"],
+  gender: ["gender", "sex"],
+  // Free-text workplace for a NON_TEACHING row with no real district.
+  placeOfWork: ["placeofwork", "workplace", "stationname"],
 } as const;
 
 type RawRow = { rowNumber: number; data: Record<string, string> };
@@ -53,7 +63,31 @@ function parseRelationship(value: string | null) {
     : null;
 }
 
-async function spreadsheetRows(filePath: string, mimeType: string): Promise<RawRow[]> {
+function parseGender(value: string | null) {
+  const normalizedValue = value?.trim().toLowerCase();
+  if (normalizedValue === "male" || normalizedValue === "m") return "MALE" as const;
+  if (normalizedValue === "female" || normalizedValue === "f") return "FEMALE" as const;
+  return null;
+}
+
+// Explicit-column-only parse; the job-level default and per-row inference (both of which need
+// more context than a single cell) are applied by the caller, not here.
+function parseExplicitEmploymentCategory(value: string | null) {
+  const normalizedValue = value?.trim().toLowerCase().replace(/[\s-]/g, "");
+  if (normalizedValue === "nonteaching" || normalizedValue === "nt") return "NON_TEACHING" as const;
+  if (normalizedValue === "teaching" || normalizedValue === "t") return "TEACHING" as const;
+  return null;
+}
+
+function hasColumn(headers: string[], names: readonly string[]) {
+  return headers.some((header) => names.some((name) => name === normalized(header)));
+}
+
+async function spreadsheetRows(
+  filePath: string,
+  mimeType: string,
+  defaultEmploymentCategory: "TEACHING" | "NON_TEACHING" | null,
+): Promise<RawRow[]> {
   let headers: string[] | null = null;
   const rows: RawRow[] = [];
   let dataRowCount = 0;
@@ -64,14 +98,23 @@ async function spreadsheetRows(filePath: string, mimeType: string): Promise<RawR
       cells.forEach((text, column) => {
         if (column > 0) headers![column] = text.trim() || `Column ${column}`;
       });
-      for (const required of [
-        aliases.controllerId,
-        aliases.fullName,
-        aliases.school,
-        aliases.district,
-      ]) {
-        if (!headers.some((header) => required.some((name) => name === normalized(header)))) {
-          throw new Error("Controller ID, Full Name, School, and District columns are required");
+      if (!hasColumn(headers, aliases.controllerId)) {
+        throw new Error("Controller ID column is required");
+      }
+      const hasFullName =
+        hasColumn(headers, aliases.fullName) ||
+        (hasColumn(headers, aliases.surname) && hasColumn(headers, aliases.firstname));
+      if (!hasFullName) {
+        throw new Error("Full Name (or Surname/Firstname) columns are required");
+      }
+      // School/District are only required when this file wasn't declared non-teaching on the
+      // upload screen -- a non-teaching file uses Place of Work instead, and per-row detection
+      // (explicit column, still possible even in a "declared teaching" file) can override this.
+      if (defaultEmploymentCategory !== "NON_TEACHING") {
+        for (const required of [aliases.school, aliases.district]) {
+          if (!hasColumn(headers, required)) {
+            throw new Error("School and District columns are required for teaching staff");
+          }
         }
       }
       continue;
@@ -112,7 +155,11 @@ export async function stageMemberImport(
   mimeType: string,
   user: AuthenticatedUser,
 ) {
-  const sourceRows = await spreadsheetRows(filePath, mimeType);
+  const job = await prisma.importJob.findUniqueOrThrow({
+    where: { id: jobId },
+    select: { defaultEmploymentCategory: true, defaultRegionId: true },
+  });
+  const sourceRows = await spreadsheetRows(filePath, mimeType, job.defaultEmploymentCategory);
   await prisma.importJob.update({
     where: { id: jobId },
     data: { totalRows: sourceRows.length, processedRows: 0 },
@@ -120,6 +167,28 @@ export async function stageMemberImport(
   const districts = await prisma.district.findMany({
     include: { region: { select: { name: true } } },
   });
+  // For resolving a NON_TEACHING row's region: explicit Region cell (normalized the same way
+  // district names are) first, falling back to the job's defaultRegionId / the uploader's own
+  // region inside resolveMemberRegionId.
+  const regionIdByNormalizedName = new Map(
+    districts.map((d) => [normalizeDistrictName(d.region.name), d.regionId]),
+  );
+  // Computed once for the whole job, not per row -- a DISTRICT_ADMIN's own region (via their
+  // fixed district) or a REGIONAL_ADMIN's own regionId. Irrelevant for SUPER_ADMIN/NATIONAL_ADMIN,
+  // who supply an explicit region instead (job.defaultRegionId, set from the upload screen).
+  const ownRegionId =
+    user.role === "REGIONAL_ADMIN"
+      ? user.regionId
+      : user.role === "DISTRICT_ADMIN"
+        ? (districts.find((d) => d.id === user.districtId)?.regionId ?? null)
+        : null;
+  // DISTRICT_ADMIN always enrolls into their own district -- a district-less NON_TEACHING member
+  // would otherwise be invisible on this admin's own list (REGIONAL_ADMIN/SUPER_ADMIN/
+  // NATIONAL_ADMIN are the only roles that can create one). Only forced for rows that end up
+  // NON_TEACHING with no district of their own; a TEACHING row keeps its normal
+  // resolve/out-of-scope behavior unchanged.
+  const districtAdminOwnDistrict =
+    user.role === "DISTRICT_ADMIN" ? districts.find((d) => d.id === user.districtId) : undefined;
   const districtAliases = await prisma.districtAlias.findMany({
     select: { alias: true, districtId: true },
   });
@@ -182,15 +251,44 @@ export async function stageMemberImport(
   const rows: Prisma.MemberBulkImportRowCreateManyInput[] = sourceRows.map(
     ({ rowNumber, data }) => {
       const issues: string[] = [];
-      const controllerId = readField(data, aliases.controllerId)?.replace(/\s/g, "") ?? null;
-      const fullName = readField(data, aliases.fullName);
-      const school = readField(data, aliases.school);
+      const controllerId =
+        readField(data, aliases.controllerId)?.replace(/\s/g, "").toUpperCase() ?? null;
+      const surname = readField(data, aliases.surname);
+      const firstname = readField(data, aliases.firstname);
+      const otherNames = readField(data, aliases.otherNames);
+      // Fallback only -- a file with a Fullname column matches that first, unchanged.
+      const fullName =
+        readField(data, aliases.fullName) ??
+        (surname && firstname
+          ? [firstname, otherNames, surname].filter(Boolean).join(" ")
+          : null);
       const districtName = readField(data, aliases.district);
       const regionName = readField(data, aliases.region);
       const ghanaCardId = readField(data, aliases.ghanaCardId)?.toUpperCase() ?? null;
-      const { district, ambiguous: districtAmbiguous } = districtName
+      const { district: resolvedDistrict, ambiguous: districtAmbiguous } = districtName
         ? resolveDistrict(districtName, regionName, districts, aliasMap)
         : { district: null, ambiguous: false };
+      const gender = parseGender(readField(data, aliases.gender));
+      const placeOfWork = readField(data, aliases.placeOfWork);
+
+      // Category detection, in priority order: explicit per-row column, the job's file-level
+      // default (from the upload screen), then inference as a last resort (e.g. a legacy
+      // pre-migration job being resumed, or a direct API caller bypassing the upload screen).
+      const employmentCategory: "TEACHING" | "NON_TEACHING" =
+        parseExplicitEmploymentCategory(readField(data, aliases.employmentCategory)) ??
+        job.defaultEmploymentCategory ??
+        (placeOfWork && !resolvedDistrict ? "NON_TEACHING" : "TEACHING");
+      const isNonTeaching = employmentCategory === "NON_TEACHING";
+
+      // District-admin fix: only for a NON_TEACHING row that didn't otherwise resolve a district
+      // -- a TEACHING row keeps its normal resolve/out-of-scope behavior unchanged, and a
+      // NON_TEACHING row that *did* name a real district is left as-is too.
+      const district =
+        isNonTeaching && !resolvedDistrict && districtAdminOwnDistrict
+          ? districtAdminOwnDistrict
+          : resolvedDistrict;
+
+      const school = isNonTeaching ? "Head Office" : readField(data, aliases.school);
       const beneficiaryName = readField(data, aliases.beneficiaryName);
       const relationshipValue = readField(data, aliases.beneficiaryRelationship);
       const relationship = parseRelationship(relationshipValue);
@@ -201,18 +299,24 @@ export async function stageMemberImport(
         "Beneficiary date of birth",
         issues,
       );
-      if (!controllerId || !/^\d{4,7}$/.test(controllerId))
-        issues.push("Controller ID must contain 4 to 7 digits");
+      if (!controllerId || !/^[A-Z0-9]{4,20}$/.test(controllerId))
+        issues.push("Controller ID must be 4 to 20 letters/digits");
       if (!fullName || fullName.length < 2) issues.push("Full name is required");
-      if (!school || school.length < 2) issues.push("School is required");
-      if (!districtName) issues.push("District is required");
-      else if (!district)
-        issues.push(
-          districtAmbiguous ? "District is ambiguous; include Region" : "District was not found",
-        );
-      if (!beneficiaryName) issues.push("Beneficiary name is required");
-      if (!relationship)
-        issues.push("Beneficiary relationship must be CHILD, SPOUSE, PARENT, SIBLING, or OTHER");
+      if (!gender) issues.push("Gender must be Male or Female");
+      if (isNonTeaching) {
+        if (!placeOfWork || placeOfWork.length < 2)
+          issues.push("Place of work is required for non-teaching staff");
+      } else {
+        if (!school || school.length < 2) issues.push("School is required");
+        if (!districtName) issues.push("District is required");
+        else if (!district)
+          issues.push(
+            districtAmbiguous ? "District is ambiguous; include Region" : "District was not found",
+          );
+        if (!beneficiaryName) issues.push("Beneficiary name is required");
+        if (!relationship)
+          issues.push("Beneficiary relationship must be CHILD, SPOUSE, PARENT, SIBLING, or OTHER");
+      }
       if (ghanaCardId && !/^GHA-\d{9}-\d$/.test(ghanaCardId))
         issues.push("Ghana Card ID has an invalid format");
       if (spouseGhanaCardId && !spouseName)
@@ -221,6 +325,23 @@ export async function stageMemberImport(
         issues.push("Spouse Ghana Card ID has an invalid format");
       if (ghanaCardId && spouseGhanaCardId === ghanaCardId)
         issues.push("Member and spouse cannot use the same Ghana Card ID");
+
+      let regionId: number | null = null;
+      if (isNonTeaching) {
+        const regionCellId = regionName
+          ? (regionIdByNormalizedName.get(normalizeDistrictName(regionName)) ?? null)
+          : null;
+        const explicitRegionId: number | null = regionCellId ?? job.defaultRegionId ?? null;
+        const resolvedRegion = resolveMemberRegionId(user, {
+          districtRegionId: district?.regionId ?? null,
+          explicitRegionId,
+          ownRegionId,
+        });
+        if (resolvedRegion.issue) issues.push(resolvedRegion.issue);
+        regionId = resolvedRegion.regionId;
+      } else if (district) {
+        regionId = district.regionId;
+      }
 
       let status: keyof typeof counts = "READY";
       if (issues.length) status = "INVALID";
@@ -262,6 +383,8 @@ export async function stageMemberImport(
         school,
         districtName,
         districtId: district?.id,
+        regionId,
+        employmentCategory,
         ghanaCardId,
         phone: readField(data, aliases.phone),
         report20Matched: controllerId ? reportIds.has(controllerId) : false,
@@ -303,5 +426,7 @@ export function bulkRawFields(raw: Prisma.JsonValue) {
     beneficiaryRelationship: parseRelationship(readField(data, aliases.beneficiaryRelationship)),
     beneficiaryDateOfBirth: readField(data, aliases.beneficiaryDateOfBirth),
     trusteeName: readField(data, aliases.trusteeName),
+    gender: parseGender(readField(data, aliases.gender)),
+    placeOfWork: readField(data, aliases.placeOfWork),
   };
 }

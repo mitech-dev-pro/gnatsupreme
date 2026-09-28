@@ -1,6 +1,10 @@
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+} from "@/lib/ghanaCardId";
 import { useState, type FormEvent } from "react";
 import { inputClasses, labelClasses, type Spouse } from "./MemberHome.shared";
 
@@ -14,7 +18,7 @@ export function SpouseForm({
   onSubmitted: () => void;
 }) {
   const [fullName, setFullName] = useState(spouse?.fullName ?? "");
-  const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? "");
+  const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,7 +32,7 @@ export function SpouseForm({
         type: "SPOUSE",
         proposedData: {
           fullName: fullName.trim(),
-          ghanaCardId: ghanaCardId.trim() || null,
+          ghanaCardId: ghanaCardIdOrNull(ghanaCardId.trim()),
         },
         requestNote: note.trim() || undefined,
       });

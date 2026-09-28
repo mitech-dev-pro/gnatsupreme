@@ -4,7 +4,11 @@ import Dropdown from "@/components/ui/Dropdown";
 import { Alert } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import "./AddMember.css";
@@ -18,6 +22,8 @@ export default function AddMember() {
     setControllerId,
     fullName,
     setFullName,
+    gender,
+    setGender,
     ghanaCardId,
     setGhanaCardId,
     phone,
@@ -30,6 +36,14 @@ export default function AddMember() {
     setDistrictId,
     districtSearch,
     setDistrictSearch,
+    placeOfWork,
+    setPlaceOfWork,
+    regionId,
+    setRegionId,
+    isNonTeaching,
+    needsRegionPicker,
+    regionOptions,
+    ownRegionName,
     includeSpouse,
     setIncludeSpouse,
     spouseName,
@@ -142,7 +156,7 @@ export default function AddMember() {
             else {
               setIncludeSpouse(false);
               setSpouseName("");
-              setSpouseGhanaCardId("");
+              setSpouseGhanaCardId(GHANA_CARD_ID_PREFIX);
               setConfirmation(null);
             }
           }}
@@ -164,7 +178,11 @@ export default function AddMember() {
             <section>
               <h3>Member information</h3>
               <dl>
-                <SummaryRow label="Ghana Card" value={ghanaCardId} />
+                <SummaryRow label="Gender" value={gender === "MALE" ? "Male" : "Female"} />
+                <SummaryRow
+                  label="Ghana Card"
+                  value={hasGhanaCardIdDigits(ghanaCardId) ? ghanaCardId : ""}
+                />
                 <SummaryRow label="Phone" value={phone} />
               </dl>
             </section>
@@ -176,8 +194,24 @@ export default function AddMember() {
                   label="Employment category"
                   value={employmentCategory === "NON_TEACHING" ? "Non-teaching staff" : "Teaching"}
                 />
-                <SummaryRow label="District" value={selectedDistrict?.name} />
-                <SummaryRow label="Region" value={selectedDistrict?.region.name} />
+                {isNonTeaching && !selectedDistrict ? (
+                  <>
+                    <SummaryRow label="Place of work" value={placeOfWork} />
+                    <SummaryRow
+                      label="Region"
+                      value={
+                        needsRegionPicker
+                          ? regionOptions.find((r) => String(r.id) === regionId)?.name
+                          : ownRegionName
+                      }
+                    />
+                  </>
+                ) : (
+                  <>
+                    <SummaryRow label="District" value={selectedDistrict?.name} />
+                    <SummaryRow label="Region" value={selectedDistrict?.region.name} />
+                  </>
+                )}
               </dl>
             </section>
             <section>
@@ -186,7 +220,10 @@ export default function AddMember() {
                 {includeSpouse ? (
                   <>
                     <SummaryRow label="Name" value={spouseName} />
-                    <SummaryRow label="Ghana Card" value={spouseGhanaCardId} />
+                    <SummaryRow
+                      label="Ghana Card"
+                      value={hasGhanaCardIdDigits(spouseGhanaCardId) ? spouseGhanaCardId : ""}
+                    />
                   </>
                 ) : (
                   <SummaryRow label="Recorded" value="No" />
@@ -194,9 +231,11 @@ export default function AddMember() {
               </dl>
             </section>
             <section>
-              <h3>Beneficiaries ({beneficiaries.length})</h3>
+              <h3>Beneficiaries ({beneficiaries.filter((item) => item.fullName.trim()).length})</h3>
               <ol>
-                {beneficiaries.map((item, index) => (
+                {beneficiaries
+                  .filter((item) => item.fullName.trim())
+                  .map((item, index) => (
                   <li key={index}>
                     <strong>{item.fullName}</strong>
                     <span>
@@ -264,17 +303,16 @@ export default function AddMember() {
                 <Field
                   label="Controller ID"
                   required
-                  help="4 to 7 digits"
+                  help="4 to 20 letters/digits"
                   error={errors.controllerId}
                 >
                   <input
                     autoFocus
-                    inputMode="numeric"
                     value={controllerId}
                     onChange={(event) =>
-                      setControllerId(event.target.value.replace(/\D/g, "").slice(0, 7))
+                      setControllerId(event.target.value.toUpperCase().slice(0, 20))
                     }
-                    placeholder="e.g. 4545845"
+                    placeholder="e.g. 4545845 or GNATNT2020001"
                   />
                 </Field>
                 <Field label="Full legal name" required error={errors.fullName}>
@@ -282,6 +320,17 @@ export default function AddMember() {
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="As shown on official records"
+                  />
+                </Field>
+                <Field label="Gender" required error={errors.gender}>
+                  <Dropdown
+                    value={gender}
+                    onChange={(value) => setGender(value as "MALE" | "FEMALE")}
+                    placeholder="Select a gender"
+                    options={[
+                      { value: "MALE", label: "Male" },
+                      { value: "FEMALE", label: "Female" },
+                    ]}
                   />
                 </Field>
                 <Field
@@ -365,7 +414,16 @@ export default function AddMember() {
                     placeholder="Type to narrow the list"
                   />
                 </Field>
-                <Field label="District" required error={errors.districtId}>
+                <Field
+                  label="District"
+                  required={!isNonTeaching}
+                  error={errors.districtId}
+                  help={
+                    isNonTeaching
+                      ? "Optional for non-teaching staff — use Place of work instead."
+                      : undefined
+                  }
+                >
                   <Dropdown
                     value={districtId}
                     disabled={districtsLoading}
@@ -386,6 +444,39 @@ export default function AddMember() {
                     <strong>{selectedDistrict.name}</strong>
                     <small>{selectedDistrict.region.name} Region</small>
                   </div>
+                )}
+                {isNonTeaching && !districtId && (
+                  <>
+                    <Field
+                      label="Place of work"
+                      required
+                      error={errors.placeOfWork}
+                      help="Free text — where this member is stationed."
+                    >
+                      <input
+                        value={placeOfWork}
+                        onChange={(event) => setPlaceOfWork(event.target.value)}
+                        placeholder="e.g. Head Office, Finance Unit"
+                      />
+                    </Field>
+                    {needsRegionPicker ? (
+                      <Field label="Region" required error={errors.regionId}>
+                        <Dropdown
+                          value={regionId}
+                          onChange={setRegionId}
+                          placeholder="Select a region"
+                          options={regionOptions.map((r) => ({
+                            value: String(r.id),
+                            label: r.name,
+                          }))}
+                        />
+                      </Field>
+                    ) : (
+                      <Field label="Region" help="Fixed to your own region.">
+                        <input value={ownRegionName} disabled readOnly />
+                      </Field>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -408,7 +499,7 @@ export default function AddMember() {
                     type="button"
                     className={!includeSpouse ? "active" : ""}
                     onClick={() => {
-                      if (!includeSpouse || (!spouseName && !spouseGhanaCardId))
+                      if (!includeSpouse || (!spouseName && !hasGhanaCardIdDigits(spouseGhanaCardId)))
                         setIncludeSpouse(false);
                       else setConfirmation("spouse");
                     }}
@@ -445,7 +536,11 @@ export default function AddMember() {
               <div className="enroll-beneficiary-heading">
                 <div>
                   <h3>Beneficiaries</h3>
-                  <p>At least one beneficiary is required. Up to 10 may be recorded.</p>
+                  <p>
+                    {isNonTeaching
+                      ? "Optional for non-teaching staff. Up to 10 may be recorded."
+                      : "At least one beneficiary is required. Up to 10 may be recorded."}
+                  </p>
                 </div>
                 <button
                   type="button"

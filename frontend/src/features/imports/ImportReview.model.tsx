@@ -23,6 +23,7 @@ export type ImportRow = {
   fullName: string | null;
   school: string | null;
   districtName: string | null;
+  employmentCategory: "TEACHING" | "NON_TEACHING" | null;
   status: string;
   issues: string[] | null;
 };

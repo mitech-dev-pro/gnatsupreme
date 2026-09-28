@@ -5,6 +5,9 @@ export const memberInclude = {
   district: {
     select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } },
   },
+  // Only meaningful when there's no district (a NON_TEACHING member's regionId is set directly) --
+  // when a district exists, its own region already covers this and this relation is redundant.
+  region: { select: { id: true, name: true } },
   spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
   beneficiaries: {
     orderBy: { id: "asc" as const },

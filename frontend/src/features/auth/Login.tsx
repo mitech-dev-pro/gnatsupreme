@@ -2,7 +2,12 @@ import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
 import api from "@/lib/api";
 import { getApiError, getApiErrorStatus } from "@/lib/errorExtract";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
 import { type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
@@ -131,8 +136,8 @@ export default function Login() {
     e.preventDefault();
     setMemberError("");
 
-    if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+    if (!/^[A-Za-z0-9]{4,20}$/.test(controllerId.trim())) {
+      setMemberError(`Enter a valid ${settings.memberIdLabel}.`);
       return;
     }
 
@@ -167,8 +172,8 @@ export default function Login() {
     e.preventDefault();
     setMemberError("");
 
-    if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+    if (!/^[A-Za-z0-9]{4,20}$/.test(controllerId.trim())) {
+      setMemberError(`Enter a valid ${settings.memberIdLabel}.`);
       return;
     }
     if (!memberPassword) {
@@ -248,7 +253,7 @@ export default function Login() {
       setMemberError("Enter your spouse's full name.");
       return;
     }
-    if (hasSpouseDetails && spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId)) {
+    if (hasSpouseDetails && hasGhanaCardIdDigits(spouseGhanaCardId) && !GHANA_CARD.test(spouseGhanaCardId)) {
       setMemberError("Enter your spouse's Ghana Card ID in the format GHA-000000000-0.");
       return;
     }
@@ -280,7 +285,7 @@ export default function Login() {
         spouse: hasSpouseDetails
           ? {
               fullName: spouseName.trim(),
-              ghanaCardId: spouseGhanaCardId || null,
+              ghanaCardId: ghanaCardIdOrNull(spouseGhanaCardId),
             }
           : null,
         beneficiaries: startedBeneficiaries.map((item) => ({
@@ -303,8 +308,8 @@ export default function Login() {
     setMemberError("");
     setForgotMessage("");
 
-    if (!/^\d{4,7}$/.test(controllerId.trim())) {
-      setMemberError(`Enter a valid ${settings.memberIdLabel} (4 to 7 digits).`);
+    if (!/^[A-Za-z0-9]{4,20}$/.test(controllerId.trim())) {
+      setMemberError(`Enter a valid ${settings.memberIdLabel}.`);
       return;
     }
 
@@ -333,9 +338,9 @@ export default function Login() {
     setSetupEmail("");
     setSetupPassword("");
     setSetupConfirmPassword("");
-    setPolicyGhanaCardId("");
+    setPolicyGhanaCardId(GHANA_CARD_ID_PREFIX);
     setSpouseName("");
-    setSpouseGhanaCardId("");
+    setSpouseGhanaCardId(GHANA_CARD_ID_PREFIX);
     setBeneficiaries([emptyBeneficiary()]);
   };
   return (
@@ -579,13 +584,12 @@ export default function Login() {
                       id="controller-id"
                       value={controllerId}
                       onChange={(e) => {
-                        setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7));
+                        setControllerId(e.target.value.toUpperCase().slice(0, 20));
                         setMemberError("");
                       }}
                       // placeholder="e.g. 1188204"
-                      inputMode="numeric"
                       autoComplete="username"
-                      maxLength={7}
+                      maxLength={20}
                       readOnly={passwordStepVisible}
                       className={
                         passwordStepVisible
@@ -1120,12 +1124,11 @@ export default function Login() {
                       id="forgot-controller-id"
                       value={controllerId}
                       onChange={(e) => {
-                        setControllerId(e.target.value.replace(/\D/g, "").slice(0, 7));
+                        setControllerId(e.target.value.toUpperCase().slice(0, 20));
                         setMemberError("");
                       }}
                       // placeholder="e.g. 1188204"
-                      inputMode="numeric"
-                      maxLength={7}
+                      maxLength={20}
                       className={inputClasses.replace("pl-9", "pl-3")}
                     />
                   </div>

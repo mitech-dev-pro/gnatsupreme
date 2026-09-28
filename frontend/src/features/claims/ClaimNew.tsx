@@ -21,7 +21,11 @@ import {
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
-import { applyGhanaCardIdChange, formatGhanaCardIdInput } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  formatGhanaCardIdInput,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -336,7 +340,7 @@ export default function ClaimNew() {
     Boolean(claimType) &&
     nightsEligible &&
     documentsComplete &&
-    claimantIdNumber.trim().length >= 3;
+    hasGhanaCardIdDigits(claimantIdNumber);
 
   if (page === -1)
     return (

@@ -33,6 +33,8 @@ export default function MemberDetail() {
     setEditing,
     editFullName,
     setEditFullName,
+    editGender,
+    setEditGender,
     editGhanaCard,
     setEditGhanaCard,
     editPhone,
@@ -43,6 +45,12 @@ export default function MemberDetail() {
     setEditSchool,
     editEmploymentCategory,
     setEditEmploymentCategory,
+    editPlaceOfWork,
+    setEditPlaceOfWork,
+    editRegionId,
+    setEditRegionId,
+    needsRegionPicker,
+    regionOptions,
     employmentCategoryNote,
     lastTeachingSchoolRef,
     passwordResult,
@@ -132,6 +140,11 @@ export default function MemberDetail() {
                   {member.district ? (
                     <>
                       {member.district.name}, {member.district.region.name}
+                    </>
+                  ) : member.employmentCategory === "NON_TEACHING" && member.placeOfWork ? (
+                    <>
+                      {member.placeOfWork}
+                      {member.region ? `, ${member.region.name}` : ""}
                     </>
                   ) : (
                     <span className="font-semibold text-warning-accent">No district assigned</span>
@@ -320,6 +333,18 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
+                      <label className={labelClasses}>Gender</label>
+                      <Dropdown
+                        value={editGender}
+                        onChange={(value) => setEditGender(value as "MALE" | "FEMALE")}
+                        placeholder="Not set"
+                        options={[
+                          { value: "MALE", label: "Male" },
+                          { value: "FEMALE", label: "Female" },
+                        ]}
+                      />
+                    </div>
+                    <div>
                       <label className={labelClasses}>Ghana Card ID</label>
                       <input
                         value={editGhanaCard}
@@ -384,6 +409,40 @@ export default function MemberDetail() {
                         ]}
                       />
                     </div>
+                    {editEmploymentCategory === "NON_TEACHING" && !member.district && (
+                      <>
+                        <div>
+                          <label className={labelClasses}>Place of work</label>
+                          <input
+                            value={editPlaceOfWork}
+                            onChange={(e) => setEditPlaceOfWork(e.target.value)}
+                            placeholder="e.g. Head Office, Finance Unit"
+                            className={inputClasses}
+                          />
+                        </div>
+                        {needsRegionPicker ? (
+                          <div>
+                            <label className={labelClasses}>Region</label>
+                            <Dropdown
+                              value={editRegionId}
+                              onChange={setEditRegionId}
+                              placeholder="Select a region"
+                              options={regionOptions.map((r) => ({
+                                value: String(r.id),
+                                label: r.name,
+                              }))}
+                            />
+                          </div>
+                        ) : (
+                          member.region && (
+                            <div>
+                              <label className={labelClasses}>Region</label>
+                              <input value={member.region.name} disabled className={inputClasses} />
+                            </div>
+                          )
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -404,6 +463,10 @@ export default function MemberDetail() {
                 </form>
               ) : (
                 <dl className="grid grid-cols-2 gap-4">
+                  <Field
+                    label="Gender"
+                    value={member.gender === "MALE" ? "Male" : member.gender === "FEMALE" ? "Female" : "—"}
+                  />
                   <Field label="Ghana Card ID" value={member.ghanaCardId ?? "—"} />
                   <Field label="Phone" value={member.phone ?? "—"} />
                   <Field label="Email" value={member.email ?? "—"} />
@@ -425,6 +488,12 @@ export default function MemberDetail() {
                         : "Teaching"
                     }
                   />
+                  {member.employmentCategory === "NON_TEACHING" && !member.district && (
+                    <>
+                      <Field label="Place of work" value={member.placeOfWork ?? "—"} />
+                      <Field label="Region" value={member.region?.name ?? "—"} />
+                    </>
+                  )}
                   <Field
                     label="Report 20 Matched"
                     value={

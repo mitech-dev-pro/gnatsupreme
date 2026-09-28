@@ -27,6 +27,8 @@ export type MemberDetailData = {
   school: string;
   status: string;
   employmentCategory: "TEACHING" | "NON_TEACHING";
+  gender: "MALE" | "FEMALE" | null;
+  placeOfWork: string | null;
   report20Matched: boolean;
   missingFromReport20At: string | null;
   createdAt: string;
@@ -35,6 +37,8 @@ export type MemberDetailData = {
     name: string;
     region: { id: number; name: string };
   } | null;
+  // Only meaningful when there's no district -- see Member.regionId in schema.prisma.
+  region: { id: number; name: string } | null;
   spouse: Spouse | null;
   beneficiaries: Beneficiary[];
   createdBy: { id: number; fullName: string } | null;

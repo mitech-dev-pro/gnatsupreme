@@ -20,7 +20,7 @@ import {
   type ClaimType,
 } from "@/lib/claimDocuments";
 import { getApiError } from "@/lib/errorExtract";
-import { formatGhanaCardIdInput } from "@/lib/ghanaCardId";
+import { formatGhanaCardIdInput, hasGhanaCardIdDigits } from "@/lib/ghanaCardId";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -305,7 +305,7 @@ export default function MemberClaimNew() {
     Boolean(claimType) &&
     nightsEligible &&
     documentsComplete &&
-    claimantIdNumber.trim().length >= 3 &&
+    hasGhanaCardIdDigits(claimantIdNumber) &&
     (!claimType || !claimSupportsSpouse(claimType) || Boolean(profile?.spouse));
   // Death/TPD with no spouse on file can never be submitted -- rather than render the rest of the
   // form (subject details, ID, documents) behind a Next button that's disabled for a reason the

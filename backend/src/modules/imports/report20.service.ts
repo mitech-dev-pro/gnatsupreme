@@ -294,6 +294,11 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       .filter((row) => row.status === "ENROLLED" && row.controllerId)
       .map((row) => [row.controllerId as string, row]),
   );
+  // Report 20 auto-enrollment always resolves a real district (it's a payroll reconciliation
+  // file, always TEACHING) -- regionId is derived from it here rather than left unset, so these
+  // new members are immediately visible to REGIONAL_ADMIN scoping (which now filters on
+  // regionId, not just district.regionId -- see member.access.ts).
+  const districtRegionById = new Map(districts.map((district) => [district.id, district.regionId]));
   for (const [controllerId, districtId] of enrolledDistrictIds) {
     const row = enrolledRowsByControllerId.get(controllerId);
     if (!row) continue;
@@ -304,6 +309,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         fullName: row.fullName as string,
         school: (row.school as string | null) ?? "",
         districtId,
+        regionId: districtId ? (districtRegionById.get(districtId) ?? null) : null,
         status: "ACTIVE",
         report20Matched: true,
       },

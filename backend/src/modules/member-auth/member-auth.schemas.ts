@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 
+// Not digits-only -- see member.schemas.ts's memberFields.controllerId for why (non-teaching
+// staff IDs are alphanumeric, sharing the same ID space as teaching staff's numeric IDs).
 const controllerIdSchema = z
   .string()
   .trim()
-  .regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits");
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{4,20}$/, "Controller ID must be 4 to 20 letters/digits");
 
 export const memberPasswordSchema = z
   .string()

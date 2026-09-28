@@ -43,6 +43,13 @@ enum MemberEmploymentCategory {
   @@map("member_employment_category")
 }
 
+enum MemberGender {
+  MALE
+  FEMALE
+
+  @@map("member_gender")
+}
+
 enum BeneficiaryRelationship {
   CHILD
   SPOUSE
@@ -212,12 +219,17 @@ enum NotificationStatus {
 }
 
 model Region {
-  id        Int        @id @default(autoincrement())
-  name      String     @unique
-  districts District[]
-  users     User[]
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id             Int                   @id @default(autoincrement())
+  name           String                @unique
+  districts      District[]
+  users          User[]
+  // District-less members (non-teaching staff, whose region is set directly rather than derived
+  // through a district) and their staged import rows -- see Member.regionId.
+  members        Member[]
+  bulkImportRows MemberBulkImportRow[]
+  defaultForJobs ImportJob[]
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
 
   @@map("regions")
 }
@@ -310,10 +322,19 @@ model Member {
   missingFromReport20At        DateTime?                  @map("missing_from_report20_at")
   spouseDeclarationStatus      SpouseDeclarationStatus    @default(UNKNOWN) @map("spouse_declaration_status")
   profileCompletionDismissedAt DateTime?                  @map("profile_completion_dismissed_at")
+  gender                       MemberGender?              @map("gender")
+  // Free-text workplace for a NON_TEACHING member with no real districtId -- see regionId below.
+  placeOfWork                  String?                    @map("place_of_work")
   districtId                   Int?                       @map("district_id")
   createdById                  Int?                       @map("created_by_id")
   district                     District?                  @relation(fields: [districtId], references: [id], onDelete: Restrict)
   createdBy                    User?                      @relation("MemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  // Kept in sync with district.regionId whenever a district is set (derived, never entered
+  // independently in that case) -- the only case this is set on its own is a district-less
+  // NON_TEACHING member, so REGIONAL_ADMIN scoping (member.access.ts) can filter on regionId
+  // alone regardless of whether a member has a district.
+  regionId                     Int?                       @map("region_id")
+  region                       Region?                    @relation(fields: [regionId], references: [id], onDelete: Restrict)
   spouse                       Spouse?
   beneficiaries                Beneficiary[]
   files                        StoredFile[]
@@ -332,6 +353,7 @@ model Member {
   updatedAt                    DateTime                   @updatedAt @map("updated_at")
 
   @@index([districtId])
+  @@index([regionId])
   @@index([status])
   // Matches reconcileReport20's activeMembers query, which filters status IN (...) alongside
   // employmentCategory: "TEACHING" on every Report 20 upload.
@@ -545,33 +567,41 @@ model StoredFile {
 }
 
 model ImportJob {
-  id                    Int                   @id @default(autoincrement())
-  type                  ImportType
-  status                ImportStatus          @default(PENDING)
-  checksum              String
-  fileId                Int                   @unique @map("file_id")
-  file                  StoredFile            @relation(fields: [fileId], references: [id], onDelete: Restrict)
-  uploadedById          Int                   @map("uploaded_by_id")
-  uploadedBy            User                  @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
-  reportMonth           DateTime?             @map("report_month") @db.Date
-  totalRows             Int                   @default(0) @map("total_rows")
-  matchedRows           Int                   @default(0) @map("matched_rows")
-  changedRows           Int                   @default(0) @map("changed_rows")
-  unmatchedRows         Int                   @default(0) @map("unmatched_rows")
-  duplicateRows         Int                   @default(0) @map("duplicate_rows")
-  invalidRows           Int                   @default(0) @map("invalid_rows")
-  errorMessage          String?               @map("error_message")
-  startedAt             DateTime?             @map("started_at")
-  completedAt           DateTime?             @map("completed_at")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
-  rows                  Report20Row[]
-  memberRows            MemberBulkImportRow[]
-  readyRows             Int                   @default(0) @map("ready_rows")
-  importedRows          Int                   @default(0) @map("imported_rows")
-  enrolledRows          Int                   @default(0) @map("enrolled_rows")
-  flaggedForRemovalRows Int                   @default(0) @map("flagged_for_removal_rows")
-  processedRows         Int                   @default(0) @map("processed_rows")
+  id                        Int                       @id @default(autoincrement())
+  type                      ImportType
+  status                    ImportStatus              @default(PENDING)
+  checksum                  String
+  fileId                    Int                       @unique @map("file_id")
+  file                      StoredFile                @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  uploadedById              Int                       @map("uploaded_by_id")
+  uploadedBy                User                      @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  reportMonth               DateTime?                 @map("report_month") @db.Date
+  totalRows                 Int                       @default(0) @map("total_rows")
+  matchedRows               Int                       @default(0) @map("matched_rows")
+  changedRows               Int                       @default(0) @map("changed_rows")
+  unmatchedRows             Int                       @default(0) @map("unmatched_rows")
+  duplicateRows             Int                       @default(0) @map("duplicate_rows")
+  invalidRows               Int                       @default(0) @map("invalid_rows")
+  errorMessage              String?                   @map("error_message")
+  startedAt                 DateTime?                 @map("started_at")
+  completedAt               DateTime?                 @map("completed_at")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+  rows                      Report20Row[]
+  memberRows                MemberBulkImportRow[]
+  readyRows                 Int                       @default(0) @map("ready_rows")
+  importedRows              Int                       @default(0) @map("imported_rows")
+  enrolledRows              Int                       @default(0) @map("enrolled_rows")
+  flaggedForRemovalRows     Int                       @default(0) @map("flagged_for_removal_rows")
+  processedRows             Int                       @default(0) @map("processed_rows")
+  // Set from the upload screen's "Staff type" selector for a MEMBER_BULK job; persisted (not just
+  // passed through the worker request) so a /rerun -- which resumes the commit loop without
+  // re-uploading the file -- still knows the default. Meaningless for other ImportTypes.
+  defaultEmploymentCategory MemberEmploymentCategory? @map("default_employment_category")
+  // Only meaningful when defaultEmploymentCategory is NON_TEACHING and the uploader has no fixed
+  // region (SUPER_ADMIN/NATIONAL_ADMIN) -- see the Region dropdown on the upload screen.
+  defaultRegionId           Int?                      @map("default_region_id")
+  defaultRegion             Region?                   @relation(fields: [defaultRegionId], references: [id], onDelete: Restrict)
 
   @@unique([type, checksum])
   @@index([status])
@@ -609,25 +639,35 @@ model Report20Row {
 }
 
 model MemberBulkImportRow {
-  id              Int                 @id @default(autoincrement())
-  importJobId     Int                 @map("import_job_id")
-  importJob       ImportJob           @relation(fields: [importJobId], references: [id], onDelete: Cascade)
-  rowNumber       Int                 @map("row_number")
-  controllerId    String?             @map("controller_id")
-  fullName        String?             @map("full_name")
-  school          String?
-  districtName    String?             @map("district_name")
-  districtId      Int?                @map("district_id")
-  dateOfBirth     DateTime?           @map("date_of_birth") @db.Date
-  ghanaCardId     String?             @map("ghana_card_id")
-  phone           String?
-  report20Matched Boolean             @default(false) @map("report20_matched")
-  status          BulkImportRowStatus
-  memberId        Int?                @map("member_id")
-  member          Member?             @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  issues          Json?
-  rawData         Json                @map("raw_data")
-  createdAt       DateTime            @default(now()) @map("created_at")
+  id                 Int                       @id @default(autoincrement())
+  importJobId        Int                       @map("import_job_id")
+  importJob          ImportJob                 @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  rowNumber          Int                       @map("row_number")
+  controllerId       String?                   @map("controller_id")
+  fullName           String?                   @map("full_name")
+  school             String?
+  districtName       String?                   @map("district_name")
+  districtId         Int?                      @map("district_id")
+  // Resolved once at staging (district's own region if a district resolved, else an explicit
+  // region cell / the job's defaultRegionId / the uploader's own region) -- see
+  // resolveMemberRegionId in members/member-region.ts.
+  regionId           Int?                      @map("region_id")
+  region             Region?                   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  // Resolved once at staging (explicit column > ImportJob.defaultEmploymentCategory > per-row
+  // inference) and read back as-is at commit -- deliberately NOT re-derived from districtId at
+  // commit time, which would silently mis-resolve a DISTRICT_ADMIN upload's non-teaching rows
+  // (their districtId is always forced, so that inference would wrongly read "TEACHING").
+  employmentCategory MemberEmploymentCategory? @map("employment_category")
+  dateOfBirth        DateTime?                 @map("date_of_birth") @db.Date
+  ghanaCardId        String?                   @map("ghana_card_id")
+  phone              String?
+  report20Matched    Boolean                   @default(false) @map("report20_matched")
+  status             BulkImportRowStatus
+  memberId           Int?                      @map("member_id")
+  member             Member?                   @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  issues             Json?
+  rawData            Json                      @map("raw_data")
+  createdAt          DateTime                  @default(now()) @map("created_at")
 
   @@unique([importJobId, rowNumber])
   @@index([importJobId, status])

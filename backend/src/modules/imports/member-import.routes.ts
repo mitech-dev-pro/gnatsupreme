@@ -35,6 +35,14 @@ const listSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED"]).optional(),
 });
+// The upload screen's "Staff type" selector, plus a required Region for a SUPER_ADMIN/
+// NATIONAL_ADMIN uploading a non-teaching file (they have no fixed region) -- both persisted on
+// ImportJob so a /rerun, which resumes the commit loop without re-uploading the file, still has
+// access to them.
+const uploadBodySchema = z.object({
+  employmentCategory: z.enum(["TEACHING", "NON_TEACHING"]),
+  regionId: z.coerce.number().int().positive().optional(),
+});
 
 function user(response: Response) {
   return response.locals.user as AuthenticatedUser;
@@ -114,6 +122,25 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
       .json({ success: false, message: "Attach one CSV or XLSX file using the 'file' field" });
     return;
   }
+  const uploadOptions = uploadBodySchema.safeParse(request.body);
+  if (!uploadOptions.success) {
+    await removeFile(request.file.path);
+    response
+      .status(400)
+      .json({ success: false, message: "Choose whether this file contains teaching or non-teaching staff" });
+    return;
+  }
+  if (
+    uploadOptions.data.employmentCategory === "NON_TEACHING" &&
+    !uploadOptions.data.regionId &&
+    (user(response).role === "SUPER_ADMIN" || user(response).role === "NATIONAL_ADMIN")
+  ) {
+    await removeFile(request.file.path);
+    response
+      .status(400)
+      .json({ success: false, message: "Select the region these non-teaching staff belong to" });
+    return;
+  }
   if (!(await hasValidReport20Signature(request.file.path, request.file.mimetype))) {
     await removeFile(request.file.path);
     response
@@ -191,6 +218,8 @@ memberImportRouter.post("/members", receiveFile, async (request, response) => {
           uploadedById: currentUser.id,
           status: "PROCESSING",
           startedAt: new Date(),
+          defaultEmploymentCategory: uploadOptions.data.employmentCategory,
+          defaultRegionId: uploadOptions.data.regionId,
         },
       });
     });
@@ -325,6 +354,12 @@ function runMemberImportCommit(
     let processed = 0;
     for (const row of rows) {
       const extra = bulkRawFields(row.rawData);
+      // Resolved once at staging and read back as-is here -- deliberately not re-derived from
+      // row.districtId, which would mis-resolve a DISTRICT_ADMIN upload's non-teaching rows
+      // (their districtId is always forced, so that inference would wrongly read "TEACHING").
+      // Pre-migration rows (staged before this feature shipped) have a null column here and
+      // fall back to TEACHING, matching their original behavior.
+      const employmentCategory = row.employmentCategory ?? "TEACHING";
       try {
         const member = await prisma.$transaction(async (transaction) => {
           const created = await transaction.member.create({
@@ -332,11 +367,19 @@ function runMemberImportCommit(
               controllerId: row.controllerId!,
               fullName: row.fullName!,
               school: row.school!,
-              districtId: row.districtId!,
+              districtId: row.districtId,
+              regionId: row.regionId,
+              employmentCategory,
+              gender: extra.gender,
+              placeOfWork: employmentCategory === "NON_TEACHING" ? extra.placeOfWork : null,
               ghanaCardId: row.ghanaCardId,
               phone: row.phone,
               report20Matched: row.report20Matched,
-              status: "PENDING",
+              // Matches Report 20's own auto-enroll path (report20.service.ts), which also
+              // creates members ACTIVE directly -- both are bulk/reviewed-file paths, unlike the
+              // manual Add member form (member.routes.ts), which stays PENDING for one-by-one
+              // review since there's no equivalent upstream vetting for a single ad-hoc entry.
+              status: "ACTIVE",
               createdById: currentUser.id,
               ...(extra.spouseName
                 ? {
@@ -346,14 +389,20 @@ function runMemberImportCommit(
                     },
                   }
                 : {}),
-              beneficiaries: {
-                create: {
-                  fullName: extra.beneficiaryName!,
-                  relationship: extra.beneficiaryRelationship!,
-                  dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth),
-                  trusteeName: extra.trusteeName,
-                },
-              },
+              // Beneficiaries aren't collected for non-teaching staff -- the real files this
+              // covers have no beneficiary columns at all.
+              ...(employmentCategory !== "NON_TEACHING"
+                ? {
+                    beneficiaries: {
+                      create: {
+                        fullName: extra.beneficiaryName!,
+                        relationship: extra.beneficiaryRelationship!,
+                        dateOfBirth: optionalDate(extra.beneficiaryDateOfBirth),
+                        trusteeName: extra.trusteeName,
+                      },
+                    },
+                  }
+                : {}),
             },
           });
           await transaction.memberBulkImportRow.update({

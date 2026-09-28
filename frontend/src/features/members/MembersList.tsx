@@ -277,11 +277,19 @@ export default function MembersList() {
   const school = params.get("school") ?? "";
   const missingFromReport20 = params.get("missingFromReport20") === "1";
   const registered = params.get("registered") ?? "";
+  const employmentCategory = params.get("employmentCategory") ?? "";
   const limit = [5, 10, 20].includes(Number(params.get("limit")))
     ? Number(params.get("limit"))
     : 10;
   const filtered = Boolean(
-    search || status || regionId || districtId || school || missingFromReport20 || registered,
+    search ||
+      status ||
+      regionId ||
+      districtId ||
+      school ||
+      missingFromReport20 ||
+      registered ||
+      employmentCategory,
   );
   const pageTitle = PAGE_TITLES[status] ?? "Members";
 
@@ -332,6 +340,7 @@ export default function MembersList() {
             school: school || undefined,
             missingFromReport20: missingFromReport20 || undefined,
             registered: registered || undefined,
+            employmentCategory: employmentCategory || undefined,
           },
         });
         setRows(response.data.data);
@@ -344,7 +353,18 @@ export default function MembersList() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [districtId, limit, missingFromReport20, page, registered, regionId, school, search, status],
+    [
+      districtId,
+      employmentCategory,
+      limit,
+      missingFromReport20,
+      page,
+      registered,
+      regionId,
+      school,
+      search,
+      status,
+    ],
   );
 
   useEffect(() => {
@@ -544,6 +564,17 @@ export default function MembersList() {
                 ]
               : []
           }
+        />
+        <Dropdown
+          className="w-47.5"
+          value={employmentCategory}
+          onChange={(value) => updateParams({ employmentCategory: value || null, page: null })}
+          aria-label="Filter by employment category"
+          options={[
+            { value: "", label: "Teaching and non-teaching" },
+            { value: "TEACHING", label: "Teaching" },
+            { value: "NON_TEACHING", label: "Non-teaching staff" },
+          ]}
         />
         <label className="members-page-size">
           <span>Show</span>

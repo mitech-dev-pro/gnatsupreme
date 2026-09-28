@@ -236,7 +236,12 @@ export default function ImportReview() {
                     <td className="px-4 py-2.5 text-text-muted">{row.rowNumber}</td>
                     <td className="px-4 py-2.5 text-ink">{row.controllerId ?? "—"}</td>
                     <td className="px-4 py-2.5 text-ink">{row.fullName ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-text-muted">{row.districtName ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-text-muted">
+                      {row.districtName ??
+                        (row.employmentCategory === "NON_TEACHING"
+                          ? "Non-teaching (no district)"
+                          : "—")}
+                    </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge tone={statusTone(row.status)}>
                         {row.status.replaceAll("_", " ").toLowerCase()}

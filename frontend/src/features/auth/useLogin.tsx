@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
+import { GHANA_CARD_ID_PREFIX } from "@/lib/ghanaCardId";
 import { isMemberPortalPath } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -56,9 +57,9 @@ export function useLogin() {
   const [districts, setDistricts] = useState<
     { id: number; name: string; region: { name: string } }[]
   >([]);
-  const [policyGhanaCardId, setPolicyGhanaCardId] = useState("");
+  const [policyGhanaCardId, setPolicyGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
+  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([emptyBeneficiary()]);
   useEffect(() => {
     if ((memberStep !== "setup" && memberStep !== "policy") || districts.length > 0) return;

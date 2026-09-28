@@ -22,7 +22,11 @@ import { Alert } from "@/components/ui/Feedback";
 import ClaimDocumentChecklist, {
   type UploadedClaimDocument,
 } from "@/components/claims/ClaimDocumentChecklist";
-import { applyGhanaCardIdChange, formatGhanaCardIdInput } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  formatGhanaCardIdInput,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 
 type MemberLookup = {
   id: number;
@@ -399,7 +403,7 @@ export default function ClaimNew() {
     Boolean(claimType) &&
     nightsEligible &&
     documentsComplete &&
-    claimantIdNumber.trim().length >= 3;
+    hasGhanaCardIdDigits(claimantIdNumber);
 
   if (page === -1)
     return (

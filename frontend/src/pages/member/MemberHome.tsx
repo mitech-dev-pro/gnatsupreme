@@ -8,7 +8,11 @@ import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+} from "@/lib/ghanaCardId";
 
 type Beneficiary = {
   id: number;
@@ -204,8 +208,9 @@ function MemberDetailsForm({
   onClose: () => void;
   onSubmitted: () => void;
 }) {
+  const initialGhanaCardId = profile.ghanaCardId ?? GHANA_CARD_ID_PREFIX;
   const [fullName, setFullName] = useState(profile.fullName);
-  const [ghanaCardId, setGhanaCardId] = useState(profile.ghanaCardId ?? "");
+  const [ghanaCardId, setGhanaCardId] = useState(initialGhanaCardId);
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [school, setSchool] = useState(profile.school);
   const [note, setNote] = useState("");
@@ -214,7 +219,7 @@ function MemberDetailsForm({
 
   const changed =
     fullName.trim() !== profile.fullName ||
-    ghanaCardId.trim() !== (profile.ghanaCardId ?? "") ||
+    ghanaCardId.trim() !== initialGhanaCardId ||
     phone.trim() !== (profile.phone ?? "") ||
     school.trim() !== profile.school;
   const submit = async (event: FormEvent) => {
@@ -223,8 +228,8 @@ function MemberDetailsForm({
     const proposedData: Record<string, string | null> = {};
     if (fullName.trim() !== profile.fullName)
       proposedData.fullName = fullName.trim();
-    if (ghanaCardId.trim() !== (profile.ghanaCardId ?? ""))
-      proposedData.ghanaCardId = ghanaCardId.trim() || null;
+    if (ghanaCardId.trim() !== initialGhanaCardId)
+      proposedData.ghanaCardId = ghanaCardIdOrNull(ghanaCardId.trim());
     if (phone.trim() !== (profile.phone ?? ""))
       proposedData.phone = phone.trim() || null;
     if (school.trim() !== profile.school) proposedData.school = school.trim();
@@ -365,7 +370,7 @@ function SpouseForm({
   onSubmitted: () => void;
 }) {
   const [fullName, setFullName] = useState(spouse?.fullName ?? "");
-  const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? "");
+  const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -379,7 +384,7 @@ function SpouseForm({
         type: "SPOUSE",
         proposedData: {
           fullName: fullName.trim(),
-          ghanaCardId: ghanaCardId.trim() || null,
+          ghanaCardId: ghanaCardIdOrNull(ghanaCardId.trim()),
         },
         requestNote: note.trim() || undefined,
       });

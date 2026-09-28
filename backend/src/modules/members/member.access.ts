@@ -13,14 +13,17 @@ export function resolveMemberScope(
   const { regionId, districtId } = filters;
 
   if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") {
-    return districtId ? { districtId } : regionId ? { district: { regionId } } : {};
+    // regionId filters on the member's own regionId directly (not district.regionId) so a
+    // district-less NON_TEACHING member in that region is still matched.
+    return districtId ? { districtId } : regionId ? { regionId } : {};
   }
 
   if (user.role === "REGIONAL_ADMIN") {
+    // regionId is kept in sync with district.regionId whenever a member has a district (see
+    // Member.regionId in schema.prisma), so this single flat filter covers both a member with a
+    // district and a district-less NON_TEACHING member scoped directly to this admin's region.
     const ownRegionId = user.regionId ?? -1;
-    return districtId
-      ? { districtId, district: { regionId: ownRegionId } }
-      : { district: { regionId: ownRegionId } };
+    return districtId ? { districtId, regionId: ownRegionId } : { regionId: ownRegionId };
   }
 
   // DISTRICT_ADMIN: the only remaining UserRole value — fixed regardless of any query params.

@@ -8,6 +8,7 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { canAccessDistrict, memberScope, resolveMemberScope } from "./member.access.js";
+import { resolveMemberRegionId } from "./member-region.js";
 import {
   generateTempPassword,
   hashMemberPassword,
@@ -30,6 +31,9 @@ export const memberRouter = Router();
 
 const memberInclude = {
   district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
+  // Only meaningful when there's no district (a NON_TEACHING member's regionId is set directly) --
+  // when a district exists, its own region already covers this and this relation is redundant.
+  region: { select: { id: true, name: true } },
   spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
   beneficiaries: {
     orderBy: { id: "asc" as const },
@@ -72,6 +76,22 @@ function validationFailure(response: Response, error: ZodError) {
   });
 }
 
+function simpleFailure(response: Response, field: string, message: string) {
+  response.status(400).json({ success: false, message, errors: [{ field, message }] });
+}
+
+// A DISTRICT_ADMIN's own region -- looked up fresh rather than cached on the JWT, since a
+// district's region essentially never changes but this keeps it authoritative. Returns null only
+// if the admin's own districtId is somehow unset/invalid.
+async function districtAdminOwnRegionId(user: AuthenticatedUser) {
+  if (!user.districtId) return null;
+  const district = await prisma.district.findUnique({
+    where: { id: user.districtId },
+    select: { regionId: true },
+  });
+  return district?.regionId ?? null;
+}
+
 async function findAccessibleMember(id: number, user: AuthenticatedUser) {
   return prisma.member.findFirst({
     where: { id, ...memberScope(user) },
@@ -104,14 +124,25 @@ memberRouter.get("/", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const { page, limit, search, status, regionId, districtId, school, missingFromReport20, registered } =
-    query.data;
+  const {
+    page,
+    limit,
+    search,
+    status,
+    regionId,
+    districtId,
+    school,
+    missingFromReport20,
+    registered,
+    employmentCategory,
+  } = query.data;
   const requestedScope = resolveMemberScope(user, { regionId, districtId });
   const where = {
     ...requestedScope,
     ...(status ? { status } : {}),
     ...(school ? { school } : {}),
     ...(missingFromReport20 ? { missingFromReport20At: { not: null } } : {}),
+    ...(employmentCategory ? { employmentCategory } : {}),
     // "Registered" mirrors /stats' registeredMembers count: has the member completed
     // self-service account setup (passwordHash set via /member-auth/setup-account)?
     ...(registered === "true"
@@ -249,16 +280,36 @@ memberRouter.post("/", async (request, response) => {
   if (!parsed.success) return validationFailure(response, parsed.error);
 
   const user = currentUser(response);
-  if (!(await canAccessDistrict(user, parsed.data.districtId))) {
+  // DISTRICT_ADMIN always enrolls into their own district, regardless of employment category --
+  // a district-less non-teaching member would otherwise be invisible on this admin's own list
+  // (REGIONAL_ADMIN/SUPER_ADMIN/NATIONAL_ADMIN are the only roles that can create one).
+  const districtId =
+    user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : parsed.data.districtId;
+
+  if (districtId && !(await canAccessDistrict(user, districtId))) {
     response.status(403).json({ success: false, message: "You cannot enroll members in this district" });
     return;
   }
 
-  const district = await prisma.district.findUnique({ where: { id: parsed.data.districtId } });
-  if (!district) {
+  const district = districtId
+    ? await prisma.district.findUnique({ where: { id: districtId } })
+    : null;
+  if (districtId && !district) {
     response.status(400).json({ success: false, message: "Selected district does not exist" });
     return;
   }
+
+  const ownRegionId =
+    user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
+  const resolvedRegion = resolveMemberRegionId(user, {
+    districtRegionId: district?.regionId ?? null,
+    explicitRegionId: parsed.data.regionId ?? null,
+    ownRegionId,
+  });
+  if (resolvedRegion.issue) {
+    return simpleFailure(response, "regionId", resolvedRegion.issue);
+  }
+
   const duplicateController = await prisma.member.findUnique({
     where: { controllerId: parsed.data.controllerId },
   });
@@ -283,10 +334,13 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
 
-  const { spouse, beneficiaries, ...memberData } = parsed.data;
+  const { spouse, beneficiaries, districtId: _districtId, regionId: _regionId, ...memberData } =
+    parsed.data;
   const member = await prisma.member.create({
     data: {
       ...memberData,
+      districtId: districtId ?? null,
+      regionId: resolvedRegion.regionId,
       createdById: user.id,
       spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
       ...(spouse ? { spouse: { create: spouse } } : {}),
@@ -310,7 +364,7 @@ memberRouter.post("/", async (request, response) => {
       spouseRecorded: Boolean(member.spouse),
       beneficiaryCount: member.beneficiaries.length,
     },
-    regionId: member.district?.regionId,
+    regionId: member.regionId ?? undefined,
     districtId: member.districtId,
   });
   response.status(201).json({ success: true, data: member });
@@ -332,12 +386,14 @@ memberRouter.patch("/:id", async (request, response) => {
     response.status(403).json({ success: false, message: "You cannot move this member to that district" });
     return;
   }
+  let patchedDistrictRegionId: number | null | undefined;
   if (body.data.districtId) {
     const district = await prisma.district.findUnique({ where: { id: body.data.districtId } });
     if (!district) {
       response.status(400).json({ success: false, message: "Selected district does not exist" });
       return;
     }
+    patchedDistrictRegionId = district.regionId;
   }
   if (body.data.controllerId && body.data.controllerId !== existing.controllerId) {
     const duplicate = await prisma.member.findUnique({ where: { controllerId: body.data.controllerId } });
@@ -373,6 +429,52 @@ memberRouter.patch("/:id", async (request, response) => {
   const willBeNonTeaching = body.data.employmentCategory === "NON_TEACHING";
   const clearingUpdate = wasTeaching && willBeNonTeaching ? { missingFromReport20At: null } : {};
 
+  // Category-conditional district/place-of-work rule, mirrored from createMemberSchema's
+  // refinement -- this can't live in the Zod schema since it needs the *existing* record (a
+  // patch that only changes phone shouldn't be forced to resupply a district it already has).
+  const nextCategory = body.data.employmentCategory ?? existing.employmentCategory;
+  if (nextCategory === "TEACHING" && !body.data.districtId && !existing.districtId) {
+    return simpleFailure(response, "districtId", "Select a district");
+  }
+  if (nextCategory === "NON_TEACHING") {
+    const nextPlaceOfWork =
+      body.data.placeOfWork !== undefined ? body.data.placeOfWork : existing.placeOfWork;
+    if (!nextPlaceOfWork) {
+      return simpleFailure(
+        response,
+        "placeOfWork",
+        "Place of work is required for non-teaching staff",
+      );
+    }
+  }
+  // Switching to TEACHING clears a stale placeOfWork left over from a prior NON_TEACHING state.
+  const placeOfWorkClearingUpdate = nextCategory === "TEACHING" ? { placeOfWork: null } : {};
+
+  // Re-resolve regionId whenever anything that could change it is part of this patch -- otherwise
+  // leave it untouched so an unrelated field edit (e.g. phone) doesn't silently touch it.
+  let regionUpdate: { regionId: number | null } | Record<string, never> = {};
+  if (
+    body.data.districtId !== undefined ||
+    body.data.employmentCategory !== undefined ||
+    body.data.regionId !== undefined ||
+    body.data.placeOfWork !== undefined
+  ) {
+    const ownRegionId =
+      user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
+    const districtRegionId = body.data.districtId
+      ? (patchedDistrictRegionId ?? null)
+      : (existing.districtId ? (existing.district?.regionId ?? null) : null);
+    const resolvedRegion = resolveMemberRegionId(user, {
+      districtRegionId,
+      explicitRegionId: body.data.regionId ?? null,
+      ownRegionId,
+    });
+    if (resolvedRegion.issue) {
+      return simpleFailure(response, "regionId", resolvedRegion.issue);
+    }
+    regionUpdate = { regionId: resolvedRegion.regionId };
+  }
+
   const member = await prisma.member.update({
     where: { id: existing.id },
     data: {
@@ -381,6 +483,8 @@ memberRouter.patch("/:id", async (request, response) => {
         ? { phoneVerifiedAt: null }
         : {}),
       ...clearingUpdate,
+      ...placeOfWorkClearingUpdate,
+      ...regionUpdate,
     },
     include: memberInclude,
   });

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 import "./AddMember.css";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
@@ -17,7 +18,12 @@ import { Alert } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+  hasGhanaCardIdDigits,
+} from "@/lib/ghanaCardId";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
 const GHANA_CARD = /^GHA-\d{9}-\d$/;
@@ -77,10 +83,12 @@ function SummaryRow({ label, value }: { label: string; value: ReactNode }) {
 
 export default function AddMember() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { districts, loading: districtsLoading } = useDistricts();
   const [controllerId, setControllerId] = useState("");
   const [fullName, setFullName] = useState("");
-  const [ghanaCardId, setGhanaCardId] = useState("");
+  const [gender, setGender] = useState<"" | "MALE" | "FEMALE">("");
+  const [ghanaCardId, setGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [phone, setPhone] = useState("");
   const [school, setSchool] = useState("");
   const [employmentCategory, setEmploymentCategory] = useState<
@@ -88,9 +96,12 @@ export default function AddMember() {
   >("TEACHING");
   const [districtId, setDistrictId] = useState("");
   const [districtSearch, setDistrictSearch] = useState("");
+  // Only relevant when employmentCategory is NON_TEACHING and District isn't set.
+  const [placeOfWork, setPlaceOfWork] = useState("");
+  const [regionId, setRegionId] = useState("");
   const [includeSpouse, setIncludeSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState("");
+  const [spouseGhanaCardId, setSpouseGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([
     emptyBeneficiary(),
   ]);
@@ -112,13 +123,37 @@ export default function AddMember() {
   const selectedDistrict = districts.find(
     (item) => String(item.id) === districtId,
   );
+  const isNonTeaching = employmentCategory === "NON_TEACHING";
+  // REGIONAL_ADMIN/DISTRICT_ADMIN never pick a region themselves -- it's always their own, fixed
+  // and read-only (mirrors resolveMemberRegionId server-side). Only SUPER_ADMIN/NATIONAL_ADMIN,
+  // who have no fixed region, get a real picker.
+  const needsRegionPicker = user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN";
+  const regionOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [districts]);
+  const ownRegionName = useMemo(() => {
+    if (user?.role === "REGIONAL_ADMIN") {
+      return regionOptions.find((r) => r.id === user.regionId)?.name ?? "";
+    }
+    if (user?.role === "DISTRICT_ADMIN") {
+      return districts.find((item) => item.id === user.districtId)?.region.name ?? "";
+    }
+    return "";
+  }, [user, districts, regionOptions]);
   const isDirty = Boolean(
     controllerId ||
     fullName ||
-    ghanaCardId ||
+    gender ||
+    hasGhanaCardIdDigits(ghanaCardId) ||
     phone ||
     school ||
     districtId ||
+    placeOfWork ||
+    regionId ||
     includeSpouse ||
     beneficiaries.some(
       (item) => item.fullName || item.dateOfBirth || item.trusteeName,
@@ -151,9 +186,10 @@ export default function AddMember() {
   const requiredValues = [
     controllerId,
     fullName,
-    school,
-    districtId,
-    beneficiaries[0]?.fullName ?? "",
+    gender,
+    ...(isNonTeaching
+      ? [placeOfWork, ...(needsRegionPicker ? [regionId] : [])]
+      : [school, districtId, beneficiaries[0]?.fullName ?? ""]),
     ...(includeSpouse ? [spouseName] : []),
   ];
   const completedRequired = requiredValues.filter((value) =>
@@ -175,24 +211,39 @@ export default function AddMember() {
 
   const validate = () => {
     const next: Errors = {};
-    if (!/^\d{4,7}$/.test(controllerId.trim()))
-      next.controllerId = "Enter a Controller ID containing 4 to 7 digits.";
+    if (!/^[A-Za-z0-9]{4,20}$/.test(controllerId.trim()))
+      next.controllerId = "Enter a Controller ID with 4 to 20 letters/digits.";
     if (fullName.trim().length < 2)
       next.fullName = "Enter the member's full legal name.";
-    if (ghanaCardId && !GHANA_CARD.test(ghanaCardId))
+    if (!gender) next.gender = "Select a gender.";
+    if (hasGhanaCardIdDigits(ghanaCardId) && !GHANA_CARD.test(ghanaCardId))
       next.ghanaCardId = "Use the format GHA-000000000-0.";
     if (phone && phone.trim().length < 7)
       next.phone = "Enter a valid phone number.";
-    if (school.trim().length < 2) next.school = "Enter the member's school.";
-    if (!districtId) next.districtId = "Select a district.";
+    if (isNonTeaching) {
+      if (placeOfWork.trim().length < 2)
+        next.placeOfWork = "Enter the member's place of work.";
+      if (needsRegionPicker && !regionId) next.regionId = "Select a region.";
+    } else {
+      if (school.trim().length < 2) next.school = "Enter the member's school.";
+      if (!districtId) next.districtId = "Select a district.";
+    }
     if (includeSpouse && spouseName.trim().length < 2)
       next.spouseName = "Enter the spouse's full name.";
-    if (spouseGhanaCardId && !GHANA_CARD.test(spouseGhanaCardId))
+    if (hasGhanaCardIdDigits(spouseGhanaCardId) && !GHANA_CARD.test(spouseGhanaCardId))
       next.spouseGhanaCardId = "Use the format GHA-000000000-0.";
-    if (ghanaCardId && spouseGhanaCardId && ghanaCardId === spouseGhanaCardId)
+    if (
+      hasGhanaCardIdDigits(ghanaCardId) &&
+      hasGhanaCardIdDigits(spouseGhanaCardId) &&
+      ghanaCardId === spouseGhanaCardId
+    )
       next.spouseGhanaCardId =
         "Member and spouse cannot use the same Ghana Card ID.";
+    // Non-teaching staff aren't required to have a beneficiary on file -- an untouched default
+    // draft shouldn't block submission, though anything actually filled in still gets validated.
     beneficiaries.forEach((item, index) => {
+      if (isNonTeaching && !item.fullName.trim() && !item.dateOfBirth && !item.trusteeName.trim())
+        return;
       if (item.fullName.trim().length < 2)
         next[`beneficiaries.${index}.fullName`] =
           "Enter the beneficiary's full name.";
@@ -241,23 +292,28 @@ export default function AddMember() {
       const response = await api.post("/members", {
         controllerId: controllerId.trim(),
         fullName: fullName.trim(),
-        ghanaCardId: ghanaCardId || null,
+        gender,
+        ghanaCardId: ghanaCardIdOrNull(ghanaCardId),
         phone: phone.trim() || null,
         school: school.trim(),
         employmentCategory,
-        districtId: Number(districtId),
+        districtId: districtId ? Number(districtId) : null,
+        placeOfWork: isNonTeaching ? placeOfWork.trim() : null,
+        regionId: isNonTeaching && needsRegionPicker && regionId ? Number(regionId) : undefined,
         spouse: includeSpouse
           ? {
               fullName: spouseName.trim(),
-              ghanaCardId: spouseGhanaCardId || null,
+              ghanaCardId: ghanaCardIdOrNull(spouseGhanaCardId),
             }
           : null,
-        beneficiaries: beneficiaries.map((item) => ({
-          fullName: item.fullName.trim(),
-          relationship: item.relationship,
-          dateOfBirth: item.dateOfBirth || null,
-          trusteeName: item.trusteeName.trim() || null,
-        })),
+        beneficiaries: beneficiaries
+          .filter((item) => item.fullName.trim())
+          .map((item) => ({
+            fullName: item.fullName.trim(),
+            relationship: item.relationship,
+            dateOfBirth: item.dateOfBirth || null,
+            trusteeName: item.trusteeName.trim() || null,
+          })),
       });
       setCreated(response.data.data);
       setReviewing(false);
@@ -284,15 +340,18 @@ export default function AddMember() {
   const startAnother = () => {
     setControllerId("");
     setFullName("");
-    setGhanaCardId("");
+    setGender("");
+    setGhanaCardId(GHANA_CARD_ID_PREFIX);
     setPhone("");
     setSchool("");
     setEmploymentCategory("TEACHING");
     setDistrictId("");
     setDistrictSearch("");
+    setPlaceOfWork("");
+    setRegionId("");
     setIncludeSpouse(false);
     setSpouseName("");
-    setSpouseGhanaCardId("");
+    setSpouseGhanaCardId(GHANA_CARD_ID_PREFIX);
     setBeneficiaries([emptyBeneficiary()]);
     setErrors({});
     setSubmitError("");
@@ -385,7 +444,7 @@ export default function AddMember() {
             else {
               setIncludeSpouse(false);
               setSpouseName("");
-              setSpouseGhanaCardId("");
+              setSpouseGhanaCardId(GHANA_CARD_ID_PREFIX);
               setConfirmation(null);
             }
           }}
@@ -407,7 +466,11 @@ export default function AddMember() {
             <section>
               <h3>Member information</h3>
               <dl>
-                <SummaryRow label="Ghana Card" value={ghanaCardId} />
+                <SummaryRow label="Gender" value={gender === "MALE" ? "Male" : "Female"} />
+                <SummaryRow
+                  label="Ghana Card"
+                  value={hasGhanaCardIdDigits(ghanaCardId) ? ghanaCardId : ""}
+                />
                 <SummaryRow label="Phone" value={phone} />
               </dl>
             </section>
@@ -423,11 +486,24 @@ export default function AddMember() {
                       : "Teaching"
                   }
                 />
-                <SummaryRow label="District" value={selectedDistrict?.name} />
-                <SummaryRow
-                  label="Region"
-                  value={selectedDistrict?.region.name}
-                />
+                {isNonTeaching && !selectedDistrict ? (
+                  <>
+                    <SummaryRow label="Place of work" value={placeOfWork} />
+                    <SummaryRow
+                      label="Region"
+                      value={
+                        needsRegionPicker
+                          ? regionOptions.find((r) => String(r.id) === regionId)?.name
+                          : ownRegionName
+                      }
+                    />
+                  </>
+                ) : (
+                  <>
+                    <SummaryRow label="District" value={selectedDistrict?.name} />
+                    <SummaryRow label="Region" value={selectedDistrict?.region.name} />
+                  </>
+                )}
               </dl>
             </section>
             <section>
@@ -436,7 +512,10 @@ export default function AddMember() {
                 {includeSpouse ? (
                   <>
                     <SummaryRow label="Name" value={spouseName} />
-                    <SummaryRow label="Ghana Card" value={spouseGhanaCardId} />
+                    <SummaryRow
+                      label="Ghana Card"
+                      value={hasGhanaCardIdDigits(spouseGhanaCardId) ? spouseGhanaCardId : ""}
+                    />
                   </>
                 ) : (
                   <SummaryRow label="Recorded" value="No" />
@@ -444,9 +523,11 @@ export default function AddMember() {
               </dl>
             </section>
             <section>
-              <h3>Beneficiaries ({beneficiaries.length})</h3>
+              <h3>Beneficiaries ({beneficiaries.filter((item) => item.fullName.trim()).length})</h3>
               <ol>
-                {beneficiaries.map((item, index) => (
+                {beneficiaries
+                  .filter((item) => item.fullName.trim())
+                  .map((item, index) => (
                   <li key={index}>
                     <strong>{item.fullName}</strong>
                     <span>
@@ -514,19 +595,16 @@ export default function AddMember() {
                 <Field
                   label="Controller ID"
                   required
-                  help="4 to 7 digits"
+                  help="4 to 20 letters/digits"
                   error={errors.controllerId}
                 >
                   <input
                     autoFocus
-                    inputMode="numeric"
                     value={controllerId}
                     onChange={(event) =>
-                      setControllerId(
-                        event.target.value.replace(/\D/g, "").slice(0, 7),
-                      )
+                      setControllerId(event.target.value.toUpperCase().slice(0, 20))
                     }
-                    placeholder="e.g. 4545845"
+                    placeholder="e.g. 4545845 or GNATNT2020001"
                   />
                 </Field>
                 <Field label="Full legal name" required error={errors.fullName}>
@@ -534,6 +612,17 @@ export default function AddMember() {
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="As shown on official records"
+                  />
+                </Field>
+                <Field label="Gender" required error={errors.gender}>
+                  <Dropdown
+                    value={gender}
+                    onChange={(value) => setGender(value as "MALE" | "FEMALE")}
+                    placeholder="Select a gender"
+                    options={[
+                      { value: "MALE", label: "Male" },
+                      { value: "FEMALE", label: "Female" },
+                    ]}
                   />
                 </Field>
                 <Field
@@ -622,7 +711,16 @@ export default function AddMember() {
                     placeholder="Type to narrow the list"
                   />
                 </Field>
-                <Field label="District" required error={errors.districtId}>
+                <Field
+                  label="District"
+                  required={!isNonTeaching}
+                  error={errors.districtId}
+                  help={
+                    isNonTeaching
+                      ? "Optional for non-teaching staff — use Place of work instead."
+                      : undefined
+                  }
+                >
                   <Dropdown
                     value={districtId}
                     disabled={districtsLoading}
@@ -648,6 +746,39 @@ export default function AddMember() {
                     <small>{selectedDistrict.region.name} Region</small>
                   </div>
                 )}
+                {isNonTeaching && !districtId && (
+                  <>
+                    <Field
+                      label="Place of work"
+                      required
+                      error={errors.placeOfWork}
+                      help="Free text — where this member is stationed."
+                    >
+                      <input
+                        value={placeOfWork}
+                        onChange={(event) => setPlaceOfWork(event.target.value)}
+                        placeholder="e.g. Head Office, Finance Unit"
+                      />
+                    </Field>
+                    {needsRegionPicker ? (
+                      <Field label="Region" required error={errors.regionId}>
+                        <Dropdown
+                          value={regionId}
+                          onChange={setRegionId}
+                          placeholder="Select a region"
+                          options={regionOptions.map((r) => ({
+                            value: String(r.id),
+                            label: r.name,
+                          }))}
+                        />
+                      </Field>
+                    ) : (
+                      <Field label="Region" help="Fixed to your own region.">
+                        <input value={ownRegionName} disabled readOnly />
+                      </Field>
+                    )}
+                  </>
+                )}
               </div>
             </section>
 
@@ -671,7 +802,7 @@ export default function AddMember() {
                     onClick={() => {
                       if (
                         !includeSpouse ||
-                        (!spouseName && !spouseGhanaCardId)
+                        (!spouseName && !hasGhanaCardIdDigits(spouseGhanaCardId))
                       )
                         setIncludeSpouse(false);
                       else setConfirmation("spouse");
@@ -716,8 +847,9 @@ export default function AddMember() {
                 <div>
                   <h3>Beneficiaries</h3>
                   <p>
-                    At least one beneficiary is required. Up to 10 may be
-                    recorded.
+                    {isNonTeaching
+                      ? "Optional for non-teaching staff. Up to 10 may be recorded."
+                      : "At least one beneficiary is required. Up to 10 may be recorded."}
                   </p>
                 </div>
                 <button

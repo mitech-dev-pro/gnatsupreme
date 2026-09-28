@@ -42,27 +42,76 @@ export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) 
 });
 
 const memberFields = {
-  // Controller ID length isn't fixed — currently 4-7 digits, expected to grow over time.
-  controllerId: z.string().trim().regex(/^\d{4,7}$/, "Controller ID must contain 4 to 7 digits"),
+  // Not digits-only -- non-teaching staff IDs are alphanumeric (e.g. "GNATNT2020001",
+  // "EMP100519"), sharing the same ID space/uniqueness as teaching staff's numeric Controller ID.
+  // Uppercased for consistency, same reason ghanaCard is: so "gnatnt2020001" and "GNATNT2020001"
+  // can't silently become two different IDs.
+  controllerId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{4,20}$/, "Controller ID must be 4 to 20 letters/digits"),
   fullName: z.string().trim().min(2).max(120),
   ghanaCardId: ghanaCard,
   phone: z.string().trim().min(7).max(30).nullable().optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address").nullable().optional(),
   school: z.string().trim().min(2).max(160),
-  districtId: z.coerce.number().int().positive(),
+  // Required for TEACHING, optional for NON_TEACHING (which uses placeOfWork/regionId instead) --
+  // see createMemberSchema's refinement below. A DISTRICT_ADMIN caller always has this forced to
+  // their own district before validation runs (member.routes.ts), regardless of category.
+  districtId: z.coerce.number().int().positive().optional(),
   report20Matched: z.boolean().optional(),
   // Staff-only, set on enrollment or edit -- never exposed to member self-onboarding or
   // self-service change requests (neither `onboardingDetailsSchema` nor
   // `memberDetailsChangeSchema` includes this field). Gates whether Report 20 reconciliation
   // applies to this member at all -- see reconcileReport20 in imports/report20.service.ts.
   employmentCategory: z.enum(["TEACHING", "NON_TEACHING"]).optional(),
+  gender: z.enum(["MALE", "FEMALE"]).optional(),
+  // Free-text workplace for a NON_TEACHING member with no real district -- required when
+  // employmentCategory is NON_TEACHING, see createMemberSchema's refinement below.
+  placeOfWork: z.string().trim().min(2).max(200).nullable().optional(),
+  // Only meaningful for a NON_TEACHING member with no district; ignored otherwise since regionId
+  // is derived from the district in that case -- see resolveMemberRegionId in member-region.ts.
+  regionId: z.coerce.number().int().positive().optional(),
 };
 
-export const createMemberSchema = z.object({
-  ...memberFields,
-  spouse: spouseSchema.nullable().optional(),
-  beneficiaries: z.array(beneficiarySchema).min(1, "At least one beneficiary is required").max(10),
-});
+export const createMemberSchema = z
+  .object({
+    ...memberFields,
+    spouse: spouseSchema.nullable().optional(),
+    // Non-teaching staff aren't required to have a beneficiary on file -- see the superRefine
+    // below, which enforces the min(1) only for TEACHING.
+    beneficiaries: z.array(beneficiarySchema).max(10),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.gender) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gender"], message: "Select a gender" });
+    }
+    const category = value.employmentCategory ?? "TEACHING";
+    if (category === "TEACHING") {
+      if (!value.districtId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["districtId"],
+          message: "Select a district",
+        });
+      }
+      if (value.beneficiaries.length < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["beneficiaries"],
+          message: "At least one beneficiary is required",
+        });
+      }
+    }
+    if (category === "NON_TEACHING" && !value.placeOfWork) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["placeOfWork"],
+        message: "Place of work is required for non-teaching staff",
+      });
+    }
+  });
 
 export const updateMemberSchema = z
   .object(memberFields)
@@ -93,6 +142,7 @@ export const memberQuerySchema = z.object({
   // missingFromReport20 above works around by never sending "false" at all. Registered has a
   // real "false" state to filter on, so it needs the three-way enum instead.
   registered: z.enum(["true", "false"]).optional(),
+  employmentCategory: z.enum(["TEACHING", "NON_TEACHING"]).optional(),
 });
 
 export const memberSchoolsQuerySchema = z.object({

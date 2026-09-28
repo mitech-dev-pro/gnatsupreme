@@ -302,12 +302,27 @@ memberAuthRouter.post(
       return;
     }
 
+    const settingDistrict = !member.districtId && parsed.data.districtId;
+    // regionId must be set alongside districtId here -- otherwise a member who sets their district
+    // during self-service setup silently drops out of REGIONAL_ADMIN scoping, which now filters on
+    // regionId (see member.access.ts).
+    const newDistrictRegionId = settingDistrict
+      ? (
+          await prisma.district.findUnique({
+            where: { id: parsed.data.districtId! },
+            select: { regionId: true },
+          })
+        )?.regionId
+      : undefined;
+
     await prisma.member.update({
       where: { id: member.id },
       data: {
         email: parsed.data.email,
         passwordHash: await hashMemberPassword(parsed.data.password),
-        ...(!member.districtId && parsed.data.districtId ? { districtId: parsed.data.districtId } : {}),
+        ...(settingDistrict
+          ? { districtId: parsed.data.districtId, regionId: newDistrictRegionId ?? null }
+          : {}),
       },
     });
     await recordAudit({

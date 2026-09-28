@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import Button from "@/components/ui/Button";
+import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TableFrame from "@/components/ui/TableFrame";
+import { useAuth } from "@/lib/AuthContext";
+import { useDistricts } from "@/lib/useDistricts";
 
 type ImportJob = {
   id: number;
@@ -94,14 +97,33 @@ function downloadTemplate() {
 export default function UploadMembers() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const { districts } = useDistricts();
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [employmentCategory, setEmploymentCategory] = useState<"" | "TEACHING" | "NON_TEACHING">(
+    "",
+  );
+  const [regionId, setRegionId] = useState("");
 
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState("");
+
+  // Only SUPER_ADMIN/NATIONAL_ADMIN have no fixed region -- REGIONAL_ADMIN/DISTRICT_ADMIN
+  // uploads resolve their region automatically server-side, same as manual enrollment.
+  const needsRegionPicker =
+    employmentCategory === "NON_TEACHING" &&
+    (user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN");
+  const regionOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [districts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,9 +154,19 @@ export default function UploadMembers() {
       setError("Choose a CSV or XLSX file to upload.");
       return;
     }
+    if (!employmentCategory) {
+      setError("Choose whether this file contains teaching or non-teaching staff.");
+      return;
+    }
+    if (needsRegionPicker && !regionId) {
+      setError("Select the region these non-teaching staff belong to.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("employmentCategory", employmentCategory);
+    if (needsRegionPicker && regionId) formData.append("regionId", regionId);
 
     setUploading(true);
     setUploadProgress(0);
@@ -182,8 +214,10 @@ export default function UploadMembers() {
       <div className="mb-5 text-[12.5px] text-[#5b6472]">
         Upload a CSV or XLSX file with Controller ID, Full Name, School, and
         District columns. Each row also needs a beneficiary name and
-        relationship; spouse details are optional. This is a different format
-        from the{" "}
+        relationship; spouse details are optional. For non-teaching staff,
+        School/District/beneficiary aren't needed — use Place of Work
+        instead, and choose "Non-teaching staff" below. This is a different
+        format from the{" "}
         <Link to="/imports/report20" className="font-semibold text-[#1f9c7c] hover:underline">
           Report 20 payroll reconciliation upload
         </Link>
@@ -198,6 +232,51 @@ export default function UploadMembers() {
         onSubmit={handleSubmit}
         className="rounded-[12px] border border-[#e5e9f0] bg-white p-6"
       >
+        <div className="mb-5">
+          <div className="mb-1.5 text-[12.5px] font-semibold text-[#1e2761]">
+            This file contains<b className="ml-1 text-[#c23b3b]">Required</b>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEmploymentCategory("TEACHING")}
+              className={`min-h-10 flex-1 rounded-lg border px-3 text-[12.5px] font-semibold transition ${
+                employmentCategory === "TEACHING"
+                  ? "border-[#1f9c7c] bg-[#dff7ee] text-[#1e2761]"
+                  : "border-[#e5e9f0] text-[#5b6472] hover:border-[#1f9c7c]"
+              }`}
+            >
+              Teaching staff
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmploymentCategory("NON_TEACHING")}
+              className={`min-h-10 flex-1 rounded-lg border px-3 text-[12.5px] font-semibold transition ${
+                employmentCategory === "NON_TEACHING"
+                  ? "border-[#1f9c7c] bg-[#dff7ee] text-[#1e2761]"
+                  : "border-[#e5e9f0] text-[#5b6472] hover:border-[#1f9c7c]"
+              }`}
+            >
+              Non-teaching staff
+            </button>
+          </div>
+          {needsRegionPicker && (
+            <div className="mt-3">
+              <div className="mb-1.5 text-[12.5px] font-semibold text-[#1e2761]">
+                Region<b className="ml-1 text-[#c23b3b]">Required</b>
+              </div>
+              <Dropdown
+                className="w-full"
+                value={regionId}
+                onChange={setRegionId}
+                placeholder="Select a region"
+                aria-label="Region for these non-teaching staff"
+                options={regionOptions.map((r) => ({ value: String(r.id), label: r.name }))}
+              />
+            </div>
+          )}
+        </div>
+
         <div
           onClick={() => fileInputRef.current?.click()}
           className="flex cursor-pointer flex-col items-center justify-center rounded-[10px] border-2 border-dashed border-[#e5e9f0] px-6 py-10 text-center transition hover:border-[#1f9c7c]"
@@ -245,7 +324,7 @@ export default function UploadMembers() {
 
         <Button
           type="submit"
-          disabled={!file}
+          disabled={!file || !employmentCategory || (needsRegionPicker && !regionId)}
           loading={uploading}
           loadingLabel={uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Validating…"}
           className="mt-5"

@@ -41,6 +41,7 @@ type ImportRow = {
   fullName: string | null;
   school: string | null;
   districtName: string | null;
+  employmentCategory: "TEACHING" | "NON_TEACHING" | null;
   status: string;
   issues: string[] | null;
 };
@@ -326,7 +327,12 @@ export default function ImportReview() {
                         <td className="px-4 py-2.5 text-[#5b6472]">{row.rowNumber}</td>
                         <td className="px-4 py-2.5 text-[#171b26]">{row.controllerId ?? "—"}</td>
                         <td className="px-4 py-2.5 text-[#171b26]">{row.fullName ?? "—"}</td>
-                        <td className="px-4 py-2.5 text-[#5b6472]">{row.districtName ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-[#5b6472]">
+                          {row.districtName ??
+                            (row.employmentCategory === "NON_TEACHING"
+                              ? "Non-teaching (no district)"
+                              : "—")}
+                        </td>
                         <td className="px-4 py-2.5">
                           <StatusBadge tone={statusTone(row.status)}>{row.status.replaceAll("_", " ").toLowerCase()}</StatusBadge>
                         </td>

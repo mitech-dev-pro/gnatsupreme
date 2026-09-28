@@ -6,7 +6,7 @@ import Button from "@/components/ui/Button";
 import { InputField, TextareaField } from "@/components/ui/FormField";
 import { Alert } from "@/components/ui/Feedback";
 import ClaimDocumentChecklist, { type UploadedClaimDocument } from "@/components/claims/ClaimDocumentChecklist";
-import { formatGhanaCardIdInput } from "@/lib/ghanaCardId";
+import { formatGhanaCardIdInput, hasGhanaCardIdDigits } from "@/lib/ghanaCardId";
 
 type Profile = {
   id: number;
@@ -178,7 +178,7 @@ export default function MemberClaimNew() {
 
   const leave = () => { if (window.confirm("Leave this claim? Information entered here will be lost.")) navigate("/member/claims"); };
   const paymentComplete = Boolean(paymentDetails.payeeName);
-  const page0Complete = Boolean(claimType) && nightsEligible && documentsComplete && claimantIdNumber.trim().length >= 3 && (!claimType || !claimSupportsSpouse(claimType) || Boolean(profile?.spouse));
+  const page0Complete = Boolean(claimType) && nightsEligible && documentsComplete && hasGhanaCardIdDigits(claimantIdNumber) && (!claimType || !claimSupportsSpouse(claimType) || Boolean(profile?.spouse));
   // Death/TPD with no spouse on file can never be submitted -- rather than render the rest of the
   // form (subject details, ID, documents) behind a Next button that's disabled for a reason the
   // member can't see, hide those sections entirely and leave only the claim-type cards and the

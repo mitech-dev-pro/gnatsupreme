@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
@@ -9,7 +9,11 @@ import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useDistricts } from "@/lib/useDistricts";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
-import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
+import {
+  applyGhanaCardIdChange,
+  GHANA_CARD_ID_PREFIX,
+  ghanaCardIdOrNull,
+} from "@/lib/ghanaCardId";
 import "./MemberDetail.css";
 
 const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
@@ -44,6 +48,7 @@ type MemberDetailData = {
   id: number;
   controllerId: string;
   fullName: string;
+  gender: "MALE" | "FEMALE" | null;
   ghanaCardId: string | null;
   phone: string | null;
   phoneVerifiedAt: string | null;
@@ -51,6 +56,7 @@ type MemberDetailData = {
   school: string;
   status: string;
   employmentCategory: "TEACHING" | "NON_TEACHING";
+  placeOfWork: string | null;
   report20Matched: boolean;
   missingFromReport20At: string | null;
   createdAt: string;
@@ -59,6 +65,7 @@ type MemberDetailData = {
     name: string;
     region: { id: number; name: string };
   } | null;
+  region: { id: number; name: string } | null;
   spouse: Spouse | null;
   beneficiaries: Beneficiary[];
   createdBy: { id: number; fullName: string } | null;
@@ -119,14 +126,19 @@ export default function MemberDetail() {
 
   const [editing, setEditing] = useState(false);
   const [editFullName, setEditFullName] = useState("");
-  const [editGhanaCard, setEditGhanaCard] = useState("");
+  const [editGender, setEditGender] = useState<"" | "MALE" | "FEMALE">("");
+  const [editGhanaCard, setEditGhanaCard] = useState(GHANA_CARD_ID_PREFIX);
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editSchool, setEditSchool] = useState("");
   const [editEmploymentCategory, setEditEmploymentCategory] = useState<
     "TEACHING" | "NON_TEACHING"
   >("TEACHING");
+  // Only relevant when editEmploymentCategory is NON_TEACHING and the member has no district.
+  const [editPlaceOfWork, setEditPlaceOfWork] = useState("");
+  const [editRegionId, setEditRegionId] = useState("");
   const [employmentCategoryNote, setEmploymentCategoryNote] = useState("");
+  const needsRegionPicker = user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN";
   // Remembers the real school on file before switching to Non-teaching staff, so switching back
   // to Teaching doesn't force staff to retype it.
   const lastTeachingSchoolRef = useRef("");
@@ -137,6 +149,13 @@ export default function MemberDetail() {
   const [passwordError, setPasswordError] = useState("");
 
   const { districts } = useDistricts();
+  const regionOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [districts]);
   const [assigningDistrict, setAssigningDistrict] = useState(false);
   const [assignDistrictId, setAssignDistrictId] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
@@ -144,7 +163,7 @@ export default function MemberDetail() {
 
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [spouseName, setSpouseName] = useState("");
-  const [spouseGhanaCard, setSpouseGhanaCard] = useState("");
+  const [spouseGhanaCard, setSpouseGhanaCard] = useState(GHANA_CARD_ID_PREFIX);
   const [spouseFieldErrors, setSpouseFieldErrors] = useState<
     Partial<Record<"fullName" | "ghanaCardId", string>>
   >({});
@@ -188,7 +207,8 @@ export default function MemberDetail() {
   const startEditing = () => {
     if (!member) return;
     setEditFullName(member.fullName);
-    setEditGhanaCard(member.ghanaCardId ?? "");
+    setEditGender(member.gender ?? "");
+    setEditGhanaCard(member.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
     setEditPhone(member.phone ?? "");
     setEditEmail(member.email ?? "");
     // Non-teaching staff are always recorded under Head Office -- force this even if the stored
@@ -198,6 +218,8 @@ export default function MemberDetail() {
       member.employmentCategory === "NON_TEACHING" ? "Head Office" : member.school,
     );
     setEditEmploymentCategory(member.employmentCategory);
+    setEditPlaceOfWork(member.placeOfWork ?? "");
+    setEditRegionId(member.region ? String(member.region.id) : "");
     setEditing(true);
   };
 
@@ -205,14 +227,27 @@ export default function MemberDetail() {
     e.preventDefault();
     setBusy(true);
     setActionError("");
+    const switchingToNonTeaching =
+      member?.employmentCategory !== "NON_TEACHING" && editEmploymentCategory === "NON_TEACHING";
     try {
       await api.patch(`/members/${id}`, {
         fullName: editFullName.trim(),
-        ghanaCardId: editGhanaCard.trim() || null,
+        // Editable but never required to save -- fixing an unrelated field on a legacy member
+        // with no gender on file shouldn't be blocked by that (only create requires it).
+        ...(editGender ? { gender: editGender } : {}),
+        ghanaCardId: ghanaCardIdOrNull(editGhanaCard.trim()),
         phone: editPhone.trim() || null,
         email: editEmail.trim() || null,
         school: editSchool.trim(),
         employmentCategory: editEmploymentCategory,
+        ...(editEmploymentCategory === "NON_TEACHING"
+          ? {
+              placeOfWork: editPlaceOfWork.trim(),
+              ...(switchingToNonTeaching && !member?.district && needsRegionPicker && editRegionId
+                ? { regionId: Number(editRegionId) }
+                : {}),
+            }
+          : {}),
       });
       // The backend already clears a stale missingFromReport20At on this transition (see
       // member.routes.ts) -- this note is purely to surface a status that stays untouched
@@ -273,7 +308,7 @@ export default function MemberDetail() {
 
   const startEditingSpouse = () => {
     setSpouseName(member?.spouse?.fullName ?? "");
-    setSpouseGhanaCard(member?.spouse?.ghanaCardId ?? "");
+    setSpouseGhanaCard(member?.spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
     setSpouseFieldErrors({});
     setActionError("");
     setEditingSpouse(true);
@@ -296,7 +331,7 @@ export default function MemberDetail() {
     try {
       await api.put(`/members/${id}/spouse`, {
         fullName: spouseName.trim(),
-        ghanaCardId: spouseGhanaCard.trim() || null,
+        ghanaCardId: ghanaCardIdOrNull(spouseGhanaCard.trim()),
       });
       setSpouseFieldErrors({});
       setEditingSpouse(false);
@@ -535,6 +570,11 @@ export default function MemberDetail() {
                     <>
                       {member.district.name}, {member.district.region.name}
                     </>
+                  ) : member.employmentCategory === "NON_TEACHING" && member.placeOfWork ? (
+                    <>
+                      {member.placeOfWork}
+                      {member.region ? `, ${member.region.name}` : ""}
+                    </>
                   ) : (
                     <span className="font-semibold text-[#b9791a]">
                       No district assigned
@@ -736,6 +776,18 @@ export default function MemberDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
+                      <label className={labelClasses}>Gender</label>
+                      <Dropdown
+                        value={editGender}
+                        onChange={(value) => setEditGender(value as "MALE" | "FEMALE")}
+                        placeholder="Not set"
+                        options={[
+                          { value: "MALE", label: "Male" },
+                          { value: "FEMALE", label: "Female" },
+                        ]}
+                      />
+                    </div>
+                    <div>
                       <label className={labelClasses}>Ghana Card ID</label>
                       <input
                         value={editGhanaCard}
@@ -802,6 +854,40 @@ export default function MemberDetail() {
                         ]}
                       />
                     </div>
+                    {editEmploymentCategory === "NON_TEACHING" && !member.district && (
+                      <>
+                        <div>
+                          <label className={labelClasses}>Place of work</label>
+                          <input
+                            value={editPlaceOfWork}
+                            onChange={(e) => setEditPlaceOfWork(e.target.value)}
+                            placeholder="e.g. Head Office, Finance Unit"
+                            className={inputClasses}
+                          />
+                        </div>
+                        {needsRegionPicker ? (
+                          <div>
+                            <label className={labelClasses}>Region</label>
+                            <Dropdown
+                              value={editRegionId}
+                              onChange={setEditRegionId}
+                              placeholder="Select a region"
+                              options={regionOptions.map((r) => ({
+                                value: String(r.id),
+                                label: r.name,
+                              }))}
+                            />
+                          </div>
+                        ) : (
+                          member.region && (
+                            <div>
+                              <label className={labelClasses}>Region</label>
+                              <input value={member.region.name} disabled className={inputClasses} />
+                            </div>
+                          )
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -822,6 +908,16 @@ export default function MemberDetail() {
                 </form>
               ) : (
                 <dl className="grid grid-cols-2 gap-4">
+                  <Field
+                    label="Gender"
+                    value={
+                      member.gender === "MALE"
+                        ? "Male"
+                        : member.gender === "FEMALE"
+                          ? "Female"
+                          : "—"
+                    }
+                  />
                   <Field
                     label="Ghana Card ID"
                     value={member.ghanaCardId ?? "—"}
@@ -852,6 +948,12 @@ export default function MemberDetail() {
                         : "Teaching"
                     }
                   />
+                  {member.employmentCategory === "NON_TEACHING" && !member.district && (
+                    <>
+                      <Field label="Place of work" value={member.placeOfWork ?? "—"} />
+                      <Field label="Region" value={member.region?.name ?? "—"} />
+                    </>
+                  )}
                   <Field
                     label="Report 20 Matched"
                     value={

@@ -51,7 +51,10 @@ export type WorkflowEvent = {
   reason: string | null;
   note: string | null;
   createdAt: string;
-  performedBy: { id: number; fullName: string; role: string };
+  // Null for a system-triggered event with no human actor -- e.g. the automated Report 20
+  // reconciliation job that marks a member inactive (report20.service.ts writes
+  // performedById: null for that transition).
+  performedBy: { id: number; fullName: string; role: string } | null;
 };
 export function formatDate(iso: string | null) {
   if (!iso) return "—";

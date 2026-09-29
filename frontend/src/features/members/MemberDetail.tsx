@@ -1078,7 +1078,7 @@ export default function MemberDetail() {
                         </span>
                       </div>
                       <div className="mt-0.5 text-xs text-text-muted">
-                        {event.performedBy.fullName}
+                        {event.performedBy?.fullName ?? "System"}
                         {event.reason ? ` · ${event.reason}` : ""}
                         {event.note ? ` · ${event.note}` : ""}
                       </div>

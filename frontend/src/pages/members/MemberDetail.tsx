@@ -79,7 +79,10 @@ type WorkflowEvent = {
   reason: string | null;
   note: string | null;
   createdAt: string;
-  performedBy: { id: number; fullName: string; role: string };
+  // Null for a system-triggered event with no human actor -- e.g. the automated Report 20
+  // reconciliation job that marks a member inactive (report20.service.ts writes
+  // performedById: null for that transition).
+  performedBy: { id: number; fullName: string; role: string } | null;
 };
 
 function formatDate(iso: string | null) {
@@ -1591,7 +1594,7 @@ export default function MemberDetail() {
                         </span>
                       </div>
                       <div className="mt-0.5 text-[11.5px] text-[#5b6472]">
-                        {event.performedBy.fullName}
+                        {event.performedBy?.fullName ?? "System"}
                         {event.reason ? ` · ${event.reason}` : ""}
                         {event.note ? ` · ${event.note}` : ""}
                       </div>

@@ -163,11 +163,18 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     where: { id: currentMember.id },
     select: { ghanaCardId: true, spouse: { select: { id: true } }, _count: { select: { beneficiaries: true } } },
   });
-  if (existing.ghanaCardId) {
+  // Only a real conflict if the member is actually trying to (re-)submit one -- the frontend
+  // omits this field entirely once it already has a value on file, so ghanaCardId being present
+  // here always means the member typed a new one, never a re-echo of what's already recorded.
+  if (ghanaCardId && existing.ghanaCardId) {
     response.status(409).json({
       success: false,
       message: "Your Ghana Card is already on record. Submit a change request to update it.",
     });
+    return;
+  }
+  if (!ghanaCardId && !existing.ghanaCardId) {
+    response.status(400).json({ success: false, message: "Enter your Ghana Card ID" });
     return;
   }
   if (spouse && existing.spouse) {
@@ -186,10 +193,12 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
 
-  const duplicateGhanaCard = await prisma.member.findFirst({ where: { ghanaCardId, id: { not: currentMember.id } }, select: { id: true } });
-  if (duplicateGhanaCard) {
-    response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another membership." });
-    return;
+  if (ghanaCardId) {
+    const duplicateGhanaCard = await prisma.member.findFirst({ where: { ghanaCardId, id: { not: currentMember.id } }, select: { id: true } });
+    if (duplicateGhanaCard) {
+      response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another membership." });
+      return;
+    }
   }
   if (spouse?.ghanaCardId) {
     const duplicateSpouseCard = await prisma.spouse.findUnique({ where: { ghanaCardId: spouse.ghanaCardId }, select: { id: true } });
@@ -203,7 +212,9 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     await transaction.member.update({
       where: { id: currentMember.id },
       data: {
-        ghanaCardId,
+        // Omitted (not just falsy) when already on file -- Prisma drops an undefined key
+        // entirely, leaving the existing value untouched rather than nulling it out.
+        ...(ghanaCardId ? { ghanaCardId } : {}),
         // Only touch this when the submission actually changes the spouse picture. A staff
         // enrollment may already have recorded a real spouse (and set this to HAS_SPOUSE) before
         // the member ever reaches this step -- if the member then submits no spouse here (the

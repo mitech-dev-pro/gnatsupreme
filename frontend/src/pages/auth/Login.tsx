@@ -175,6 +175,17 @@ export default function Login() {
     emptyBeneficiary(),
   ]);
 
+  // A member enrolled by staff or bulk-uploaded may already have some of these on file --
+  // populated from GET /member-portal/profile right after setup succeeds. Non-null here means
+  // "already recorded", which the policy step shows read-only and never re-submits, so the
+  // 409-on-already-set guard on the backend can never fire for a field the member never touched.
+  const [existingGhanaCardId, setExistingGhanaCardId] = useState<string | null>(null);
+  const [existingSpouse, setExistingSpouse] = useState<{
+    fullName: string;
+    ghanaCardId: string | null;
+  } | null>(null);
+  const [existingBeneficiaryCount, setExistingBeneficiaryCount] = useState(0);
+
   useEffect(() => {
     if (
       (memberStep !== "setup" && memberStep !== "policy") ||
@@ -340,6 +351,33 @@ export default function Login() {
         email: setupEmail.trim(),
         password: setupPassword,
       });
+
+      // Staff enrollment or bulk upload may have already recorded a Ghana Card ID, spouse, or
+      // beneficiaries -- load what's on file so the wizard below never re-asks for (and never
+      // re-submits) something already set, which the backend would otherwise reject outright.
+      try {
+        const profileRes = await api.get("/member-portal/profile");
+        const profile = profileRes.data.data.member;
+        const completion = profileRes.data.data.profileCompletion;
+        if (completion?.complete) {
+          markProfileComplete();
+          navigate(safeMemberRedirect, { replace: true });
+          return;
+        }
+        if (profile.ghanaCardId) {
+          setExistingGhanaCardId(profile.ghanaCardId);
+          setPolicyGhanaCardId(profile.ghanaCardId);
+        }
+        if (profile.spouse) {
+          setExistingSpouse(profile.spouse);
+          setSpouseName(profile.spouse.fullName);
+          setSpouseGhanaCardId(profile.spouse.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
+        }
+        setExistingBeneficiaryCount(profile.beneficiaries?.length ?? 0);
+      } catch {
+        // If the profile fetch fails, fall through to the wizard as usual -- worst case the
+        // member re-enters details the way this flow already worked before.
+      }
       setMemberStep("policy");
     } catch (err: any) {
       setMemberError(
@@ -358,22 +396,25 @@ export default function Login() {
     setBeneficiaries((current) => current.filter((_, i) => i !== index));
 
   // Whether spouse details are provided, derived from the (always-visible) full name field rather
-  // than a separate include/exclude toggle.
-  const hasSpouseDetails = spouseName.trim().length > 0;
+  // than a separate include/exclude toggle. A spouse already on file counts as "provided" without
+  // requiring the member to retype anything.
+  const hasSpouseDetails = Boolean(existingSpouse) || spouseName.trim().length > 0;
 
   const handlePolicyContinue = (e: FormEvent) => {
     e.preventDefault();
     setMemberError("");
 
-    if (!GHANA_CARD.test(policyGhanaCardId)) {
+    // Already on file -- read-only in the form below, never re-validated or re-submitted.
+    if (!existingGhanaCardId && !GHANA_CARD.test(policyGhanaCardId)) {
       setMemberError("Enter your Ghana Card ID in the format GHA-000000000-0.");
       return;
     }
-    if (hasSpouseDetails && spouseName.trim().length < 2) {
+    if (!existingSpouse && hasSpouseDetails && spouseName.trim().length < 2) {
       setMemberError("Enter your spouse's full name.");
       return;
     }
     if (
+      !existingSpouse &&
       hasSpouseDetails &&
       hasGhanaCardIdDigits(spouseGhanaCardId) &&
       !GHANA_CARD.test(spouseGhanaCardId)
@@ -414,13 +455,16 @@ export default function Login() {
     setMemberSubmitting(true);
     try {
       await api.post("/member-portal/onboarding", {
-        ghanaCardId: policyGhanaCardId,
-        spouse: hasSpouseDetails
-          ? {
-              fullName: spouseName.trim(),
-              ghanaCardId: ghanaCardIdOrNull(spouseGhanaCardId),
-            }
-          : null,
+        // Omit entirely when already on file -- sending it back would hit the backend's
+        // already-set guard even though the member never touched the (grayed-out) field.
+        ...(existingGhanaCardId ? {} : { ghanaCardId: policyGhanaCardId }),
+        spouse:
+          existingSpouse || !hasSpouseDetails
+            ? undefined
+            : {
+                fullName: spouseName.trim(),
+                ghanaCardId: ghanaCardIdOrNull(spouseGhanaCardId),
+              },
         beneficiaries: startedBeneficiaries.map((item) => ({
           fullName: item.fullName.trim(),
           relationship: item.relationship,
@@ -1072,13 +1116,24 @@ export default function Login() {
                   <input
                     id="policy-ghana-card"
                     value={policyGhanaCardId}
+                    readOnly={Boolean(existingGhanaCardId)}
+                    disabled={Boolean(existingGhanaCardId)}
                     onChange={(e) => {
                       setPolicyGhanaCardId(applyGhanaCardIdChange(e));
                       setMemberError("");
                     }}
                     placeholder="GHA-000000000-0"
-                    className={inputClasses.replace("pl-9", "pl-3")}
+                    className={
+                      existingGhanaCardId
+                        ? `${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`
+                        : inputClasses.replace("pl-9", "pl-3")
+                    }
                   />
+                  {existingGhanaCardId && (
+                    <p className="mt-1.5 text-[11px] text-[#5b6472]">
+                      Already on file. You can update this later from your profile.
+                    </p>
+                  )}
                 </div>
 
                 <h3 className="mb-2.5 text-[11.5px] font-bold text-[#1e2761]">
@@ -1095,11 +1150,17 @@ export default function Login() {
                     <input
                       id="spouse-name"
                       value={spouseName}
+                      readOnly={Boolean(existingSpouse)}
+                      disabled={Boolean(existingSpouse)}
                       onChange={(e) => {
                         setSpouseName(e.target.value);
                         setMemberError("");
                       }}
-                      className={inputClasses.replace("pl-9", "pl-3")}
+                      className={
+                        existingSpouse
+                          ? `${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`
+                          : inputClasses.replace("pl-9", "pl-3")
+                      }
                     />
                   </div>
                   <div>
@@ -1112,14 +1173,25 @@ export default function Login() {
                     <input
                       id="spouse-ghana-card"
                       value={spouseGhanaCardId}
+                      readOnly={Boolean(existingSpouse)}
+                      disabled={Boolean(existingSpouse)}
                       onChange={(e) => {
                         setSpouseGhanaCardId(applyGhanaCardIdChange(e));
                         setMemberError("");
                       }}
                       placeholder="GHA-000000000-0"
-                      className={inputClasses.replace("pl-9", "pl-3")}
+                      className={
+                        existingSpouse
+                          ? `${inputClasses.replace("pl-9", "pl-3")} cursor-not-allowed bg-[#f3f5f9] text-[#5b6472]`
+                          : inputClasses.replace("pl-9", "pl-3")
+                      }
                     />
                   </div>
+                  {existingSpouse && (
+                    <p className="mt-1.5 text-[11px] text-[#5b6472]">
+                      Already on file. You can update this later from your profile.
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -1137,7 +1209,9 @@ export default function Login() {
                 Beneficiaries
               </h2>
               <div className="mb-5 text-[12.5px] leading-relaxed text-[#5b6472]">
-                Add anyone who should be listed as a beneficiary.
+                {existingBeneficiaryCount > 0
+                  ? `You already have ${existingBeneficiaryCount} beneficiar${existingBeneficiaryCount === 1 ? "y" : "ies"} on file. Add another below if needed, or continue without adding one.`
+                  : "Add anyone who should be listed as a beneficiary."}
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}

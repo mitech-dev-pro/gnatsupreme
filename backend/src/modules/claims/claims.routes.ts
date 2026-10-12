@@ -244,7 +244,7 @@ claimsRouter.post("/submissions", async (request, response) => {
       memberId: member.id,
       submittedById: user.id,
       source: "STAFF",
-      provider: "MANKRADO",
+      provider: "Claims System",
       idempotencyKey,
       status: "PENDING",
       claimType: parsed.data.claimType,
@@ -323,7 +323,7 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
     const record = await prisma.externalClaimSubmission.findUniqueOrThrow({
       where: { id: claim.id },
     });
-    if (record.provider !== "MANKRADO") {
+    if (record.provider !== "Claims System") {
       response.status(409).json({
         success: false,
         message: "Historical simulated claims cannot be sent to Mankrado. File a new claim.",
@@ -395,7 +395,7 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
   const claim = await prisma.externalClaimSubmission.findFirst({
     where: {
       id: params.data.id,
-      provider: "MANKRADO",
+      provider: "Claims System",
       status: "PENDING",
       deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
       member: { is: memberScope(user) },
@@ -562,7 +562,7 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
   const claim = await prisma.externalClaimSubmission.findFirst({
     where: {
       externalClaimId: externalId.data,
-      provider: "MANKRADO",
+      provider: "Claims System",
       member: { is: memberScope(user) },
     },
     select: { id: true, member: { select: { controllerId: true } } },

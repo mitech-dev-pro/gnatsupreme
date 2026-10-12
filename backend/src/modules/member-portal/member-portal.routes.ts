@@ -579,7 +579,7 @@ memberPortalRouter.post("/claims", async (request, response) => {
       submittedByMemberId: currentMember.id,
       source: "MEMBER_PORTAL",
       status: "PENDING",
-      provider: "MANKRADO",
+      provider: "Claims System",
       idempotencyKey,
       claimType: parsed.data.claimType,
       claimantType: parsed.data.claimantType,

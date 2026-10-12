@@ -248,7 +248,7 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
     updatedAt: new Date("2026-09-01"),
     memberId: 1,
     source: "STAFF",
-    provider: "MANKRADO",
+    provider: "Claims System",
     status: "PENDING",
     deliveryState: "NOT_SENT",
     documentIds: [1],
@@ -262,7 +262,7 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
           assert.deepEqual(where?.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
           if (
             !["NOT_SENT", "FAILED", "UNKNOWN"].includes(row.deliveryState) ||
-            row.provider !== "MANKRADO" ||
+            row.provider !== "Claims System" ||
             row.status !== "PENDING" ||
             (row.source === "MEMBER_PORTAL" && !row.reviewedAt)
           )

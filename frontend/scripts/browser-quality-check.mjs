@@ -78,7 +78,12 @@ try {
         if (pathname.endsWith("/claims/provider"))
           body = {
             success: true,
-            data: { configured: true, submissionsEnabled: true, mode: "API", provider: "MANKRADO" },
+            data: {
+              configured: true,
+              submissionsEnabled: true,
+              mode: "API",
+              provider: "Claims System",
+            },
           };
         if (pathname.endsWith("/public/settings/branding"))
           return route.fulfill({ status: 503, json: {} });

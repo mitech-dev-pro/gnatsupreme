@@ -54,7 +54,7 @@ const defaultDependencies: ClaimDeliveryDependencies = {
 export async function expireStaleDeliveries() {
   await prisma.externalClaimSubmission.updateMany({
     where: {
-      provider: "MANKRADO",
+      provider: "Claims System",
       deliveryState: "SENDING",
       deliveryStartedAt: { lt: new Date(Date.now() - 120_000) },
     },
@@ -78,7 +78,7 @@ export async function deliverClaim(
   const claimed = await db.externalClaimSubmission.updateMany({
     where: {
       id,
-      provider: "MANKRADO",
+      provider: "Claims System",
       deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
       status: "PENDING",
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],

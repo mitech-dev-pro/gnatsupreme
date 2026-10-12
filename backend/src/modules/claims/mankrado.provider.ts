@@ -32,7 +32,7 @@ type Configuration = {
   mode: "HOSTED_FORM" | "API";
 };
 export class MankradoClaimsProvider implements ClaimsProvider {
-  readonly name = "MANKRADO";
+  readonly name = "Claims System";
   get mode() {
     return this.config.mode;
   }
@@ -74,7 +74,11 @@ export class MankradoClaimsProvider implements ClaimsProvider {
       if (!response.ok) {
         const uncertain = response.status >= 500 || [408, 409, 429, 401].includes(response.status);
         const responseBody = await response.text().catch(() => "");
-        dump("Mankrado request failed", { url: String(url), status: response.status, body: responseBody });
+        dump("Mankrado request failed", {
+          url: String(url),
+          status: response.status,
+          body: responseBody,
+        });
         throw new ClaimsDeliveryError(
           uncertain ? "UNKNOWN" : "FAILED",
           `HTTP_${response.status}`,

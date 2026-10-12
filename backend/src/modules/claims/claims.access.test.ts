@@ -61,7 +61,7 @@ test("external detail access requires a locally associated, scoped Mankrado clai
       },
     ) => {
       assert.equal(args.where.externalClaimId, "MK-1");
-      assert.equal(args.where.provider, "MANKRADO");
+      assert.equal(args.where.provider, "Claims System");
       assert.equal(args.where.member?.is?.districtId, 9);
       return null;
     },
@@ -150,7 +150,7 @@ test("saved-claim recovery is scoped and only reaches a claim in a deliverable s
       // must never be reachable through this route. See claims.delivery.test.ts for deliverClaim's
       // own enforcement of the same boundary.
       assert.deepEqual(args.where.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
-      assert.equal(args.where.provider, "MANKRADO");
+      assert.equal(args.where.provider, "Claims System");
       assert.equal(args.where.member?.is?.districtId, 9);
       assert.deepEqual(args.where.OR?.[1], { source: "MEMBER_PORTAL", reviewedAt: { not: null } });
       return null;

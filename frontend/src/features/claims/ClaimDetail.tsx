@@ -190,7 +190,7 @@ export default function ClaimDetail() {
             }
           />
 
-          {claim.provider === "MANKRADO" &&
+          {claim.provider === "Claims System" &&
             (claim.deliveryState === "NOT_SENT" ||
               claim.deliveryState === "FAILED" ||
               claim.deliveryState === "UNKNOWN") &&
@@ -230,7 +230,9 @@ export default function ClaimDetail() {
             </div>
           )}
 
-          {claim.provider === "MANKRADO" && <MankradoDetails externalId={claim.externalClaimId} />}
+          {claim.provider === "Claims System" && (
+            <MankradoDetails externalId={claim.externalClaimId} />
+          )}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Overview">
               <dl className="grid grid-cols-2 gap-4">
@@ -387,7 +389,7 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {claim.provider === "MANKRADO" && (
+          {claim.provider === "Claims System" && (
             <MankradoHistory
               staffId={claim.member.controllerId}
               externalId={claim.externalClaimId}

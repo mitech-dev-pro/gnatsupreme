@@ -167,7 +167,7 @@ export default function ClaimDetailModal({
 
         // History and the live assessment are Mankrado-only endpoints; historical
         // simulations have no counterpart there.
-        if (data.provider !== "MANKRADO") {
+        if (data.provider !== "Claims System") {
           setHistory([]);
           return;
         }
@@ -219,7 +219,7 @@ export default function ClaimDetailModal({
     }
   };
   const canRetry =
-    detail?.provider === "MANKRADO" &&
+    detail?.provider === "Claims System" &&
     (detail.deliveryState === "NOT_SENT" ||
       detail.deliveryState === "FAILED" ||
       detail.deliveryState === "UNKNOWN") &&

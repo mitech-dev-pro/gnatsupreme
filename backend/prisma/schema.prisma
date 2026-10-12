@@ -842,7 +842,7 @@ model ExternalClaimSubmission {
   submittedByMemberId Int?                  @map("submitted_by_member_id")
   submittedByMember   Member?               @relation("ClaimSubmittedByMember", fields: [submittedByMemberId], references: [id], onDelete: SetNull)
   source              ClaimSubmissionSource @default(STAFF)
-  provider            String                @default("MANKRADO")
+  provider            String                @default("Claims System")
   idempotencyKey      String                @unique @map("idempotency_key")
   externalClaimId     String?               @unique @map("external_claim_id")
   formUrl             String?               @map("form_url")

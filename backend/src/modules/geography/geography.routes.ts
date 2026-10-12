@@ -57,9 +57,18 @@ regionRouter.get("/", async (_request, response) => {
         : {};
 
   const regions = await withCache(
-    cacheKey("reference:regions", { role: user.role, regionId: user.regionId, districtId: user.districtId }),
+    cacheKey("reference:regions", {
+      role: user.role,
+      regionId: user.regionId,
+      districtId: user.districtId,
+    }),
     env.READ_CACHE_TTL_SECONDS,
-    () => prisma.region.findMany({ where, include: { _count: { select: { districts: true } } }, orderBy: { name: "asc" } }),
+    () =>
+      prisma.region.findMany({
+        where,
+        include: { _count: { select: { districts: true } } },
+        orderBy: { name: "asc" },
+      }),
   );
 
   response.json({ success: true, data: regions });
@@ -73,7 +82,9 @@ regionRouter.post("/", geographyManagers, async (request, response) => {
     where: { name: { equals: parsed.data.name, mode: "insensitive" } },
   });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "A region with this name already exists" });
+    response
+      .status(409)
+      .json({ success: false, message: "A region with this name already exists" });
     return;
   }
 
@@ -111,7 +122,9 @@ regionRouter.patch("/:id", geographyManagers, async (request, response) => {
     },
   });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "A region with this name already exists" });
+    response
+      .status(409)
+      .json({ success: false, message: "A region with this name already exists" });
     return;
   }
 
@@ -184,16 +197,22 @@ districtRouter.get("/", async (request, response) => {
           : {};
 
   const districts = await withCache(
-    cacheKey("reference:districts", { role: user.role, regionId: user.regionId, districtId: user.districtId, filterRegionId: query.data.regionId }),
-    env.READ_CACHE_TTL_SECONDS,
-    () => prisma.district.findMany({
-      where,
-      include: {
-        region: { select: { id: true, name: true } },
-        _count: { select: { members: true } },
-      },
-      orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
+    cacheKey("reference:districts", {
+      role: user.role,
+      regionId: user.regionId,
+      districtId: user.districtId,
+      filterRegionId: query.data.regionId,
     }),
+    env.READ_CACHE_TTL_SECONDS,
+    () =>
+      prisma.district.findMany({
+        where,
+        include: {
+          region: { select: { id: true, name: true } },
+          _count: { select: { members: true } },
+        },
+        orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
+      }),
   );
   response.json({ success: true, data: districts });
 });
@@ -215,7 +234,9 @@ districtRouter.post("/", geographyManagers, async (request, response) => {
     },
   });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "This district already exists in the region" });
+    response
+      .status(409)
+      .json({ success: false, message: "This district already exists in the region" });
     return;
   }
 
@@ -268,7 +289,9 @@ districtRouter.patch("/:id", geographyManagers, async (request, response) => {
     },
   });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "This district already exists in the region" });
+    response
+      .status(409)
+      .json({ success: false, message: "This district already exists in the region" });
     return;
   }
 
@@ -332,14 +355,19 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
 // Staff-curated mappings from a raw district spelling (seen in an uploaded file) to the correct
 // district — see src/modules/geography/district-match.ts for how these get used during import.
 districtRouter.get("/aliases", async (_request, response) => {
-  const aliases = await withCache("reference:district-aliases:all", env.READ_CACHE_TTL_SECONDS, () =>
-    prisma.districtAlias.findMany({
-      include: {
-        district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-        createdBy: { select: { id: true, fullName: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
+  const aliases = await withCache(
+    "reference:district-aliases:all",
+    env.READ_CACHE_TTL_SECONDS,
+    () =>
+      prisma.districtAlias.findMany({
+        include: {
+          district: {
+            select: { id: true, name: true, region: { select: { id: true, name: true } } },
+          },
+          createdBy: { select: { id: true, fullName: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
   );
   response.json({ success: true, data: aliases });
 });
@@ -358,7 +386,9 @@ districtRouter.post("/aliases", geographyManagers, async (request, response) => 
     where: { alias: { equals: parsed.data.alias, mode: "insensitive" } },
   });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "This spelling is already mapped to a district" });
+    response
+      .status(409)
+      .json({ success: false, message: "This spelling is already mapped to a district" });
     return;
   }
 

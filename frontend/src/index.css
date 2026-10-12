@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 :root {
+  --surface-hover: #fafbfd;
+  --warning-accent: #b9791a;
+  --nav-muted: #9aa2c4;
+  --nav-subtle: #7a81a8;
+  --surface-inset: #f3f5f9;
+  --surface-disabled: #edf0f5;
+  --notice-border: #f0c96b;
+  --notice-soft: #fdf6e3;
+  --notice-text: #7a5c00;
   --brand-navy: oklch(0.32 0.11 275);
   --brand-navy-deep: oklch(0.25 0.09 275);
   --brand-teal: oklch(0.62 0.12 165);
@@ -75,22 +84,12 @@ input[type="radio"]:not(:disabled) {
 @theme {
   --font-sans: "Inter", sans-serif;
   --font-heading: "Plus Jakarta Sans", sans-serif;
-
-  --text-xs: 13px;
-  --text-sm: 13px;
-  --text-base: 13px;
-  --text-lg: 15px;
-  --text-xl: 17px;
-  --text-2xl: 19px;
-  --text-3xl: 21px;
-  --text-4xl: 24px;
-  --text-5xl: 28px;
 }
 
 @layer base {
   body {
     font-family: "Inter", sans-serif;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 
   h1,
@@ -125,4 +124,60 @@ body {
 #root {
   overflow: hidden;
   height: 100%;
+}
+
+@theme inline {
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-navy-deep: var(--brand-navy-deep);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-teal-deep: var(--brand-teal-deep);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-app-bg: var(--app-bg);
+  --color-text-on-action: var(--text-on-action);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-text-strong: var(--text-strong);
+  --color-text-muted: var(--text-muted);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  --color-action-primary: var(--action-primary);
+  --color-success: var(--success);
+  --color-focus-ring: var(--focus-ring);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+  --color-skeleton: var(--skeleton);
+  --color-surface-hover: var(--surface-hover);
+  --color-warning-accent: var(--warning-accent);
+  --color-nav-muted: var(--nav-muted);
+  --color-nav-subtle: var(--nav-subtle);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-disabled: var(--surface-disabled);
+  --color-notice-border: var(--notice-border);
+  --color-notice-soft: var(--notice-soft);
+  --color-notice-text: var(--notice-text);
+  --shadow-sheet: 0 -12px 35px rgba(23, 27, 38, 0.18);
+  --shadow-popover: 0 12px 30px rgba(23, 27, 38, 0.22);
+  --shadow-nav: 0 1px 3px rgba(8, 13, 42, 0.22);
+  --shadow-control: 0 2px 6px rgba(30, 39, 97, 0.1);
+  --shadow-dropdown: 0 14px 34px rgba(30, 39, 97, 0.18);
+  --shadow-focus-soft: 0 0 0 3px #dff7ee;
+  --shadow-dialog: 0 24px 60px rgba(10, 14, 40, 0.35);
+  --shadow-nav-raised: 0 5px 16px rgba(8, 13, 42, 0.24);
+  --shadow-nav-hover: 0 5px 16px rgba(8, 13, 42, 0.2);
+  --shadow-subtle: 0 1px 3px rgba(30, 39, 97, 0.15);
+  --shadow-action: 0 2px 6px rgba(31, 156, 124, 0.35);
+  --shadow-panel: 0 2px 6px rgba(30, 39, 97, 0.08);
+  --shadow-selected: 0 0 0 3px rgba(31, 156, 124, 0.14);
+  --shadow-focus: 0 0 0 3px var(--focus-ring);
+  --shadow-inset-panel: 0 1px 2px rgba(30, 39, 97, 0.08);
+  --shadow-focus-inset: inset 0 0 0 3px var(--focus-ring);
+  --shadow-floating: 0 8px 24px rgba(30, 39, 97, 0.12);
 }

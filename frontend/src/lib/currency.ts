@@ -27,8 +27,7 @@ export function formatCurrency(
   amount: number | string | null | undefined,
   currency: string = DEFAULT_CURRENCY,
 ): string {
-  const num =
-    typeof amount === "string" ? Number.parseFloat(amount) : (amount ?? 0);
+  const num = typeof amount === "string" ? Number.parseFloat(amount) : (amount ?? 0);
 
   if (!Number.isFinite(num)) {
     return `${getCurrencySymbol(currency)}0.00`;

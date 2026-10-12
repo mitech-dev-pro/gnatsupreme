@@ -24,7 +24,8 @@ export async function processReport20Job(data: Report20WorkerData) {
     // instead of this awaited call keeping it alive for the whole job regardless.
     await reconcileReport20(data.importJobId, await parseReport20(data.filePath, data.mimeType));
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
+    const message =
+      error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
     await prisma.importJob.update({
       where: { id: data.importJobId },
       data: { status: "FAILED", errorMessage: message, completedAt: new Date() },

@@ -44,7 +44,10 @@ check(
 // DISTRICT_ADMIN can never override their own fixed district via any query param.
 check(
   "DISTRICT_ADMIN districtId override attempt is ignored",
-  resolveMemberScope(user({ role: "DISTRICT_ADMIN", districtId: 12 }), { districtId: 999, regionId: 999 }),
+  resolveMemberScope(user({ role: "DISTRICT_ADMIN", districtId: 12 }), {
+    districtId: 999,
+    regionId: 999,
+  }),
   { districtId: 12 },
 );
 check(

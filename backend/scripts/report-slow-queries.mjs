@@ -3,7 +3,10 @@ import "dotenv/config";
 import pg from "pg";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
-const client = new pg.Client({ connectionString: process.env.DATABASE_URL, application_name: "gnatsupreme-slow-query-report" });
+const client = new pg.Client({
+  connectionString: process.env.DATABASE_URL,
+  application_name: "gnatsupreme-slow-query-report",
+});
 
 await client.connect();
 try {

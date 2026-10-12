@@ -48,7 +48,9 @@ export function resolveDistrict(
   if (nameMatches.length === 1) return { district: nameMatches[0]!, ambiguous: false };
   if (nameMatches.length > 1) {
     const regionMatches = normalizedRegion
-      ? nameMatches.filter((district) => normalizeDistrictName(district.region.name) === normalizedRegion)
+      ? nameMatches.filter(
+          (district) => normalizeDistrictName(district.region.name) === normalizedRegion,
+        )
       : [];
     if (regionMatches.length === 1) return { district: regionMatches[0]!, ambiguous: false };
     return { district: null, ambiguous: true };

@@ -14,7 +14,8 @@ const configuration = {
   SLOW_REQUEST_THRESHOLD_MS: Number(process.env.SLOW_REQUEST_THRESHOLD_MS ?? 750),
 };
 
-if (!process.env.DATABASE_URL || !process.env.REDIS_URL) throw new Error("DATABASE_URL and REDIS_URL are required");
+if (!process.env.DATABASE_URL || !process.env.REDIS_URL)
+  throw new Error("DATABASE_URL and REDIS_URL are required");
 for (const [name, value] of Object.entries(configuration)) {
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
 }
@@ -46,7 +47,10 @@ try {
   const extension = await pool.query(
     "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements') AS enabled",
   );
-  if (!extension.rows[0]?.enabled) failures.push("pg_stat_statements is not enabled; follow deployment.md before production rollout");
+  if (!extension.rows[0]?.enabled)
+    failures.push(
+      "pg_stat_statements is not enabled; follow deployment.md before production rollout",
+    );
 
   await redis.connect();
   const key = `gnat:verify:${randomUUID()}`;
@@ -56,8 +60,22 @@ try {
 
   const db = database.rows[0];
   const usagePercent = db.max_connections ? (db.active_connections / db.max_connections) * 100 : 0;
-  if (usagePercent >= 60) failures.push(`PostgreSQL connection usage is ${usagePercent.toFixed(1)}%, above the 60% target`);
-  console.log(JSON.stringify({ configuration, postgres: { ...db, usagePercent: Number(usagePercent.toFixed(1)) }, redis: "available", pgStatStatements: extension.rows[0]?.enabled ? "enabled" : "missing" }, null, 2));
+  if (usagePercent >= 60)
+    failures.push(
+      `PostgreSQL connection usage is ${usagePercent.toFixed(1)}%, above the 60% target`,
+    );
+  console.log(
+    JSON.stringify(
+      {
+        configuration,
+        postgres: { ...db, usagePercent: Number(usagePercent.toFixed(1)) },
+        redis: "available",
+        pgStatStatements: extension.rows[0]?.enabled ? "enabled" : "missing",
+      },
+      null,
+      2,
+    ),
+  );
   if (failures.length) throw new Error(failures.join("; "));
 } finally {
   redis.disconnect();

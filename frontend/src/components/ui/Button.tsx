@@ -13,18 +13,17 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "border-transparent bg-(--action-primary) text-(--text-on-action) shadow-[0_2px_6px_rgba(30,39,97,0.1)] hover:bg-(--action-primary-hover)",
+    "border-transparent bg-action-primary text-text-on-action shadow-control hover:bg-(--action-primary-hover)",
   secondary:
-    "border-(--border-default) bg-(--surface-raised) text-(--text-strong) hover:border-(--border-strong) hover:bg-(--surface-subtle)",
-  danger:
-    "border-(--danger) bg-(--surface-raised) text-(--danger) hover:bg-(--danger-soft)",
+    "border-border-default bg-(--surface-raised) text-text-strong hover:border-border-strong hover:bg-surface-subtle",
+  danger: "border-danger bg-(--surface-raised) text-danger hover:bg-danger-soft",
   ghost:
-    "border-transparent bg-transparent text-(--text-muted) hover:bg-(--surface-subtle) hover:text-(--text-strong)",
+    "border-transparent bg-transparent text-text-muted hover:bg-surface-subtle hover:text-text-strong",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "min-h-8 px-3 py-1.5 text-[12px]",
-  md: "min-h-10 px-4 py-2 text-[12.5px]",
+  sm: "min-h-8 px-3 py-1.5 text-xs",
+  md: "min-h-10 px-4 py-2 text-sm",
 };
 
 export default function Button({
@@ -43,7 +42,7 @@ export default function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex items-center justify-center gap-2 rounded-[9px] border font-bold transition-[background-color,border-color,color,box-shadow] duration-180 ease-out focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) disabled:cursor-not-allowed disabled:opacity-50 ${sizes[size]} ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-bold transition-[background-color,border-color,color,box-shadow] duration-180 ease-out focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 ${sizes[size]} ${variants[variant]} ${className}`}
       {...props}
     >
       {loading && (

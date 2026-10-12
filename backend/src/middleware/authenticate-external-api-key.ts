@@ -16,7 +16,11 @@ function safeCompare(a: string, b: string) {
   return timingSafeEqual(bufferA, bufferB);
 }
 
-export function authenticateExternalApiKey(request: Request, response: Response, next: NextFunction) {
+export function authenticateExternalApiKey(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+) {
   const provided = request.header("x-api-key");
   const expected = env.EXTERNAL_API_KEY;
 
@@ -25,8 +29,13 @@ export function authenticateExternalApiKey(request: Request, response: Response,
     // scan/guess noise) -- but this still needs SOME trace, since the rate limiter only logs
     // once a caller crosses the 429 threshold, which would otherwise leave up to `limit` wrong
     // key attempts per window per IP with zero log output.
-    logger.warn({ ipAddress: request.ip, path: request.originalUrl }, "External API: invalid or missing API key");
-    response.status(401).json({ success: false, code: "EXTERNAL_AUTH_REQUIRED", message: "Valid API key required" });
+    logger.warn(
+      { ipAddress: request.ip, path: request.originalUrl },
+      "External API: invalid or missing API key",
+    );
+    response
+      .status(401)
+      .json({ success: false, code: "EXTERNAL_AUTH_REQUIRED", message: "Valid API key required" });
     return;
   }
 

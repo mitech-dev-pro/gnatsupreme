@@ -13,7 +13,7 @@ const icon = (path: ReactNode) => (
     fill="none"
     stroke="currentColor"
     strokeWidth="1.8"
-    className="size-[18px] shrink-0"
+    className="size-4.5 shrink-0"
   >
     {path}
   </svg>
@@ -80,9 +80,7 @@ const SECONDARY_LINKS: NavItem[] = [
 // Standalone so the header notification bell doesn't depend on NAV_ITEMS still having a
 // "Notifications" entry at a fixed index -- Notifications dropped out of the primary nav but
 // the route/page itself is unchanged and still reachable via this bell.
-const bellIcon = icon(
-  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M10 21h4" />,
-);
+const bellIcon = icon(<path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M10 21h4" />);
 
 const PAGE_TITLES: Record<string, string> = {
   "/member": "Member Details",
@@ -127,47 +125,35 @@ export default function MemberPortalLayout() {
   };
   const title = PAGE_TITLES[location.pathname] ?? "Member portal";
   const desktopLink = ({ isActive }: { isActive: boolean }) =>
-    `flex min-h-10 items-center gap-3 rounded-[9px] px-3 py-2 text-[12.5px] font-semibold no-underline transition ${isActive ? "bg-white/12 text-white" : "text-white/68 hover:bg-white/7 hover:text-white"}`;
+    `flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold no-underline transition ${isActive ? "bg-white/12 text-white" : "text-white/68 hover:bg-white/7 hover:text-white"}`;
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-(--app-bg)">
+    <div className="flex h-dvh overflow-hidden bg-app-bg">
       <aside
         className="hidden w-60 shrink-0 flex-col text-white lg:flex"
         style={{ backgroundColor: settings.primaryColor }}
       >
         <div className="flex min-h-18 items-center gap-3 border-b border-white/10 px-5">
           <span
-            className="grid size-10 place-items-center rounded-[9px] bg-white text-[12px] font-extrabold"
+            className="grid size-10 place-items-center rounded-lg bg-white text-xs font-extrabold"
             style={{ color: settings.primaryColor }}
           >
             {settings.sidebarMark}
           </span>
           <span className="min-w-0">
-            <strong className="block truncate text-[13.5px]">
-              {settings.portalName}
-            </strong>
-            <small className="text-[10.5px] text-white/58">Member portal</small>
+            <strong className="block truncate text-sm">{settings.portalName}</strong>
+            <small className="text-xs text-white/58">Member portal</small>
           </span>
         </div>
         <div className="border-b border-white/10 px-5 py-4">
-          <p className="truncate text-[12.5px] font-semibold">
-            {member?.fullName}
-          </p>
-          <p className="mt-0.5 truncate text-[10.5px] text-white/58">
+          <p className="truncate text-sm font-semibold">{member?.fullName}</p>
+          <p className="mt-0.5 truncate text-xs text-white/58">
             {settings.memberIdLabel} {member?.controllerId}
           </p>
         </div>
-        <nav
-          className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4"
-          aria-label="Member portal"
-        >
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4" aria-label="Member portal">
           {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={desktopLink}
-            >
+            <NavLink key={item.to} to={item.to} end={item.end} className={desktopLink}>
               {item.icon}
               <span>{item.label}</span>
             </NavLink>
@@ -183,7 +169,7 @@ export default function MemberPortalLayout() {
           <button
             type="button"
             onClick={() => void signOut()}
-            className="min-h-10 w-full rounded-[9px] border border-white/14 px-3 text-left text-[12px] font-semibold text-white/72 hover:bg-white/7 hover:text-white"
+            className="min-h-10 w-full rounded-lg border border-white/14 px-3 text-left text-xs font-semibold text-white/72 hover:bg-white/7 hover:text-white"
           >
             Sign out
           </button>
@@ -191,19 +177,17 @@ export default function MemberPortalLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-(--border-default) bg-(--surface-raised) px-4 sm:px-6">
+        <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-border-default bg-(--surface-raised) px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <span
-              className="grid size-9 shrink-0 place-items-center rounded-[8px] text-[11px] font-extrabold text-white lg:hidden"
+              className="grid size-9 shrink-0 place-items-center rounded-lg text-xs font-extrabold text-white lg:hidden"
               style={{ backgroundColor: settings.primaryColor }}
             >
               {settings.sidebarMark}
             </span>
             <div className="min-w-0">
-              <h1 className="truncate text-[17px] font-extrabold text-(--text-strong)">
-                {title}
-              </h1>
-              <p className="hidden truncate text-[11px] text-(--text-muted) sm:block">
+              <h1 className="truncate text-2xl font-extrabold text-text-strong">{title}</h1>
+              <p className="hidden truncate text-xs text-text-muted sm:block">
                 Welcome back, {member?.fullName?.split(/\s+/)[0]}
               </p>
             </div>
@@ -212,11 +196,11 @@ export default function MemberPortalLayout() {
             <NavLink
               to="/member/notifications"
               aria-label={`${unreadCount} unread notifications`}
-              className="relative grid size-10 place-items-center rounded-[9px] border border-(--border-default) text-(--text-muted) no-underline hover:bg-(--surface-subtle)"
+              className="relative grid size-10 place-items-center rounded-lg border border-border-default text-text-muted no-underline hover:bg-surface-subtle"
             >
               {bellIcon}
               {unreadCount > 0 && (
-                <span className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-(--danger) px-1 text-center text-[8px] font-bold leading-4 text-white">
+                <span className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-danger px-1 text-center text-xs font-bold leading-4 text-white">
                   {Math.min(unreadCount, 99)}
                 </span>
               )}
@@ -224,7 +208,7 @@ export default function MemberPortalLayout() {
             <button
               type="button"
               onClick={() => setMoreOpen(true)}
-              className="grid size-10 place-items-center rounded-[9px] border border-(--border-default) text-(--text-strong) lg:hidden"
+              className="grid size-10 place-items-center rounded-lg border border-border-default text-text-strong lg:hidden"
               aria-label="Open member menu"
             >
               {icon(<path d="M5 7h14M5 12h14M5 17h14" />)}
@@ -239,7 +223,7 @@ export default function MemberPortalLayout() {
         </main>
 
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-(--border-default) bg-(--surface-raised) px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t border-border-default bg-(--surface-raised) px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 lg:hidden"
           aria-label="Primary member navigation"
         >
           {NAV_ITEMS.map((item) => (
@@ -248,20 +232,18 @@ export default function MemberPortalLayout() {
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[8px] text-[10px] font-semibold no-underline ${isActive ? "text-(--action-primary)" : "text-(--text-muted)"}`
+                `flex min-h-12 min-w-16 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-center text-xs font-semibold no-underline ${isActive ? "text-action-primary" : "text-text-muted"}`
               }
             >
               {item.icon}
-              <span>
-                {item.label === "Member Details" ? "Details" : item.label}
-              </span>
+              <span>{item.label === "Member Details" ? "Details" : item.label}</span>
             </NavLink>
           ))}
           <button
             type="button"
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen(true)}
-            className="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[8px] text-[10px] font-semibold text-(--text-muted)"
+            className="flex min-h-12 min-w-16 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-center text-xs font-semibold text-text-muted"
           >
             {icon(
               <>
@@ -285,14 +267,12 @@ export default function MemberPortalLayout() {
           />
           <aside
             aria-label="More member navigation"
-            className="fixed inset-x-0 bottom-0 z-60 max-h-[82dvh] overflow-y-auto rounded-t-[16px] bg-(--surface-raised) px-4 pb-[max(18px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_35px_rgba(23,27,38,0.18)] lg:hidden"
+            className="fixed inset-x-0 bottom-0 z-60 max-h-[82dvh] overflow-y-auto rounded-t-2xl bg-(--surface-raised) px-4 pb-[max(18px,env(safe-area-inset-bottom))] pt-3 shadow-sheet lg:hidden"
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-(--border-strong)" />
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border-strong" />
             <div className="mb-3 px-2">
-              <strong className="block text-[14px] text-(--text-strong)">
-                {member?.fullName}
-              </strong>
-              <span className="text-[11px] text-(--text-muted)">
+              <strong className="block text-sm text-text-strong">{member?.fullName}</strong>
+              <span className="text-xs text-text-muted">
                 {settings.memberIdLabel} {member?.controllerId}
               </span>
             </div>
@@ -301,7 +281,7 @@ export default function MemberPortalLayout() {
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  className="flex min-h-12 items-center gap-3 rounded-[9px] border border-(--border-default) px-3 text-[12px] font-semibold text-(--text-strong) no-underline"
+                  className="flex min-h-12 items-center gap-3 rounded-lg border border-border-default px-3 text-xs font-semibold text-text-strong no-underline"
                 >
                   {item.icon}
                   {item.label}
@@ -311,7 +291,7 @@ export default function MemberPortalLayout() {
             <button
               type="button"
               onClick={() => void signOut()}
-              className="mt-3 min-h-11 w-full rounded-[9px] border border-(--danger-border) text-[12px] font-bold text-(--danger)"
+              className="mt-3 min-h-11 w-full rounded-lg border border-danger-border text-xs font-bold text-danger"
             >
               Sign out
             </button>

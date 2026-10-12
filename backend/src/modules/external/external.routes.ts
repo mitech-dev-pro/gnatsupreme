@@ -18,13 +18,17 @@ externalRouter.get("/members/:controllerId", async (request, response) => {
   // format check here would let a caller distinguish "malformed" from "not found," which is
   // exactly the enumeration signal this endpoint avoids everywhere else.
   if (controllerId.length > 128) {
-    response.status(404).json({ success: false, code: "EXTERNAL_MEMBER_NOT_FOUND", message: "Member not found" });
+    response
+      .status(404)
+      .json({ success: false, code: "EXTERNAL_MEMBER_NOT_FOUND", message: "Member not found" });
     return;
   }
 
   const member = await lookupMemberByControllerId(controllerId);
   if (!member) {
-    response.status(404).json({ success: false, code: "EXTERNAL_MEMBER_NOT_FOUND", message: "Member not found" });
+    response
+      .status(404)
+      .json({ success: false, code: "EXTERNAL_MEMBER_NOT_FOUND", message: "Member not found" });
     return;
   }
 

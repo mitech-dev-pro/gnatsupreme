@@ -330,9 +330,7 @@ async function seedDistrictAliases() {
       create: { alias, districtId: matches[0]!.id },
     });
   }
-  console.log(
-    `District alias seed complete: ${Object.keys(districtAliases).length} aliases.`,
-  );
+  console.log(`District alias seed complete: ${Object.keys(districtAliases).length} aliases.`);
 }
 
 async function seedGeography() {

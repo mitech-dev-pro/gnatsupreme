@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-const roleSchema = z.enum([
-  "SUPER_ADMIN",
-  "NATIONAL_ADMIN",
-  "REGIONAL_ADMIN",
-  "DISTRICT_ADMIN",
-]);
+const roleSchema = z.enum(["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"]);
 
 export const staffPasswordSchema = z
   .string()

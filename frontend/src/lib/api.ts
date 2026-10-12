@@ -1,3 +1,4 @@
+import { getApiErrorStatus, getNestedApiErrorCode } from "@/lib/errorExtract";
 import axios from "axios";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -108,10 +109,10 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error?.config;
-    const code = error?.response?.data?.error?.code;
+    const code = getNestedApiErrorCode(error);
     const requestUrl = config?.url ?? "";
     const isRefreshProbe = REFRESH_PROBE_PATHS.some((path) => requestUrl.endsWith(path));
-    const isAuthFailure = code === "UNAUTHENTICATED" || error?.response?.status === 401;
+    const isAuthFailure = code === "UNAUTHENTICATED" || getApiErrorStatus(error) === 401;
 
     // One retry per request: refresh the relevant token family and replay the original call
     // with it before giving up. config._retried guards against looping if the retried request

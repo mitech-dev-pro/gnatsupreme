@@ -38,18 +38,16 @@ export const beneficiaryBaseSchema = z.object({
   trusteeGhanaCardId: ghanaCard,
 });
 
-export const beneficiarySchema = beneficiaryBaseSchema.superRefine(
-  (value, ctx) => {
-    if (!isMinor(value.dateOfBirth ?? null)) return;
-    if (!value.trusteeName) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["trusteeName"],
-        message: "Trustee name is required for a beneficiary under 18",
-      });
-    }
-  },
-);
+export const beneficiarySchema = beneficiaryBaseSchema.superRefine((value, ctx) => {
+  if (!isMinor(value.dateOfBirth ?? null)) return;
+  if (!value.trusteeName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["trusteeName"],
+      message: "Trustee name is required for a beneficiary under 18",
+    });
+  }
+});
 
 const memberFields = {
   // Not digits-only -- non-teaching staff IDs are alphanumeric (e.g. "GNATNT2020001",
@@ -101,11 +99,7 @@ export const createMemberSchema = z
   })
   .superRefine((value, ctx) => {
     if (!value.gender) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["gender"],
-        message: "Select a gender",
-      });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gender"], message: "Select a gender" });
     }
     const category = value.employmentCategory ?? "TEACHING";
     if (category === "TEACHING") {

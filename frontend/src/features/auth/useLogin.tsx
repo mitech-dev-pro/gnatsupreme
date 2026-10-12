@@ -61,6 +61,16 @@ export function useLogin() {
   const [spouseName, setSpouseName] = useState("");
   const [spouseGhanaCardId, setSpouseGhanaCardId] = useState(GHANA_CARD_ID_PREFIX);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>([emptyBeneficiary()]);
+  // A member enrolled by staff or bulk-uploaded may already have some of these on file --
+  // populated from GET /member-portal/profile right after setup succeeds. Non-null here means
+  // "already recorded", which the policy step shows read-only and never re-submits, so the
+  // 409-on-already-set guard on the backend can never fire for a field the member never touched.
+  const [existingGhanaCardId, setExistingGhanaCardId] = useState<string | null>(null);
+  const [existingSpouse, setExistingSpouse] = useState<{
+    fullName: string;
+    ghanaCardId: string | null;
+  } | null>(null);
+  const [existingBeneficiaryCount, setExistingBeneficiaryCount] = useState(0);
   useEffect(() => {
     if ((memberStep !== "setup" && memberStep !== "policy") || districts.length > 0) return;
     api
@@ -140,5 +150,11 @@ export function useLogin() {
     setSpouseGhanaCardId,
     beneficiaries,
     setBeneficiaries,
+    existingGhanaCardId,
+    setExistingGhanaCardId,
+    existingSpouse,
+    setExistingSpouse,
+    existingBeneficiaryCount,
+    setExistingBeneficiaryCount,
   };
 }

@@ -41,11 +41,16 @@ export const memberLookupSchema = z.object({
 });
 
 export const onboardingDetailsSchema = z.object({
+  // Optional, not required -- a member enrolled by staff or bulk-uploaded may already have a
+  // Ghana Card ID on file, in which case the frontend never re-asks for it and omits this field
+  // entirely. The route handler enforces "required unless already on record" itself, since only
+  // it knows what's already set.
   ghanaCardId: z
     .string()
     .trim()
     .toUpperCase()
-    .regex(/^GHA-\d{9}-\d$/, "Use the format GHA-000000000-0"),
+    .regex(/^GHA-\d{9}-\d$/, "Use the format GHA-000000000-0")
+    .optional(),
   spouse: spouseSchema.nullable().optional(),
   // No .min(1) here -- a member enrolled by staff may already have beneficiaries on file, and
   // this endpoint only ever runs for a member reaching this step because *some* completion item

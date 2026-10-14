@@ -370,7 +370,9 @@ function SpouseForm({
   onSubmitted: () => void;
 }) {
   const [fullName, setFullName] = useState(spouse?.fullName ?? "");
-  const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
+  const [ghanaCardId, setGhanaCardId] = useState(
+    spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX,
+  );
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -602,12 +604,7 @@ function BeneficiaryForm({
 }
 
 export type MemberPortalSection =
-  | "profile"
-  | "coverage"
-  | "requests"
-  | "claims"
-  | "notifications"
-  | "help";
+  "profile" | "coverage" | "requests" | "claims" | "notifications" | "help";
 
 export default function MemberHome({
   section = "profile",
@@ -1543,7 +1540,7 @@ export default function MemberHome({
                   >
                     My benefit plan
                   </h2>
-                  <div className="flex flex-wrap gap-2">
+                  {/* <div className="flex flex-wrap gap-2">
                     <a
                       href="/policy/terms-and-conditions.pdf"
                       target="_blank"
@@ -1559,7 +1556,7 @@ export default function MemberHome({
                     >
                       Download PDF
                     </a>
-                  </div>
+                  </div> */}
                 </div>
                 <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
                   <div>

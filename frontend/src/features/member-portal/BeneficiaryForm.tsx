@@ -30,6 +30,12 @@ export function BeneficiaryForm({
   const [error, setError] = useState("");
 
   const minor = isMinor(dateOfBirth);
+  // Carries forward a beneficiary saved before the HUSBAND/WIFE and BROTHER/SISTER split (still
+  // plain SPOUSE/SIBLING) so the dropdown shows its current value instead of falling back to the
+  // placeholder -- RELATIONSHIPS itself only lists the gendered options for new selections.
+  const relationshipOptions = RELATIONSHIPS.includes(relationship)
+    ? RELATIONSHIPS
+    : [relationship, ...RELATIONSHIPS];
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -81,7 +87,7 @@ export function BeneficiaryForm({
           <Dropdown
             value={relationship}
             onChange={setRelationship}
-            options={RELATIONSHIPS.map((r) => ({
+            options={relationshipOptions.map((r) => ({
               value: r,
               label: r.charAt(0) + r.slice(1).toLowerCase(),
             }))}

@@ -32,7 +32,20 @@ export const spouseSchema = z.object({
 // that only changes trusteeName shouldn't be forced to resupply dateOfBirth just to pass it).
 export const beneficiaryBaseSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
-  relationship: z.enum(["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"]),
+  // SPOUSE/SIBLING stay valid here only so existing rows saved before the HUSBAND/WIFE and
+  // BROTHER/SISTER split can still be read and partially updated -- new beneficiaries should use
+  // the gendered values (see frontend RELATIONSHIPS lists, which omit SPOUSE/SIBLING).
+  relationship: z.enum([
+    "CHILD",
+    "SPOUSE",
+    "PARENT",
+    "SIBLING",
+    "OTHER",
+    "HUSBAND",
+    "WIFE",
+    "BROTHER",
+    "SISTER",
+  ]),
   dateOfBirth: optionalDate,
   trusteeName: optionalText,
   trusteeGhanaCardId: ghanaCard,

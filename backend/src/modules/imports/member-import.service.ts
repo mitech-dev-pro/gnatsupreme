@@ -56,10 +56,22 @@ function parseDate(value: string | null, label: string, issues: string[]) {
   return date;
 }
 
+const RELATIONSHIP_VALUES = [
+  "CHILD",
+  "SPOUSE",
+  "PARENT",
+  "SIBLING",
+  "OTHER",
+  "HUSBAND",
+  "WIFE",
+  "BROTHER",
+  "SISTER",
+] as const;
+
 function parseRelationship(value: string | null) {
   const relationship = value?.trim().toUpperCase().replaceAll(" ", "_");
-  return ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"].includes(relationship ?? "")
-    ? (relationship as "CHILD" | "SPOUSE" | "PARENT" | "SIBLING" | "OTHER")
+  return RELATIONSHIP_VALUES.includes(relationship as (typeof RELATIONSHIP_VALUES)[number])
+    ? (relationship as (typeof RELATIONSHIP_VALUES)[number])
     : null;
 }
 
@@ -315,7 +327,9 @@ export async function stageMemberImport(
           );
         if (!beneficiaryName) issues.push("Beneficiary name is required");
         if (!relationship)
-          issues.push("Beneficiary relationship must be CHILD, SPOUSE, PARENT, SIBLING, or OTHER");
+          issues.push(
+            "Beneficiary relationship must be CHILD, HUSBAND, WIFE, PARENT, BROTHER, SISTER, or OTHER",
+          );
       }
       if (ghanaCardId && !/^GHA-\d{9}-\d$/.test(ghanaCardId))
         issues.push("Ghana Card ID has an invalid format");

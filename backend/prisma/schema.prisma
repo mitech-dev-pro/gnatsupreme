@@ -52,10 +52,18 @@ enum MemberGender {
 
 enum BeneficiaryRelationship {
   CHILD
+  // Deprecated: kept so existing rows saved before the HUSBAND/WIFE split still read back
+  // correctly. New beneficiaries should use HUSBAND or WIFE instead.
   SPOUSE
   PARENT
+  // Deprecated: kept so existing rows saved before the BROTHER/SISTER split still read back
+  // correctly. New beneficiaries should use BROTHER or SISTER instead.
   SIBLING
   OTHER
+  HUSBAND
+  WIFE
+  BROTHER
+  SISTER
 
   @@map("beneficiary_relationship")
 }

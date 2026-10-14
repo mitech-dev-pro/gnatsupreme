@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-export const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
+export const RELATIONSHIPS = ["CHILD", "HUSBAND", "WIFE", "PARENT", "BROTHER", "SISTER", "OTHER"];
 export const GHANA_CARD = /^GHA-\d{9}-\d$/;
 export type BeneficiaryDraft = {
   fullName: string;

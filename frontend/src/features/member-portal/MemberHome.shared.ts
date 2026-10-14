@@ -110,7 +110,7 @@ export type ChangeRequest = {
   requestedAt: string;
   reviewedAt: string | null;
 };
-export const RELATIONSHIPS = ["CHILD", "SPOUSE", "PARENT", "SIBLING", "OTHER"];
+export const RELATIONSHIPS = ["CHILD", "HUSBAND", "WIFE", "PARENT", "BROTHER", "SISTER", "OTHER"];
 export const REQUEST_TYPE_LABELS: Record<string, string> = {
   MEMBER_DETAILS: "My details",
   SPOUSE: "Spouse",

@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
+import { ghanaCardIsUsed } from "../members/member.service.js";
 import {
   authenticateMember,
   type AuthenticatedMember,
@@ -247,18 +248,14 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
       return;
     }
   }
-  if (spouse?.ghanaCardId) {
-    const duplicateSpouseCard = await prisma.spouse.findUnique({
-      where: { ghanaCardId: spouse.ghanaCardId },
-      select: { id: true },
+  if (spouse?.ghanaCardId && (await ghanaCardIsUsed(spouse.ghanaCardId))) {
+    // Checks both the members and spouses tables, so this also blocks declaring as a spouse
+    // someone who is themselves already enrolled as a GNAT member.
+    response.status(409).json({
+      success: false,
+      message: "This Ghana Card ID is already registered to another membership or spouse.",
     });
-    if (duplicateSpouseCard) {
-      response.status(409).json({
-        success: false,
-        message: "This Ghana Card ID is already registered to another spouse.",
-      });
-      return;
-    }
+    return;
   }
 
   const spouseId = await prisma.$transaction(async (transaction) => {

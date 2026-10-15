@@ -12,6 +12,7 @@ import { memberScope } from "../members/member.access.js";
 import { notifyMember } from "../notifications/notification.service.js";
 import {
   bulkApproveSchema,
+  bulkChangeRequestReviewSchema,
   bulkReturnSchema,
   changeRequestIdSchema,
   changeRequestQuerySchema,
@@ -441,3 +442,139 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
   await notifyMember({ memberId: item.memberId, type: `CHANGE_REQUEST_${reviewed!.status}`, title: "Change request updated", message: `Your ${item.type.toLowerCase().replaceAll("_", " ")} request was ${reviewed!.status.toLowerCase()}${reviewed!.reviewNote ? `: ${reviewed!.reviewNote}` : "."}`, idempotencyKey: `change-request-review:${item.id}:${reviewed!.status}` });
   response.json({ success: true, data: reviewed });
 });
+
+changeRequestRouter.post(
+  "/bulk/review",
+  authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"),
+  async (request, response) => {
+    const body = bulkChangeRequestReviewSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({
+        success: false,
+        message: "Select between 1 and 100 valid change requests, and provide a note for a return or reject decision",
+      });
+      return;
+    }
+    const actor = user(response);
+    const results: Array<{ id: number; success: boolean; message?: string; status?: string }> = [];
+    for (const id of body.data.changeRequestIds) {
+      try {
+        const item = await prisma.memberChangeRequest.findFirst({
+          where: { id, status: "PENDING", member: { is: memberScope(actor) } },
+          include: { member: { include: { beneficiaries: true, district: { select: { regionId: true } } } } },
+        });
+        if (!item) {
+          results.push({ id, success: false, message: "Not found, outside your access scope, or no longer pending" });
+          continue;
+        }
+        if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
+          const data = memberDetailsChangeSchema.parse(item.proposedData);
+          if (await ghanaCardConflict(data.ghanaCardId, item.memberId)) {
+            results.push({ id, success: false, message: "The proposed Ghana Card ID is already in use" });
+            continue;
+          }
+        }
+        if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
+          const data = spouseSchema.parse(item.proposedData);
+          const spouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true } });
+          if (
+            data.ghanaCardId === item.member.ghanaCardId ||
+            (await ghanaCardConflict(data.ghanaCardId, item.memberId, spouse?.id))
+          ) {
+            results.push({ id, success: false, message: "The proposed spouse Ghana Card ID is already in use" });
+            continue;
+          }
+        }
+        if (body.data.action === "APPROVE" && item.type === "BENEFICIARY_ADD" && item.member.beneficiaries.length >= 10) {
+          results.push({ id, success: false, message: "A member cannot have more than 10 beneficiaries" });
+          continue;
+        }
+        if (body.data.action === "APPROVE") {
+          await prisma.$transaction(async (transaction) => {
+            if (item.type === "MEMBER_DETAILS") {
+              const data = memberDetailsChangeSchema.parse(item.proposedData);
+              await transaction.member.update({
+                where: { id: item.memberId },
+                data: {
+                  ...data,
+                  ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone
+                    ? { phoneVerifiedAt: null }
+                    : {}),
+                },
+              });
+            }
+            if (item.type === "SPOUSE") {
+              const data = spouseSchema.parse(item.proposedData);
+              await transaction.spouse.upsert({
+                where: { memberId: item.memberId },
+                update: data,
+                create: { ...data, memberId: item.memberId },
+              });
+              await transaction.member.update({
+                where: { id: item.memberId },
+                data: { spouseDeclarationStatus: "HAS_SPOUSE" },
+              });
+            }
+            if (item.type === "BENEFICIARY_ADD")
+              await transaction.beneficiary.create({
+                data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId },
+              });
+            if (item.type === "BENEFICIARY_UPDATE")
+              await transaction.beneficiary.update({
+                where: { id: item.targetBeneficiaryId! },
+                data: beneficiarySchema.parse(item.proposedData),
+              });
+            if (item.type === "BENEFICIARY_REMOVE") {
+              if (item.member.beneficiaries.length <= 1) {
+                throw new Error("A member must retain at least one beneficiary");
+              }
+              await transaction.beneficiary.delete({ where: { id: item.targetBeneficiaryId! } });
+            }
+            await transaction.memberChangeRequest.update({
+              where: { id: item.id },
+              data: { status: "APPROVED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() },
+            });
+          });
+          await invalidateMemberAuth(item.memberId);
+        } else {
+          await prisma.memberChangeRequest.update({
+            where: { id: item.id },
+            data: {
+              status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED",
+              reviewedById: actor.id,
+              reviewNote: body.data.note,
+              reviewedAt: new Date(),
+            },
+          });
+        }
+        const reviewed = await prisma.memberChangeRequest.findUnique({ where: { id: item.id } });
+        await recordAudit({
+          request,
+          actor,
+          action: `MEMBER_CHANGE_${reviewed!.status}`,
+          entityType: "MEMBER_CHANGE_REQUEST",
+          entityId: item.id,
+          description: `Bulk-${reviewed!.status.toLowerCase()} ${item.type} change for ${item.member.fullName}`,
+          afterData: { status: reviewed!.status, reviewNote: reviewed!.reviewNote, bulk: true },
+          regionId: item.member.district?.regionId,
+          districtId: item.member.districtId,
+        });
+        await notifyMember({
+          memberId: item.memberId,
+          type: `CHANGE_REQUEST_${reviewed!.status}`,
+          title: "Change request updated",
+          message: `Your ${item.type.toLowerCase().replaceAll("_", " ")} request was ${reviewed!.status.toLowerCase()}${reviewed!.reviewNote ? `: ${reviewed!.reviewNote}` : "."}`,
+          idempotencyKey: `change-request-review:${item.id}:${reviewed!.status}`,
+        });
+        results.push({ id, success: true, status: reviewed!.status });
+      } catch (error) {
+        results.push({ id, success: false, message: error instanceof Error ? error.message : "Review failed" });
+      }
+    }
+    const succeeded = results.filter((item) => item.success).length;
+    response.json({
+      success: true,
+      data: { requested: results.length, succeeded, failed: results.length - succeeded, results },
+    });
+  },
+);

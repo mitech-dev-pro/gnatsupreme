@@ -46,6 +46,11 @@ export const reviewChangeRequestSchema = z.object({
   action: z.enum(["APPROVE", "RETURN", "REJECT"]),
   note: z.string().trim().max(500).nullable().optional(),
 }).refine((value) => value.action === "APPROVE" || Boolean(value.note), { message: "A review note is required", path: ["note"] });
+export const bulkChangeRequestReviewSchema = z.object({
+  changeRequestIds: z.array(z.number().int().positive()).min(1).max(100).transform((ids) => [...new Set(ids)]),
+  action: z.enum(["APPROVE", "RETURN", "REJECT"]),
+  note: z.string().trim().max(500).nullable().optional(),
+}).refine((value) => value.action === "APPROVE" || Boolean(value.note), { message: "A review note is required", path: ["note"] });
 
 export const changeRequestQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),

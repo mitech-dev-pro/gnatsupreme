@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
+import { ghanaCardIsUsed } from "../members/member.routes.js";
 import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
@@ -193,19 +194,23 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
 
-  if (ghanaCardId) {
-    const duplicateGhanaCard = await prisma.member.findFirst({ where: { ghanaCardId, id: { not: currentMember.id } }, select: { id: true } });
-    if (duplicateGhanaCard) {
-      response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another membership." });
-      return;
-    }
+  // Checks both the members and spouses tables (not just the one that matches this field's own
+  // type) -- a split check that only looked at "its own" table would miss, say, this member's
+  // card already sitting on someone else's spouse row, and would also let a member declare as
+  // their spouse someone who is themselves already enrolled as a GNAT member.
+  if (ghanaCardId && (await ghanaCardIsUsed(ghanaCardId, { memberId: currentMember.id }))) {
+    response.status(409).json({
+      success: false,
+      message: "This Ghana Card ID is already registered to another membership.",
+    });
+    return;
   }
-  if (spouse?.ghanaCardId) {
-    const duplicateSpouseCard = await prisma.spouse.findUnique({ where: { ghanaCardId: spouse.ghanaCardId }, select: { id: true } });
-    if (duplicateSpouseCard) {
-      response.status(409).json({ success: false, message: "This Ghana Card ID is already registered to another spouse." });
-      return;
-    }
+  if (spouse?.ghanaCardId && (await ghanaCardIsUsed(spouse.ghanaCardId))) {
+    response.status(409).json({
+      success: false,
+      message: "This Ghana Card ID is already registered to another membership or spouse.",
+    });
+    return;
   }
 
   const spouseId = await prisma.$transaction(async (transaction) => {

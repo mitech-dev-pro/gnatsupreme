@@ -99,7 +99,7 @@ async function findAccessibleMember(id: number, user: AuthenticatedUser) {
   });
 }
 
-async function ghanaCardIsUsed(
+export async function ghanaCardIsUsed(
   ghanaCardId: string | null | undefined,
   exclusions: { memberId?: number; spouseId?: number } = {},
 ) {

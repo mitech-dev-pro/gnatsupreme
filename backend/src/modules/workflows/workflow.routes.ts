@@ -295,7 +295,17 @@ memberWorkflowRouter.post("/:id/remove", authorizeRoles("SUPER_ADMIN", "NATIONAL
     return;
   }
   const result = await prisma.$transaction(async (transaction) => {
-    const member = await transaction.member.update({ where: { id: existing.id }, data: { status: "REMOVED" } });
+    // ghanaCardId is globally unique on both Member and Spouse, and REMOVED has no reactivation
+    // path back to active (unlike INACTIVE, which keeps its card since reconciliation can restore
+    // that member later) -- so a removed member's card must be freed here, not just left for a
+    // duplicate-check to filter by status. Filtering alone can't work: a new member could pass an
+    // app-level "not in use" check and still crash on the raw unique-constraint violation, since
+    // the removed member's row would still physically hold the value.
+    const member = await transaction.member.update({
+      where: { id: existing.id },
+      data: { status: "REMOVED", ghanaCardId: null },
+    });
+    await transaction.spouse.updateMany({ where: { memberId: existing.id }, data: { ghanaCardId: null } });
     const event = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "REMOVED", fromStatus: existing.status, toStatus: "REMOVED", reason: body.data.reason, note: body.data.note, performedById: actor.id } });
     const claim = body.data.reason === "DEATH" || body.data.reason === "DISABILITY"
       ? await transaction.externalClaimSubmission.create({ data: { memberId: existing.id, submittedById: actor.id, idempotencyKey: `removal:${event.id}`, status: "PENDING" } })

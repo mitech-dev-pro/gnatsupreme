@@ -5,6 +5,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { z } from "zod";
 
+import { Prisma } from "../../generated/prisma/client.js";
 import { logger } from "../../lib/logger.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { prisma } from "../../lib/prisma.js";
@@ -77,6 +78,27 @@ function optionalDate(value: string | null) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Returns the violated column name for a Prisma unique-constraint error, or null if `error` isn't
+// one. `error.meta?.target` is an array of field names OR a constraint-name string depending on
+// Prisma/driver version, so both shapes are checked.
+function uniqueViolationField(error: unknown): string | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return null;
+  }
+  const target = error.meta?.target;
+  if (Array.isArray(target)) return String(target[0] ?? "");
+  if (typeof target === "string") return target;
+  return "";
+}
+
+function uniqueFieldLabel(field: string) {
+  if (field.includes("ghana_card_id")) return "Ghana Card ID";
+  if (field.includes("controller_id")) return "Controller ID";
+  if (field.includes("phone")) return "Phone number";
+  if (field.includes("email")) return "Email";
+  return "A unique field";
 }
 
 memberImportRouter.use(authenticate);
@@ -424,12 +446,21 @@ function runMemberImportCommit(
         });
       } catch (error) {
         failed += 1;
+        // A genuine conflict can still surface here even though staging already checked for
+        // duplicates: two import jobs staged concurrently with an overlapping identifier can both
+        // show READY, and whichever commits second hits this constraint instead of staging's own
+        // check. Report it the same way staging would have (EXISTING, with a plain-language
+        // message) rather than dumping the raw Prisma constraint error into `issues`.
+        const violatedField = uniqueViolationField(error);
         await prisma.memberBulkImportRow.update({
           where: { id: row.id },
-          data: {
-            status: "FAILED",
-            issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"],
-          },
+          data:
+            violatedField !== null
+              ? { status: "EXISTING", issues: [`${uniqueFieldLabel(violatedField)} is already in use by another record`] }
+              : {
+                  status: "FAILED",
+                  issues: [error instanceof Error ? error.message.slice(0, 300) : "Enrollment failed"],
+                },
         });
       }
       processed += 1;

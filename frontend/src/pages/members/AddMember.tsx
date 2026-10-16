@@ -188,7 +188,9 @@ export default function AddMember() {
     fullName,
     gender,
     ...(isNonTeaching
-      ? [placeOfWork, ...(needsRegionPicker ? [regionId] : [])]
+      ? districtId
+        ? []
+        : [placeOfWork, ...(needsRegionPicker ? [regionId] : [])]
       : [school, districtId, beneficiaries[0]?.fullName ?? ""]),
     ...(includeSpouse ? [spouseName] : []),
   ];
@@ -220,11 +222,11 @@ export default function AddMember() {
       next.ghanaCardId = "Use the format GHA-000000000-0.";
     if (phone && phone.trim().length < 7)
       next.phone = "Enter a valid phone number.";
-    if (isNonTeaching) {
+    if (isNonTeaching && !districtId) {
       if (placeOfWork.trim().length < 2)
         next.placeOfWork = "Enter the member's place of work.";
       if (needsRegionPicker && !regionId) next.regionId = "Select a region.";
-    } else {
+    } else if (!isNonTeaching) {
       if (school.trim().length < 2) next.school = "Enter the member's school.";
       if (!districtId) next.districtId = "Select a district.";
     }
@@ -297,7 +299,7 @@ export default function AddMember() {
         phone: phone.trim() || null,
         school: school.trim(),
         employmentCategory,
-        districtId: districtId ? Number(districtId) : null,
+        districtId: districtId ? Number(districtId) : undefined,
         placeOfWork: isNonTeaching ? placeOfWork.trim() : null,
         regionId: isNonTeaching && needsRegionPicker && regionId ? Number(regionId) : undefined,
         spouse: includeSpouse

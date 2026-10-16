@@ -243,7 +243,7 @@ export default function MemberDetail() {
         email: editEmail.trim() || null,
         school: editSchool.trim(),
         employmentCategory: editEmploymentCategory,
-        ...(editEmploymentCategory === "NON_TEACHING"
+        ...(editEmploymentCategory === "NON_TEACHING" && !member?.district
           ? {
               placeOfWork: editPlaceOfWork.trim(),
               ...(switchingToNonTeaching && !member?.district && needsRegionPicker && editRegionId

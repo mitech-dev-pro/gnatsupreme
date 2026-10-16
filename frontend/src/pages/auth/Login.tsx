@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
@@ -185,6 +185,10 @@ export default function Login() {
     ghanaCardId: string | null;
   } | null>(null);
   const [existingBeneficiaryCount, setExistingBeneficiaryCount] = useState(0);
+  // Distinguishes "haven't checked yet" from "checked, and genuinely nothing on file" --
+  // existingGhanaCardId etc. all start at null/0, which is also what a true first-time member
+  // looks like, so a separate flag is needed to know whether loadExistingProfile has actually run.
+  const [policyProfileChecked, setPolicyProfileChecked] = useState(false);
 
   useEffect(() => {
     if (
@@ -197,6 +201,53 @@ export default function Login() {
       .then((res) => setDistricts(res.data.data))
       .catch(() => setDistricts([]));
   }, [memberStep, districts.length]);
+
+  // Staff enrollment or bulk upload may have already recorded a Ghana Card ID, spouse, or
+  // beneficiaries -- load what's on file so the policy step never re-asks for (and never
+  // re-submits) something already set, which the backend would otherwise reject outright.
+  // Returns true if the profile turned out to already be complete, in which case this already
+  // navigated the member away -- callers must not advance memberStep in that case.
+  const loadExistingProfile = useCallback(async () => {
+    try {
+      const profileRes = await api.get("/member-portal/profile");
+      const profile = profileRes.data.data.member;
+      const completion = profileRes.data.data.profileCompletion;
+      if (completion?.complete) {
+        markProfileComplete();
+        navigate(safeMemberRedirect, { replace: true });
+        return true;
+      }
+      if (profile.ghanaCardId) {
+        setExistingGhanaCardId(profile.ghanaCardId);
+        setPolicyGhanaCardId(profile.ghanaCardId);
+      }
+      if (profile.spouse) {
+        setExistingSpouse(profile.spouse);
+        setSpouseName(profile.spouse.fullName);
+        setSpouseGhanaCardId(profile.spouse.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
+      }
+      setExistingBeneficiaryCount(profile.beneficiaries?.length ?? 0);
+      return false;
+    } catch {
+      // If the profile fetch fails, fall through to the wizard as usual -- worst case the
+      // member re-enters details the way this flow already worked before.
+      return false;
+    } finally {
+      setPolicyProfileChecked(true);
+    }
+  }, [markProfileComplete, navigate, safeMemberRedirect]);
+
+  // Covers entering the policy step WITHOUT going through handleSetupAccount -- e.g.
+  // MemberProtectedRoute redirecting an already-authenticated member with an incomplete profile
+  // straight to /login?mode=member&step=policy (so the component mounts directly into "policy"),
+  // or a slow-network race where the setup flow's own navigate-away/redirect-back round-trip
+  // re-mounts Login into "policy" before handleSetupAccount's own fetch below ever ran. Without
+  // this, existingGhanaCardId stays null and the member's own already-on-file card gets
+  // resubmitted as if new, tripping the backend's already-on-record guard.
+  useEffect(() => {
+    if (memberStep !== "policy" || policyProfileChecked || !member || memberLoading) return;
+    void loadExistingProfile();
+  }, [memberStep, policyProfileChecked, member, memberLoading, loadExistingProfile]);
 
   if (isLoading || memberLoading) {
     return (
@@ -352,33 +403,8 @@ export default function Login() {
         password: setupPassword,
       });
 
-      // Staff enrollment or bulk upload may have already recorded a Ghana Card ID, spouse, or
-      // beneficiaries -- load what's on file so the wizard below never re-asks for (and never
-      // re-submits) something already set, which the backend would otherwise reject outright.
-      try {
-        const profileRes = await api.get("/member-portal/profile");
-        const profile = profileRes.data.data.member;
-        const completion = profileRes.data.data.profileCompletion;
-        if (completion?.complete) {
-          markProfileComplete();
-          navigate(safeMemberRedirect, { replace: true });
-          return;
-        }
-        if (profile.ghanaCardId) {
-          setExistingGhanaCardId(profile.ghanaCardId);
-          setPolicyGhanaCardId(profile.ghanaCardId);
-        }
-        if (profile.spouse) {
-          setExistingSpouse(profile.spouse);
-          setSpouseName(profile.spouse.fullName);
-          setSpouseGhanaCardId(profile.spouse.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
-        }
-        setExistingBeneficiaryCount(profile.beneficiaries?.length ?? 0);
-      } catch {
-        // If the profile fetch fails, fall through to the wizard as usual -- worst case the
-        // member re-enters details the way this flow already worked before.
-      }
-      setMemberStep("policy");
+      const alreadyComplete = await loadExistingProfile();
+      if (!alreadyComplete) setMemberStep("policy");
     } catch (err: any) {
       setMemberError(
         err?.response?.data?.message || "Unable to set up your account.",

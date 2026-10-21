@@ -4,7 +4,7 @@ import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import api from "@/lib/api";
 import { GHANA_CARD_ID_PREFIX } from "@/lib/ghanaCardId";
 import { isMemberPortalPath } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { emptyBeneficiary, type BeneficiaryDraft } from "./Login.shared";
 export function useLogin() {
@@ -71,6 +71,10 @@ export function useLogin() {
     ghanaCardId: string | null;
   } | null>(null);
   const [existingBeneficiaryCount, setExistingBeneficiaryCount] = useState(0);
+  // Distinguishes "haven't checked yet" from "checked, and genuinely nothing on file" --
+  // existingGhanaCardId etc. all start at null/0, which is also what a true first-time member
+  // looks like, so a separate flag is needed to know whether loadExistingProfile has actually run.
+  const [policyProfileChecked, setPolicyProfileChecked] = useState(false);
   useEffect(() => {
     if ((memberStep !== "setup" && memberStep !== "policy") || districts.length > 0) return;
     api
@@ -78,6 +82,54 @@ export function useLogin() {
       .then((res) => setDistricts(res.data.data))
       .catch(() => setDistricts([]));
   }, [memberStep, districts.length]);
+
+  // Staff enrollment or bulk upload may have already recorded a Ghana Card ID, spouse, or
+  // beneficiaries -- load what's on file so the policy step never re-asks for (and never
+  // re-submits) something already set, which the backend would otherwise reject outright.
+  // Returns true if the profile turned out to already be complete, in which case this already
+  // navigated the member away -- callers must not advance memberStep in that case.
+  const loadExistingProfile = useCallback(async () => {
+    try {
+      const profileRes = await api.get("/member-portal/profile");
+      const profile = profileRes.data.data.member;
+      const completion = profileRes.data.data.profileCompletion;
+      if (completion?.complete) {
+        markProfileComplete();
+        navigate(safeMemberRedirect, { replace: true });
+        return true;
+      }
+      if (profile.ghanaCardId) {
+        setExistingGhanaCardId(profile.ghanaCardId);
+        setPolicyGhanaCardId(profile.ghanaCardId);
+      }
+      if (profile.spouse) {
+        setExistingSpouse(profile.spouse);
+        setSpouseName(profile.spouse.fullName);
+        setSpouseGhanaCardId(profile.spouse.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
+      }
+      setExistingBeneficiaryCount(profile.beneficiaries?.length ?? 0);
+      return false;
+    } catch {
+      // If the profile fetch fails, fall through to the wizard as usual -- worst case the
+      // member re-enters details the way this flow already worked before.
+      return false;
+    } finally {
+      setPolicyProfileChecked(true);
+    }
+  }, [markProfileComplete, navigate, safeMemberRedirect]);
+
+  // Covers entering the policy step WITHOUT going through handleSetupAccount -- e.g.
+  // MemberProtectedRoute redirecting an already-authenticated member with an incomplete profile
+  // straight to /login?mode=member&step=policy (so the component mounts directly into "policy"),
+  // or a slow-network race where the setup flow's own navigate-away/redirect-back round-trip
+  // re-mounts Login into "policy" before handleSetupAccount's own fetch below ever ran. Without
+  // this, existingGhanaCardId stays null and the member's own already-on-file card gets
+  // resubmitted as if new, tripping the backend's already-on-record guard.
+  useEffect(() => {
+    if (memberStep !== "policy" || policyProfileChecked || !member || memberLoading) return;
+    void loadExistingProfile();
+  }, [memberStep, policyProfileChecked, member, memberLoading, loadExistingProfile]);
+
   return {
     settings,
     user,
@@ -156,5 +208,6 @@ export function useLogin() {
     setExistingSpouse,
     existingBeneficiaryCount,
     setExistingBeneficiaryCount,
+    loadExistingProfile,
   };
 }

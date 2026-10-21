@@ -1,4 +1,4 @@
-import { activeBenefit, uploadedSlotKeys } from "./claims.service.js";
+import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "./claims.service.js";
 import { Router } from "express";
 import { z } from "zod";
 import {
@@ -122,13 +122,15 @@ claimsRouter.get("/estimate", async (request, response) => {
   const user = response.locals.user as AuthenticatedUser;
   const member = await prisma.member.findFirst({
     where: { id: parsed.data.memberId, ...memberScope(user) },
-    select: { id: true, spouse: { select: { id: true } } },
+    select: { id: true, spouse: { select: { id: true, ghanaCardId: true, linkedMemberId: true } } },
   });
   if (!member || (parsed.data.claimantType === "SPOUSE" && !member.spouse)) {
     response.status(404).json({ success: false, message: "Covered person not found" });
     return;
   }
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType);
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
+  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
   response.json({
     success: true,
     data: {
@@ -161,14 +163,25 @@ claimsRouter.post("/submissions", async (request, response) => {
       controllerId: true,
       fullName: true,
       districtId: true,
+      ghanaCardId: true,
       district: { select: { regionId: true } },
-      spouse: { select: { id: true, fullName: true } },
+      spouse: { select: { id: true, fullName: true, ghanaCardId: true, linkedMemberId: true } },
     },
   });
   if (!member || (parsed.data.claimantType === "SPOUSE" && !member.spouse)) {
     response
       .status(404)
       .json({ success: false, message: "Member or covered person was not found" });
+    return;
+  }
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
+  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, member, linkedMemberId)) {
+    response.status(409).json({
+      success: false,
+      message:
+        "A claim already exists for this benefit type under the linked membership. This needs staff reconciliation before a second claim for the same event can be filed.",
+    });
     return;
   }
   // Payee name and claimant phone are optional at submission -- they can be filled in later,
@@ -205,7 +218,7 @@ claimsRouter.post("/submissions", async (request, response) => {
     return;
   }
 
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType);
+  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)

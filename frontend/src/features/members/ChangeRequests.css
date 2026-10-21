@@ -637,3 +637,73 @@
     gap: 10px;
   }
 }
+
+/* Bulk review */
+.change-queue li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+}
+.change-queue li button {
+  flex: 1;
+  padding: 15px 6px;
+}
+.change-queue li.is-selected {
+  background: oklch(0.96 0.025 165);
+}
+.change-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: oklch(0.55 0.11 165);
+}
+.change-select-all {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  border-bottom: 1px solid oklch(0.9 0.01 273);
+  color: oklch(0.46 0.03 273);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+.change-select-all input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: oklch(0.55 0.11 165);
+}
+.change-bulkbar {
+  padding: 13px 16px;
+  border-bottom: 1px solid oklch(0.9 0.01 273);
+  background: oklch(0.985 0.01 165);
+}
+.change-bulkbar > strong {
+  display: block;
+  margin-bottom: 9px;
+  color: oklch(0.36 0.05 275);
+  font-size: var(--text-sm);
+}
+.change-bulkbar .change-note {
+  margin-top: 11px;
+}
+.change-bulk-result {
+  margin: 0;
+  padding: 11px 16px;
+  border-bottom: 1px solid oklch(0.9 0.01 273);
+  background: oklch(0.97 0.012 273);
+  font-size: var(--text-sm);
+}
+.change-bulk-result strong {
+  color: oklch(0.34 0.05 275);
+}
+.change-bulk-result ul {
+  margin: 7px 0 0;
+  padding-left: 16px;
+  color: oklch(0.5 0.13 25);
+}
+.change-bulk-result li {
+  margin-top: 3px;
+}

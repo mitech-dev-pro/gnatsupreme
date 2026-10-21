@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
-type AuditRequestSource = Request | { ip?: string | null; userAgent?: string | null };
+export type AuditRequestSource = Request | { ip?: string | null; userAgent?: string | null };
 
 function isExpressRequest(source: AuditRequestSource): source is Request {
   return typeof (source as Request).get === "function";

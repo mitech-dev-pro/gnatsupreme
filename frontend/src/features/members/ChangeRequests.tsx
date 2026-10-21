@@ -101,6 +101,16 @@ export default function ChangeRequests() {
   const [reviewNote, setReviewNote] = useState("");
   const [decision, setDecision] = useState<Decision | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDecision, setBulkDecision] = useState<Decision | null>(null);
+  const [bulkNote, setBulkNote] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{
+    requested: number;
+    succeeded: number;
+    failed: number;
+    results: Array<{ id: number; success: boolean; message?: string }>;
+  } | null>(null);
   const canReview = Boolean(user && REVIEW_ROLES.includes(user.role));
 
   const updateParams = (values: Record<string, string | null>) => {
@@ -113,6 +123,9 @@ export default function ChangeRequests() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setSelectedIds(new Set());
+    setBulkDecision(null);
+    setBulkNote("");
     try {
       const response = await api.get("/change-requests", {
         params: { page, limit: 20, status: status || undefined, type: type || undefined },
@@ -132,6 +145,9 @@ export default function ChangeRequests() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    setBulkResult(null);
+  }, [status, type, page]);
   useEffect(() => {
     if (!selected) {
       setMember(null);
@@ -192,6 +208,48 @@ export default function ChangeRequests() {
     }
   };
 
+  const pendingVisibleIds = items
+    .filter((item) => item.status === "PENDING")
+    .map((item) => item.id);
+  const allVisiblePendingSelected =
+    pendingVisibleIds.length > 0 && pendingVisibleIds.every((id) => selectedIds.has(id));
+  const toggleSelectAll = () =>
+    setSelectedIds(allVisiblePendingSelected ? new Set() : new Set(pendingVisibleIds));
+  const toggleOne = (id: number) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const bulkReview = async () => {
+    if (!bulkDecision || selectedIds.size === 0) return;
+    if (bulkDecision !== "APPROVE" && !bulkNote.trim()) {
+      setError("A review note is required when returning or rejecting requests.");
+      return;
+    }
+    setBulkBusy(true);
+    setError("");
+    setBulkResult(null);
+    try {
+      const response = await api.post("/change-requests/bulk/review", {
+        changeRequestIds: [...selectedIds],
+        action: bulkDecision,
+        note: bulkNote.trim() || null,
+      });
+      setBulkResult(response.data.data);
+      setBulkDecision(null);
+      setBulkNote("");
+      setSelectedIds(new Set());
+      await load();
+    } catch (requestError: unknown) {
+      setError(getApiError(requestError)?.message || "The bulk review could not be completed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   return (
     <main className="change-page">
       <PageHeader
@@ -235,6 +293,96 @@ export default function ChangeRequests() {
             <h2 id="request-queue-heading">Requests</h2>
             <span aria-label={`${total} requests`}>{total}</span>
           </div>
+          {canReview && pendingVisibleIds.length > 0 && (
+            <label className="change-select-all">
+              <input
+                type="checkbox"
+                checked={allVisiblePendingSelected}
+                onChange={toggleSelectAll}
+              />
+              Select all pending on this page ({pendingVisibleIds.length})
+            </label>
+          )}
+          {selectedIds.size > 0 && (
+            <div className="change-bulkbar">
+              <strong>{selectedIds.size} selected</strong>
+              <div className="change-decisions">
+                <button
+                  type="button"
+                  aria-pressed={bulkDecision === "APPROVE"}
+                  className={bulkDecision === "APPROVE" ? "approve active" : "approve"}
+                  onClick={() => setBulkDecision("APPROVE")}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={bulkDecision === "RETURN"}
+                  className={bulkDecision === "RETURN" ? "return active" : "return"}
+                  onClick={() => setBulkDecision("RETURN")}
+                >
+                  Return
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={bulkDecision === "REJECT"}
+                  className={bulkDecision === "REJECT" ? "reject active" : "reject"}
+                  onClick={() => setBulkDecision("REJECT")}
+                >
+                  Reject
+                </button>
+              </div>
+              {bulkDecision && (
+                <div className="change-note">
+                  <label htmlFor="bulk-review-note">
+                    Review note{" "}
+                    {bulkDecision === "APPROVE" ? <small>Optional</small> : <small>Required</small>}
+                  </label>
+                  <textarea
+                    id="bulk-review-note"
+                    rows={2}
+                    maxLength={500}
+                    required={bulkDecision !== "APPROVE"}
+                    value={bulkNote}
+                    onChange={(event) => setBulkNote(event.target.value)}
+                    placeholder={
+                      bulkDecision === "APPROVE"
+                        ? "Add a note if needed"
+                        : "Explain the decision — every selected member will see it"
+                    }
+                  />
+                  <div>
+                    <span aria-live="polite">{bulkNote.length}/500</span>
+                    <button
+                      type="button"
+                      disabled={bulkBusy || (bulkDecision !== "APPROVE" && !bulkNote.trim())}
+                      onClick={() => void bulkReview()}
+                    >
+                      {bulkBusy ? "Saving…" : `Confirm ${bulkDecision.toLowerCase()} (${selectedIds.size})`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {bulkResult && (
+            <div className="change-bulk-result">
+              <strong>
+                {bulkResult.succeeded} of {bulkResult.requested} applied.
+              </strong>
+              {bulkResult.failed > 0 && (
+                <ul>
+                  {bulkResult.results
+                    .filter((item) => !item.success)
+                    .map((item) => (
+                      <li key={item.id}>
+                        Request #{item.id}: {item.message}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
           {loading ? (
             <div className="change-skeleton" aria-label="Loading requests">
               {Array.from({ length: 5 }).map((_, index) => (
@@ -249,7 +397,16 @@ export default function ChangeRequests() {
           ) : (
             <ul>
               {items.map((item) => (
-                <li key={item.id}>
+                <li key={item.id} className={selectedIds.has(item.id) ? "is-selected" : ""}>
+                  {canReview && item.status === "PENDING" && (
+                    <input
+                      type="checkbox"
+                      className="change-check"
+                      aria-label={`Select ${item.member.fullName}'s request`}
+                      checked={selectedIds.has(item.id)}
+                      onChange={() => toggleOne(item.id)}
+                    />
+                  )}
                   <button
                     type="button"
                     aria-pressed={selected?.id === item.id}

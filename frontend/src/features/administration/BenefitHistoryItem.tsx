@@ -42,12 +42,12 @@ export function BenefitHistoryItem({
             {formatDate(plan.createdAt)}
           </span>
         </span>
-        <span className="shrink-0 text-right">
+        {/* <span className="shrink-0 text-right">
           <span className="block font-semibold text-text-strong">
             {formatMoney(plan.monthlyPremium)}
           </span>
           <span className="block text-xs text-text-muted">per month</span>
-        </span>
+        </span> */}
       </button>
 
       {isOpen && (

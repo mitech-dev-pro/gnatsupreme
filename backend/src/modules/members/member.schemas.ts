@@ -86,7 +86,7 @@ const memberFields = {
   // Required for TEACHING, optional for NON_TEACHING (which uses placeOfWork/regionId instead) --
   // see createMemberSchema's refinement below. A DISTRICT_ADMIN caller always has this forced to
   // their own district before validation runs (member.routes.ts), regardless of category.
-  districtId: z.coerce.number().int().positive().optional(),
+  districtId: z.coerce.number().int().positive().nullable().optional(),
   report20Matched: z.boolean().optional(),
   // Staff-only, set on enrollment or edit -- never exposed to member self-onboarding or
   // self-service change requests (neither `onboardingDetailsSchema` nor
@@ -99,7 +99,7 @@ const memberFields = {
   placeOfWork: z.string().trim().min(2).max(200).nullable().optional(),
   // Only meaningful for a NON_TEACHING member with no district; ignored otherwise since regionId
   // is derived from the district in that case -- see resolveMemberRegionId in member-region.ts.
-  regionId: z.coerce.number().int().positive().optional(),
+  regionId: z.coerce.number().int().positive().nullable().optional(),
 };
 
 export const createMemberSchema = z
@@ -131,7 +131,7 @@ export const createMemberSchema = z
         });
       }
     }
-    if (category === "NON_TEACHING" && !value.placeOfWork) {
+    if (category === "NON_TEACHING" && !value.districtId && !value.placeOfWork) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["placeOfWork"],

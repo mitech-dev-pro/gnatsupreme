@@ -880,7 +880,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   <h2 id="coverage-heading" className="text-lg font-bold text-(--brand-primary)">
                     My benefit plan
                   </h2>
-                  <div className="flex flex-wrap gap-2">
+                  {/* <div className="flex flex-wrap gap-2">
                     <a
                       href="/policy/terms-and-conditions.pdf"
                       target="_blank"
@@ -896,7 +896,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     >
                       Download PDF
                     </a>
-                  </div>
+                  </div> */}
                 </div>
                 <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                   <div>

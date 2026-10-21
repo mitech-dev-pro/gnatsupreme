@@ -252,12 +252,19 @@ export async function stageMemberImport(
     ),
   ]);
   const existingIds = new Set(existingMembers.map((member) => member.controllerId));
-  const usedCards = new Set(
-    [...existingCards, ...existingSpouseCards].map((record) => record.ghanaCardId).filter(Boolean),
-  );
+  // Split by table, not merged -- a row's own card matching an existing MEMBER row still blocks
+  // (real duplicate identity), but matching an existing SPOUSE row elsewhere no longer does (the
+  // policy-legitimate "spouse is independently a member" case gets linked at commit time
+  // instead, not flagged here). Symmetrically for a row's spouse card.
+  const usedMemberCards = new Set(existingCards.map((record) => record.ghanaCardId).filter(Boolean));
+  const usedSpouseCards = new Set(existingSpouseCards.map((record) => record.ghanaCardId).filter(Boolean));
   const reportIds = new Set(reportRows.map((row) => row.controllerId).filter(Boolean));
   const seenIds = new Set<string>();
-  const seenCards = new Set<string>();
+  // Also split, for the same reason -- otherwise one row's member card matching another row's
+  // spouse card IN THE SAME FILE (the "two teachers in one legacy file" case) would still
+  // false-flag as an in-file duplicate even though cross-table is no longer a conflict.
+  const seenMemberCards = new Set<string>();
+  const seenSpouseCards = new Set<string>();
   const counts = { READY: 0, INVALID: 0, DUPLICATE: 0, EXISTING: 0, OUT_OF_SCOPE: 0 };
 
   const rows: Prisma.MemberBulkImportRowCreateManyInput[] = sourceRows.map(
@@ -362,19 +369,19 @@ export async function stageMemberImport(
       else if (controllerId && seenIds.has(controllerId)) {
         status = "DUPLICATE";
         issues.push("Controller ID appears more than once in this file");
-      } else if (ghanaCardId && seenCards.has(ghanaCardId)) {
+      } else if (ghanaCardId && seenMemberCards.has(ghanaCardId)) {
         status = "DUPLICATE";
         issues.push("Ghana Card ID appears more than once in this file");
-      } else if (spouseGhanaCardId && seenCards.has(spouseGhanaCardId)) {
+      } else if (spouseGhanaCardId && seenSpouseCards.has(spouseGhanaCardId)) {
         status = "DUPLICATE";
         issues.push("Spouse Ghana Card ID appears more than once in this file");
       } else if (controllerId && existingIds.has(controllerId)) {
         status = "EXISTING";
         issues.push("Controller ID is already enrolled");
-      } else if (ghanaCardId && usedCards.has(ghanaCardId)) {
+      } else if (ghanaCardId && usedMemberCards.has(ghanaCardId)) {
         status = "EXISTING";
         issues.push("Ghana Card ID is already enrolled");
-      } else if (spouseGhanaCardId && usedCards.has(spouseGhanaCardId)) {
+      } else if (spouseGhanaCardId && usedSpouseCards.has(spouseGhanaCardId)) {
         status = "EXISTING";
         issues.push("Spouse Ghana Card ID is already enrolled");
       } else if (
@@ -386,8 +393,8 @@ export async function stageMemberImport(
         issues.push("You cannot enroll members in this district");
       }
       if (controllerId) seenIds.add(controllerId);
-      if (ghanaCardId) seenCards.add(ghanaCardId);
-      if (spouseGhanaCardId) seenCards.add(spouseGhanaCardId);
+      if (ghanaCardId) seenMemberCards.add(ghanaCardId);
+      if (spouseGhanaCardId) seenSpouseCards.add(spouseGhanaCardId);
       counts[status] += 1;
       return {
         importJobId: jobId,

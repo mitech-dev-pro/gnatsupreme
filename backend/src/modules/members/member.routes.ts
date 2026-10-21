@@ -1,12 +1,16 @@
 import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 import {
+  auditLinkChanges,
   findAccessibleMember,
-  ghanaCardIsUsed,
+  memberGhanaCardConflict,
   memberInclude,
   memberListInclude,
   monthStart,
   reasonLabel,
+  reconcileSpouseLink,
+  relinkSpousesForMember,
+  spouseGhanaCardConflict,
 } from "./member.service.js";
 
 import { invalidateMemberAuth } from "../../lib/auth-cache.js";
@@ -271,14 +275,12 @@ memberRouter.post("/", async (request, response) => {
       .json({ success: false, message: "This Controller ID is already enrolled" });
     return;
   }
-  if (await ghanaCardIsUsed(parsed.data.ghanaCardId)) {
+  if (await memberGhanaCardConflict(parsed.data.ghanaCardId)) {
     response.status(409).json({ success: false, message: "This Ghana Card ID is already in use" });
     return;
   }
-  if (parsed.data.spouse && (await ghanaCardIsUsed(parsed.data.spouse.ghanaCardId))) {
-    response
-      .status(409)
-      .json({ success: false, message: "The spouse Ghana Card ID is already in use" });
+  if (parsed.data.spouse && (await spouseGhanaCardConflict(parsed.data.spouse.ghanaCardId))) {
+    response.status(409).json({ success: false, message: "The spouse Ghana Card ID is already in use" });
     return;
   }
   if (
@@ -294,18 +296,33 @@ memberRouter.post("/", async (request, response) => {
 
   const { spouse, beneficiaries, districtId: _districtId, regionId: _regionId, ...memberData } =
     parsed.data;
-  const member = await prisma.member.create({
-    data: {
-      ...memberData,
-      districtId: districtId ?? null,
-      regionId: resolvedRegion.regionId,
-      createdById: user.id,
-      spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
-      ...(spouse ? { spouse: { create: spouse } } : {}),
-      beneficiaries: { create: beneficiaries },
-    },
-    include: memberInclude,
+  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.member.create({
+      data: {
+        ...memberData,
+        districtId: districtId ?? null,
+        regionId: resolvedRegion.regionId,
+        createdById: user.id,
+        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
+        ...(spouse ? { spouse: { create: spouse } } : {}),
+        beneficiaries: { create: beneficiaries },
+      },
+      include: memberInclude,
+    });
+    const changes = await relinkSpousesForMember(transaction, created.id, created.ghanaCardId);
+    if (created.spouse) {
+      const change = await reconcileSpouseLink(
+        transaction,
+        created.spouse.id,
+        created.spouse.ghanaCardId,
+        created.id,
+        undefined,
+      );
+      if (change) changes.push(change);
+    }
+    return { member: created, linkChanges: changes };
   });
+  await auditLinkChanges(request, user, linkChanges);
   await recordAudit({
     request,
     actor: user,
@@ -375,7 +392,7 @@ memberRouter.patch("/:id", async (request, response) => {
       return;
     }
   }
-  if (await ghanaCardIsUsed(body.data.ghanaCardId, { memberId: existing.id })) {
+  if (await memberGhanaCardConflict(body.data.ghanaCardId, { memberId: existing.id })) {
     response.status(409).json({ success: false, message: "This Ghana Card ID is already in use" });
     return;
   }
@@ -441,20 +458,26 @@ memberRouter.patch("/:id", async (request, response) => {
     regionUpdate = { regionId: resolvedRegion.regionId };
   }
 
-  const member = await prisma.member.update({
-    where: { id: existing.id },
-    data: {
-      ...body.data,
-      ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
-      body.data.phone !== existing.phone
-        ? { phoneVerifiedAt: null }
-        : {}),
-      ...clearingUpdate,
-      ...placeOfWorkClearingUpdate,
-      ...regionUpdate,
-    },
-    include: memberInclude,
+  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
+    const updated = await transaction.member.update({
+      where: { id: existing.id },
+      data: {
+        ...body.data,
+        ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
+          ? { phoneVerifiedAt: null }
+          : {}),
+        ...clearingUpdate,
+        ...placeOfWorkClearingUpdate,
+        ...regionUpdate,
+      },
+      include: memberInclude,
+    });
+    const changes = Object.prototype.hasOwnProperty.call(body.data, "ghanaCardId")
+      ? await relinkSpousesForMember(transaction, existing.id, updated.ghanaCardId)
+      : [];
+    return { member: updated, linkChanges: changes };
   });
+  await auditLinkChanges(request, user, linkChanges);
   await invalidateMemberAuth(member.id);
   await recordAudit({
     request,
@@ -554,7 +577,7 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     response.status(404).json({ success: false, message: "Member not found" });
     return;
   }
-  if (await ghanaCardIsUsed(body.data.ghanaCardId, { spouseId: member.spouse?.id })) {
+  if (await spouseGhanaCardConflict(body.data.ghanaCardId, { spouseId: member.spouse?.id })) {
     response.status(409).json({ success: false, message: "This Ghana Card ID is already in use" });
     return;
   }
@@ -565,7 +588,8 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     return;
   }
 
-  const spouse = await prisma.$transaction(async (transaction) => {
+  const user = currentUser(response);
+  const { spouse, linkChanges } = await prisma.$transaction(async (transaction) => {
     const saved = await transaction.spouse.upsert({
       where: { memberId: member.id },
       update: body.data,
@@ -575,11 +599,23 @@ memberRouter.put("/:id/spouse", async (request, response) => {
       where: { id: member.id },
       data: { spouseDeclarationStatus: "HAS_SPOUSE" },
     });
-    return saved;
+    // Pass the upserted row's own card, not body.data.ghanaCardId -- spouseSchema always
+    // requires ghanaCardId to be present in the payload here (unlike a partial change-request
+    // approval), but reading it off `saved` keeps this consistent with every other call site and
+    // immune to that assumption ever changing.
+    const change = await reconcileSpouseLink(
+      transaction,
+      saved.id,
+      saved.ghanaCardId,
+      member.id,
+      member.spouse?.ghanaCardId,
+    );
+    return { spouse: saved, linkChanges: change ? [change] : [] };
   });
+  await auditLinkChanges(request, user, linkChanges);
   await recordAudit({
     request,
-    actor: currentUser(response),
+    actor: user,
     action: member.spouse ? "SPOUSE_UPDATED" : "SPOUSE_ADDED",
     entityType: "SPOUSE",
     entityId: spouse.id,

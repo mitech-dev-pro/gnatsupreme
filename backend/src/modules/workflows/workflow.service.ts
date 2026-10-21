@@ -11,21 +11,3 @@ export async function accessibleMember(id: number, currentUser: AuthenticatedUse
     include: { district: { select: { regionId: true } }, beneficiaries: true },
   });
 }
-export async function ghanaCardConflict(
-  ghanaCardId: string | null | undefined,
-  memberId: number,
-  spouseId?: number,
-) {
-  if (!ghanaCardId) return false;
-  const [member, spouse] = await Promise.all([
-    prisma.member.findFirst({
-      where: { ghanaCardId, id: { not: memberId } },
-      select: { id: true },
-    }),
-    prisma.spouse.findFirst({
-      where: { ghanaCardId, ...(spouseId ? { id: { not: spouseId } } : {}) },
-      select: { id: true },
-    }),
-  ]);
-  return Boolean(member || spouse);
-}

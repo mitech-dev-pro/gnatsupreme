@@ -2,6 +2,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit, type AuditRequestSource } from "../audit/audit.service.js";
+import { notifyMember } from "../notifications/notification.service.js";
 import { memberScope } from "./member.access.js";
 export const memberInclude = {
   district: {
@@ -10,7 +11,14 @@ export const memberInclude = {
   // Only meaningful when there's no district (a NON_TEACHING member's regionId is set directly) --
   // when a district exists, its own region already covers this and this relation is redundant.
   region: { select: { id: true, name: true } },
-  spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
+  spouse: {
+    select: {
+      id: true,
+      fullName: true,
+      ghanaCardId: true,
+      linkedMember: { select: { id: true, controllerId: true, fullName: true } },
+    },
+  },
   beneficiaries: {
     orderBy: { id: "asc" as const },
     select: {
@@ -50,7 +58,15 @@ export async function findAccessibleMember(id: number, user: AuthenticatedUser) 
   });
 }
 type Db = typeof prisma | Prisma.TransactionClient;
-type LinkChange = { spouseId: number; spouseFullName: string; before: number | null; after: number | null };
+// ownerMemberId is the member whose Spouse row this is (the one who made the declaration) --
+// used to notify the OTHER side (`after`) when a new link is established, see auditLinkChanges.
+type LinkChange = {
+  spouseId: number;
+  spouseFullName: string;
+  before: number | null;
+  after: number | null;
+  ownerMemberId: number;
+};
 
 // Real identity duplication: same card belongs to a DIFFERENT Member row. Stays blocking, no
 // status filter -- a removed member's card is already cleared by the removal workflow (see
@@ -128,7 +144,13 @@ export async function reconcileSpouseLink(
   const after = match?.id ?? null;
   if (spouse.linkedMemberId === after) return null;
   await db.spouse.update({ where: { id: spouseId }, data: { linkedMemberId: after } });
-  return { spouseId, spouseFullName: spouse.fullName, before: spouse.linkedMemberId, after };
+  return {
+    spouseId,
+    spouseFullName: spouse.fullName,
+    before: spouse.linkedMemberId,
+    after,
+    ownerMemberId: owningMemberId,
+  };
 }
 
 // Called whenever a Member is created, their ghanaCardId changes, or their status transitions
@@ -157,21 +179,33 @@ export async function relinkSpousesForMember(
       linkedMemberId: memberId,
       ...(newGhanaCardId ? { OR: [{ ghanaCardId: null }, { ghanaCardId: { not: newGhanaCardId } }] } : {}),
     },
-    select: { id: true, fullName: true, linkedMemberId: true },
+    select: { id: true, fullName: true, linkedMemberId: true, memberId: true },
   });
   for (const spouse of stale) {
     await db.spouse.update({ where: { id: spouse.id }, data: { linkedMemberId: null } });
-    changes.push({ spouseId: spouse.id, spouseFullName: spouse.fullName, before: spouse.linkedMemberId, after: null });
+    changes.push({
+      spouseId: spouse.id,
+      spouseFullName: spouse.fullName,
+      before: spouse.linkedMemberId,
+      after: null,
+      ownerMemberId: spouse.memberId,
+    });
   }
 
   if (newGhanaCardId && eligible) {
     const match = await db.spouse.findFirst({
       where: { ghanaCardId: newGhanaCardId, memberId: { not: memberId } },
-      select: { id: true, fullName: true, linkedMemberId: true },
+      select: { id: true, fullName: true, linkedMemberId: true, memberId: true },
     });
     if (match && match.linkedMemberId !== memberId) {
       await db.spouse.update({ where: { id: match.id }, data: { linkedMemberId: memberId } });
-      changes.push({ spouseId: match.id, spouseFullName: match.fullName, before: match.linkedMemberId, after: memberId });
+      changes.push({
+        spouseId: match.id,
+        spouseFullName: match.fullName,
+        before: match.linkedMemberId,
+        after: memberId,
+        ownerMemberId: match.memberId,
+      });
     }
   }
   return changes;
@@ -180,7 +214,10 @@ export async function relinkSpousesForMember(
 // Audits link/unlink changes after the caller's transaction has already committed -- never
 // called from inside a transaction, since recordAudit writes via the global prisma client (not
 // a transaction client) and an audit row written mid-transaction would survive a rollback as an
-// orphan.
+// orphan. Also notifies the member on the OTHER side of a newly-established link (never on an
+// unlink -- losing a link isn't something that member needs to act on) that they've been named
+// as a spouse, so they can confirm it on their own record rather than it being written for them
+// unverified. One member's declaration should never silently become the other member's data.
 export async function auditLinkChanges(
   request: AuditRequestSource,
   actor: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null,
@@ -196,6 +233,26 @@ export async function auditLinkChanges(
       description: `${change.after ? "Linked" : "Unlinked"} spouse record for ${change.spouseFullName}`,
       beforeData: { linkedMemberId: change.before },
       afterData: { linkedMemberId: change.after },
+    });
+  }
+
+  const newLinks = changes.filter(
+    (change): change is LinkChange & { after: number } => change.after !== null,
+  );
+  if (newLinks.length === 0) return;
+  const owners = await prisma.member.findMany({
+    where: { id: { in: [...new Set(newLinks.map((change) => change.ownerMemberId))] } },
+    select: { id: true, fullName: true },
+  });
+  const ownerNameById = new Map(owners.map((owner) => [owner.id, owner.fullName]));
+  for (const change of newLinks) {
+    const ownerName = ownerNameById.get(change.ownerMemberId) ?? "Another GNAT member";
+    await notifyMember({
+      memberId: change.after,
+      type: "SPOUSE_LINK_SUGGESTED",
+      title: "You may have been named as a spouse",
+      message: `${ownerName} has named you as their spouse on their GNAT Supreme Care profile. If this is correct, add them as your spouse too to keep your own record complete.`,
+      idempotencyKey: `spouse-link-suggested:${change.spouseId}:${change.after}`,
     });
   }
 }

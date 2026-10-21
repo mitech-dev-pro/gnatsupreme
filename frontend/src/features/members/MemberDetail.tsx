@@ -670,6 +670,19 @@ export default function MemberDetail() {
                 <dl className="grid grid-cols-2 gap-4">
                   <Field label="Name" value={member.spouse.fullName} />
                   <Field label="Ghana Card ID" value={member.spouse.ghanaCardId ?? "—"} />
+                  {member.spouse.linkedMember && (
+                    <Field
+                      label="GNAT membership"
+                      value={
+                        <Link
+                          to={`/members/${member.spouse.linkedMember.id}`}
+                          className="font-semibold text-action-primary hover:underline"
+                        >
+                          Also a member — {member.spouse.linkedMember.controllerId} →
+                        </Link>
+                      }
+                    />
+                  )}
                 </dl>
               ) : (
                 <div className="text-sm text-text-muted">No spouse on record.</div>

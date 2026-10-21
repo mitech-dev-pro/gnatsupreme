@@ -15,6 +15,7 @@ export type Beneficiary = {
 export type Spouse = {
   fullName: string;
   ghanaCardId: string | null;
+  linkedMember: { id: number; controllerId: string; fullName: string } | null;
 };
 export type MemberDetailData = {
   id: number;

@@ -1314,6 +1314,14 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                             Review missing details
                           </Link>
                         )}
+                        {item.type === "SPOUSE_LINK_SUGGESTED" && (
+                          <Link
+                            to="/member"
+                            className="mt-1.5 inline-block text-xs font-bold text-action-primary no-underline hover:underline"
+                          >
+                            Review spouse details
+                          </Link>
+                        )}
                       </div>
                       <div className="whitespace-nowrap text-xs text-nav-muted">
                         {timeAgo(item.createdAt)}

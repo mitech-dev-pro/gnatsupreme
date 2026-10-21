@@ -5,9 +5,12 @@ import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
 import { invalidateAllMemberAuth } from "../../lib/auth-cache.js";
+import type { AuditRequestSource } from "../audit/audit.service.js";
 import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 import { notifyMember } from "../notifications/notification.service.js";
+import { auditLinkChanges, relinkSpousesForMember } from "../members/member.service.js";
 import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
+import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
 const MAX_ROWS = 300_000;
 
@@ -100,7 +103,12 @@ export async function parseReport20(filePath: string, mimeType: string): Promise
   return rows;
 }
 
-export async function reconcileReport20(importJobId: number, sourceRows: SourceRow[]) {
+export async function reconcileReport20(
+  importJobId: number,
+  sourceRows: SourceRow[],
+  auditContext: AuditRequestSource,
+  actor: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId">,
+) {
   // Captured up front so sourceRows can be dropped once classification is done (see below) --
   // this is the only later use of its length.
   const totalRows = sourceRows.length;
@@ -161,6 +169,7 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
         missingFromReport20At: true,
         status: true,
         report20Matched: true,
+        ghanaCardId: true,
         district: { select: { regionId: true } },
       },
     }),
@@ -323,12 +332,18 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
   // rewind partway through instead of finishing at 100%.
   const createdIdByControllerId = new Map<string, number>();
   const ENROLL_BATCH_SIZE = 2_000;
+  const linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
   for (const batch of chunk(nextControllerIdToCreate, ENROLL_BATCH_SIZE)) {
     const created = await prisma.member.createManyAndReturn({
       data: batch.map((entry) => entry.data),
-      select: { id: true, controllerId: true },
+      select: { id: true, controllerId: true, ghanaCardId: true },
     });
-    for (const member of created) createdIdByControllerId.set(member.controllerId, member.id);
+    for (const member of created) {
+      createdIdByControllerId.set(member.controllerId, member.id);
+      // Auto-enrolled directly ACTIVE here, so this is a real transition into an eligible
+      // status -- links any stale spouse row elsewhere whose card matches this new member.
+      linkChanges.push(...(await relinkSpousesForMember(prisma, member.id, member.ghanaCardId)));
+    }
   }
   for (const row of data) {
     if (row.status === "ENROLLED" && row.controllerId) {
@@ -394,6 +409,12 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
           where: { id: { in: reappearedMemberIds } },
           data: { missingFromReport20At: null, status: "ACTIVE" },
         });
+        // A real transition into ACTIVE -- links any stale spouse row elsewhere whose card
+        // matches. The member's own card is unchanged here, only status is, so this re-derives
+        // purely from the now-eligible status (see relinkSpousesForMember's eligibility check).
+        for (const id of reappearedMemberIds) {
+          linkChanges.push(...(await relinkSpousesForMember(tx, id, activeMembersById.get(id)!.ghanaCardId)));
+        }
         await tx.memberWorkflowEvent.createMany({
           data: reappearedMemberIds.map((id) => ({
             memberId: id,
@@ -455,4 +476,6 @@ export async function reconcileReport20(importJobId: number, sourceRows: SourceR
       idempotencyKey: `report20-reactivated:${importJobId}:${id}`,
     }).catch(() => undefined);
   }
+
+  await auditLinkChanges(auditContext, actor, linkChanges);
 }

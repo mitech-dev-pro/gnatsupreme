@@ -100,6 +100,7 @@ export default function Login() {
     setExistingSpouse,
     existingBeneficiaryCount,
     setExistingBeneficiaryCount,
+    loadExistingProfile,
   } = useLogin();
   if (isLoading || memberLoading) {
     return (
@@ -234,33 +235,8 @@ export default function Login() {
         password: setupPassword,
       });
 
-      // Staff enrollment or bulk upload may have already recorded a Ghana Card ID, spouse, or
-      // beneficiaries -- load what's on file so the wizard below never re-asks for (and never
-      // re-submits) something already set, which the backend would otherwise reject outright.
-      try {
-        const profileRes = await api.get("/member-portal/profile");
-        const profile = profileRes.data.data.member;
-        const completion = profileRes.data.data.profileCompletion;
-        if (completion?.complete) {
-          markProfileComplete();
-          navigate(safeMemberRedirect, { replace: true });
-          return;
-        }
-        if (profile.ghanaCardId) {
-          setExistingGhanaCardId(profile.ghanaCardId);
-          setPolicyGhanaCardId(profile.ghanaCardId);
-        }
-        if (profile.spouse) {
-          setExistingSpouse(profile.spouse);
-          setSpouseName(profile.spouse.fullName);
-          setSpouseGhanaCardId(profile.spouse.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
-        }
-        setExistingBeneficiaryCount(profile.beneficiaries?.length ?? 0);
-      } catch {
-        // If the profile fetch fails, fall through to the wizard as usual -- worst case the
-        // member re-enters details the way this flow already worked before.
-      }
-      setMemberStep("policy");
+      const alreadyComplete = await loadExistingProfile();
+      if (!alreadyComplete) setMemberStep("policy");
     } catch (err: unknown) {
       setMemberError(getApiError(err)?.message || "Unable to set up your account.");
     } finally {

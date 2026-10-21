@@ -336,6 +336,10 @@ model Member {
   regionId                     Int?                       @map("region_id")
   region                       Region?                    @relation(fields: [regionId], references: [id], onDelete: Restrict)
   spouse                       Spouse?
+  // Spouse records (under OTHER members) whose Ghana Card ID matches this member's own -- i.e.
+  // this member is independently enrolled AND someone else has declared them as their spouse.
+  // See Spouse.linkedMemberId.
+  linkedAsSpouseOf             Spouse[]                   @relation("SpouseLinkedMember")
   beneficiaries                Beneficiary[]
   files                        StoredFile[]
   uploadedFiles                StoredFile[]               @relation("StoredFileUploadedByMember")
@@ -378,10 +382,20 @@ model Spouse {
   fullName    String       @map("full_name")
   dateOfBirth DateTime?    @map("date_of_birth") @db.Date
   ghanaCardId String?      @unique @map("ghana_card_id")
+  // Set when this spouse's Ghana Card ID matches an independently-enrolled Member -- i.e. this
+  // person is themselves a GNAT member, not just a dependent. Drives activeBenefit() paying the
+  // full member rate instead of the spousal rate for a SPOUSE claim. Reconciled by
+  // reconcileSpouseLink/relinkSpousesForMember in members/member.routes.ts -- never set directly.
+  // onDelete: SetNull, not Cascade or Restrict: this is an informational cross-reference, not an
+  // ownership relation, so deleting the linked Member must never cascade-delete or block deleting
+  // this Spouse row.
+  linkedMemberId Int?      @map("linked_member_id")
+  linkedMember   Member?   @relation("SpouseLinkedMember", fields: [linkedMemberId], references: [id], onDelete: SetNull)
   files       StoredFile[]
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
+  @@index([linkedMemberId])
   @@map("spouses")
 }
 

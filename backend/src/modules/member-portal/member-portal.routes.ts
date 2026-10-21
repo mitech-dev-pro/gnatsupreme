@@ -1,5 +1,5 @@
 import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
-import { activeBenefit, uploadedSlotKeys } from "../claims/claims.service.js";
+import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "../claims/claims.service.js";
 import path from "node:path";
 import {
   ClaimDocumentError,
@@ -20,6 +20,13 @@ import {
   authenticateMember,
   type AuthenticatedMember,
 } from "../../middleware/authenticate-member.js";
+import {
+  auditLinkChanges,
+  memberGhanaCardConflict,
+  reconcileSpouseLink,
+  relinkSpousesForMember,
+  spouseGhanaCardConflict,
+} from "../members/member.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
 import { onboardingDetailsSchema } from "../member-auth/member-auth.schemas.js";
@@ -234,35 +241,29 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
 
-  if (ghanaCardId) {
-    const duplicateGhanaCard = await prisma.member.findFirst({
-      where: { ghanaCardId, id: { not: currentMember.id } },
-      select: { id: true },
+  // Only checks for a conflicting MEMBER row -- a card already sitting on someone else's spouse
+  // row is no longer a block here (a member's own self-registration must never be blocked by a
+  // third party's stale spouse entry about them; the two get linked instead, see below).
+  if (ghanaCardId && (await memberGhanaCardConflict(ghanaCardId, { memberId: currentMember.id }))) {
+    response.status(409).json({
+      success: false,
+      message: "This Ghana Card ID is already registered to another membership.",
     });
-    if (duplicateGhanaCard) {
-      response.status(409).json({
-        success: false,
-        message: "This Ghana Card ID is already registered to another membership.",
-      });
-      return;
-    }
+    return;
   }
-  if (spouse?.ghanaCardId) {
-    const duplicateSpouseCard = await prisma.spouse.findUnique({
-      where: { ghanaCardId: spouse.ghanaCardId },
-      select: { id: true },
+  // Only checks for a conflicting SPOUSE row -- declaring as spouse someone who is themselves
+  // already an enrolled GNAT member is allowed (that's the whole point of this feature); it gets
+  // linked instead of blocked, below.
+  if (spouse?.ghanaCardId && (await spouseGhanaCardConflict(spouse.ghanaCardId))) {
+    response.status(409).json({
+      success: false,
+      message: "This Ghana Card ID is already registered to another spouse.",
     });
-    if (duplicateSpouseCard) {
-      response.status(409).json({
-        success: false,
-        message: "This Ghana Card ID is already registered to another spouse.",
-      });
-      return;
-    }
+    return;
   }
 
-  const spouseId = await prisma.$transaction(async (transaction) => {
-    await transaction.member.update({
+  const { spouseId, linkChanges } = await prisma.$transaction(async (transaction) => {
+    const updatedMember = await transaction.member.update({
       where: { id: currentMember.id },
       data: {
         // Omitted (not just falsy) when already on file -- Prisma drops an undefined key
@@ -295,8 +296,26 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
         trusteeGhanaCardId: item.trusteeGhanaCardId ?? null,
       })),
     });
-    return createdSpouse?.id ?? null;
+    // A self-registering member is typically still PENDING here, so this won't establish a link
+    // yet (correct -- see decision 4); the real link happens at approval. Still called for
+    // consistency and to catch the rarer case of an already-ACTIVE/FLAGGED member completing
+    // this step.
+    const changes = ghanaCardId
+      ? await relinkSpousesForMember(transaction, currentMember.id, updatedMember.ghanaCardId)
+      : [];
+    if (createdSpouse) {
+      const change = await reconcileSpouseLink(
+        transaction,
+        createdSpouse.id,
+        createdSpouse.ghanaCardId,
+        currentMember.id,
+        undefined,
+      );
+      if (change) changes.push(change);
+    }
+    return { spouseId: createdSpouse?.id ?? null, linkChanges: changes };
   });
+  await auditLinkChanges(request, null, linkChanges);
 
   await recordAudit({
     request,
@@ -516,10 +535,25 @@ memberPortalRouter.post("/claims", async (request, response) => {
   const idempotencyKey = `member-portal:${currentMember.id}:${token.data}`;
   const record = await prisma.member.findUnique({
     where: { id: currentMember.id },
-    select: { fullName: true, spouse: { select: { id: true, fullName: true } } },
+    select: {
+      id: true,
+      fullName: true,
+      ghanaCardId: true,
+      spouse: { select: { id: true, fullName: true, ghanaCardId: true, linkedMemberId: true } },
+    },
   });
   if (!record || (parsed.data.claimantType === "SPOUSE" && !record.spouse)) {
     response.status(404).json({ success: false, message: "Covered person not found" });
+    return;
+  }
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
+  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+    response.status(409).json({
+      success: false,
+      message:
+        "A claim already exists for this benefit type under the linked membership. This needs staff reconciliation before a second claim for the same event can be filed.",
+    });
     return;
   }
 
@@ -570,7 +604,7 @@ memberPortalRouter.post("/claims", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {
@@ -659,10 +693,25 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
   const record = await prisma.member.findUnique({
     where: { id: currentMember.id },
-    select: { fullName: true, spouse: { select: { id: true, fullName: true } } },
+    select: {
+      id: true,
+      fullName: true,
+      ghanaCardId: true,
+      spouse: { select: { id: true, fullName: true, ghanaCardId: true, linkedMemberId: true } },
+    },
   });
   if (!record || (parsed.data.claimantType === "SPOUSE" && !record.spouse)) {
     response.status(404).json({ success: false, message: "Covered person not found" });
+    return;
+  }
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
+  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+    response.status(409).json({
+      success: false,
+      message:
+        "A claim already exists for this benefit type under the linked membership. This needs staff reconciliation before a second claim for the same event can be filed.",
+    });
     return;
   }
 
@@ -713,7 +762,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {

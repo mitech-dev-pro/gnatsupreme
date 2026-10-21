@@ -42,6 +42,7 @@ type Beneficiary = {
 type Spouse = {
   fullName: string;
   ghanaCardId: string | null;
+  linkedMember: { id: number; controllerId: string; fullName: string } | null;
 };
 
 type MemberDetailData = {
@@ -1157,6 +1158,19 @@ export default function MemberDetail() {
                     label="Ghana Card ID"
                     value={member.spouse.ghanaCardId ?? "—"}
                   />
+                  {member.spouse.linkedMember && (
+                    <Field
+                      label="GNAT membership"
+                      value={
+                        <Link
+                          to={`/members/${member.spouse.linkedMember.id}`}
+                          className="font-semibold text-[#1f9c7c] hover:underline"
+                        >
+                          Also a member — {member.spouse.linkedMember.controllerId} →
+                        </Link>
+                      }
+                    />
+                  )}
                 </dl>
               ) : (
                 <div className="text-[12.5px] text-[#5b6472]">

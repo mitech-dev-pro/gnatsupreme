@@ -2040,6 +2040,14 @@ export default function MemberHome({
                             Review missing details
                           </Link>
                         )}
+                        {item.type === "SPOUSE_LINK_SUGGESTED" && (
+                          <Link
+                            to="/member"
+                            className="mt-1.5 inline-block text-[11px] font-bold text-(--action-primary) no-underline hover:underline"
+                          >
+                            Review spouse details
+                          </Link>
+                        )}
                       </div>
                       <div className="whitespace-nowrap text-[11px] text-[#9aa2c4]">
                         {timeAgo(item.createdAt)}

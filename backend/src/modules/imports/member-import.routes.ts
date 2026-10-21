@@ -14,6 +14,11 @@ import { enqueueMemberImportJob } from "../../queues/import.queue.js";
 import { isStaleImportJob } from "../../lib/stale-jobs.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
+  auditLinkChanges,
+  reconcileSpouseLink,
+  relinkSpousesForMember,
+} from "../members/member.routes.js";
+import {
   hasValidReport20Signature,
   memberImportFileUpload,
   uploadRoot,
@@ -383,8 +388,9 @@ function runMemberImportCommit(
       // fall back to TEACHING, matching their original behavior.
       const employmentCategory = row.employmentCategory ?? "TEACHING";
       try {
-        const member = await prisma.$transaction(async (transaction) => {
+        const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
           const created = await transaction.member.create({
+            include: { spouse: true },
             data: {
               controllerId: row.controllerId!,
               fullName: row.fullName!,
@@ -431,8 +437,22 @@ function runMemberImportCommit(
             where: { id: row.id },
             data: { status: "IMPORTED", memberId: created.id },
           });
-          return created;
+          // Bulk-imported members are created ACTIVE directly, so this is a real transition into
+          // an eligible status -- links any stale spouse row elsewhere whose card matches.
+          const changes = await relinkSpousesForMember(transaction, created.id, created.ghanaCardId);
+          if (created.spouse) {
+            const change = await reconcileSpouseLink(
+              transaction,
+              created.spouse.id,
+              created.spouse.ghanaCardId,
+              created.id,
+              undefined,
+            );
+            if (change) changes.push(change);
+          }
+          return { member: created, linkChanges: changes };
         });
+        await auditLinkChanges(auditRequest, currentUser, linkChanges);
         imported += 1;
         await recordAudit({
           request: auditRequest,

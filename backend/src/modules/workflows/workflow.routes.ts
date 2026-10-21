@@ -9,6 +9,13 @@ import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 import { memberScope } from "../members/member.access.js";
+import {
+  auditLinkChanges,
+  memberGhanaCardConflict,
+  reconcileSpouseLink,
+  relinkSpousesForMember,
+  spouseGhanaCardConflict,
+} from "../members/member.routes.js";
 import { notifyMember } from "../notifications/notification.service.js";
 import {
   bulkApproveSchema,
@@ -41,15 +48,6 @@ async function accessibleMember(id: number, currentUser: AuthenticatedUser) {
     where: { id, ...memberScope(currentUser) },
     include: { district: { select: { regionId: true } }, beneficiaries: true },
   });
-}
-
-async function ghanaCardConflict(ghanaCardId: string | null | undefined, memberId: number, spouseId?: number) {
-  if (!ghanaCardId) return false;
-  const [member, spouse] = await Promise.all([
-    prisma.member.findFirst({ where: { ghanaCardId, id: { not: memberId } }, select: { id: true } }),
-    prisma.spouse.findFirst({ where: { ghanaCardId, ...(spouseId ? { id: { not: spouseId } } : {}) }, select: { id: true } }),
-  ]);
-  return Boolean(member || spouse);
 }
 
 memberWorkflowRouter.use(authenticate);
@@ -169,11 +167,14 @@ memberWorkflowRouter.post("/bulk/approve", authorizeRoles("SUPER_ADMIN", "NATION
       const exemptFromReport20 = existing.employmentCategory === "NON_TEACHING";
       if (!exemptFromReport20 && existing.status === "FLAGGED" && !existing.report20Matched) { results.push({ memberId, success: false, memberName: existing.fullName, message: "Not yet matched against Report 20" }); continue; }
       const toStatus = exemptFromReport20 || existing.report20Matched ? "ACTIVE" : "FLAGGED";
-      const [member, event] = await prisma.$transaction([
-        prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
-        prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
-      ]);
+      const { member, event, linkChanges } = await prisma.$transaction(async (transaction) => {
+        const updatedMember = await transaction.member.update({ where: { id: existing.id }, data: { status: toStatus } });
+        const createdEvent = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } });
+        const changes = await relinkSpousesForMember(transaction, existing.id, updatedMember.ghanaCardId);
+        return { member: updatedMember, event: createdEvent, linkChanges: changes };
+      });
       await invalidateMemberAuth(member.id);
+      await auditLinkChanges(request, actor, linkChanges);
       await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Bulk-approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id, bulk: true }, regionId: existing.district?.regionId, districtId: existing.districtId });
       await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
       results.push({ memberId, success: true, memberName: member.fullName, status: toStatus });
@@ -240,11 +241,14 @@ memberWorkflowRouter.post("/:id/approve", authorizeRoles("SUPER_ADMIN", "NATIONA
     return;
   }
   const toStatus = exemptFromReport20 || existing.report20Matched ? "ACTIVE" : "FLAGGED";
-  const [member, event] = await prisma.$transaction([
-    prisma.member.update({ where: { id: existing.id }, data: { status: toStatus } }),
-    prisma.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } }),
-  ]);
+  const { member, event, linkChanges } = await prisma.$transaction(async (transaction) => {
+    const updatedMember = await transaction.member.update({ where: { id: existing.id }, data: { status: toStatus } });
+    const createdEvent = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "APPROVED", fromStatus: existing.status, toStatus, performedById: actor.id } });
+    const changes = await relinkSpousesForMember(transaction, existing.id, updatedMember.ghanaCardId);
+    return { member: updatedMember, event: createdEvent, linkChanges: changes };
+  });
   await invalidateMemberAuth(member.id);
+  await auditLinkChanges(request, actor, linkChanges);
   await recordAudit({ request, actor, action: "MEMBER_APPROVED", entityType: "MEMBER", entityId: member.id, description: `Approved ${member.fullName}`, beforeData: { status: existing.status }, afterData: { status: member.status, workflowEventId: event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: member.id, type: "MEMBER_APPROVED", title: "Membership approved", message: toStatus === "ACTIVE" ? "Your GNAT Supreme Care membership has been approved and is active." : "Your membership has been approved and flagged for Report 20 follow-up.", idempotencyKey: `member-workflow:${event.id}` });
   response.json({ success: true, data: { member, event } });
@@ -306,6 +310,10 @@ memberWorkflowRouter.post("/:id/remove", authorizeRoles("SUPER_ADMIN", "NATIONAL
       data: { status: "REMOVED", ghanaCardId: null },
     });
     await transaction.spouse.updateMany({ where: { memberId: existing.id }, data: { ghanaCardId: null } });
+    // Deliberately NOT calling relinkSpousesForMember(transaction, existing.id, null) here.
+    // That would unlink every Spouse row elsewhere pointing at this now-removed member (their
+    // card just went null), which directly contradicts the decision that an existing spousal
+    // link survives removal -- leave those links untouched.
     const event = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "REMOVED", fromStatus: existing.status, toStatus: "REMOVED", reason: body.data.reason, note: body.data.note, performedById: actor.id } });
     const claim = body.data.reason === "DEATH" || body.data.reason === "DISABILITY"
       ? await transaction.externalClaimSubmission.create({ data: { memberId: existing.id, submittedById: actor.id, idempotencyKey: `removal:${event.id}`, status: "PENDING" } })
@@ -338,9 +346,11 @@ memberWorkflowRouter.post("/:id/reactivate", authorizeRoles("SUPER_ADMIN", "NATI
   const result = await prisma.$transaction(async (transaction) => {
     const member = await transaction.member.update({ where: { id: existing.id }, data: { status: "ACTIVE", missingFromReport20At: null } });
     const event = await transaction.memberWorkflowEvent.create({ data: { memberId: existing.id, action: "REACTIVATED", fromStatus: "INACTIVE", toStatus: "ACTIVE", note: body.data.note, performedById: actor.id } });
-    return { member, event };
+    const linkChanges = await relinkSpousesForMember(transaction, existing.id, member.ghanaCardId);
+    return { member, event, linkChanges };
   });
   await invalidateMemberAuth(result.member.id);
+  await auditLinkChanges(request, actor, result.linkChanges);
   await recordAudit({ request, actor, action: "MEMBER_REACTIVATED", entityType: "MEMBER", entityId: result.member.id, description: `Reactivated ${result.member.fullName}`, beforeData: { status: existing.status }, afterData: { status: result.member.status, workflowEventId: result.event.id }, regionId: existing.district?.regionId, districtId: existing.districtId });
   await notifyMember({ memberId: result.member.id, type: "MEMBER_REACTIVATED", title: "Membership reactivated", message: "Your GNAT Supreme Care membership has been reactivated by a staff member.", idempotencyKey: `member-workflow:${result.event.id}` });
   response.json({ success: true, data: result });
@@ -405,17 +415,21 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
     response.status(404).json({ success: false, message: "Pending change request not found" });
     return;
   }
+  let existingSpouse: { id: number; ghanaCardId: string | null } | null = null;
   if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
     const data = memberDetailsChangeSchema.parse(item.proposedData);
-    if (await ghanaCardConflict(data.ghanaCardId, item.memberId)) {
+    if (await memberGhanaCardConflict(data.ghanaCardId, { memberId: item.memberId })) {
       response.status(409).json({ success: false, message: "The proposed Ghana Card ID is already in use" });
       return;
     }
   }
   if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
     const data = spouseSchema.parse(item.proposedData);
-    const spouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true } });
-    if (data.ghanaCardId === item.member.ghanaCardId || await ghanaCardConflict(data.ghanaCardId, item.memberId, spouse?.id)) {
+    existingSpouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true, ghanaCardId: true } });
+    if (
+      data.ghanaCardId === item.member.ghanaCardId ||
+      (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
+    ) {
       response.status(409).json({ success: false, message: "The proposed spouse Ghana Card ID is already in use" });
       return;
     }
@@ -424,16 +438,22 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
     response.status(409).json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
     return;
   }
+  let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
   if (body.data.action === "APPROVE") {
     await prisma.$transaction(async (transaction) => {
       if (item.type === "MEMBER_DETAILS") {
         const data = memberDetailsChangeSchema.parse(item.proposedData);
-        await transaction.member.update({ where: { id: item.memberId }, data: { ...data, ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone ? { phoneVerifiedAt: null } : {}) } });
+        const updatedMember = await transaction.member.update({ where: { id: item.memberId }, data: { ...data, ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone ? { phoneVerifiedAt: null } : {}) } });
+        if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
+          linkChanges = await relinkSpousesForMember(transaction, item.memberId, updatedMember.ghanaCardId);
+        }
       }
       if (item.type === "SPOUSE") {
         const data = spouseSchema.parse(item.proposedData);
-        await transaction.spouse.upsert({ where: { memberId: item.memberId }, update: data, create: { ...data, memberId: item.memberId } });
+        const upsertedSpouse = await transaction.spouse.upsert({ where: { memberId: item.memberId }, update: data, create: { ...data, memberId: item.memberId } });
         await transaction.member.update({ where: { id: item.memberId }, data: { spouseDeclarationStatus: "HAS_SPOUSE" } });
+        const change = await reconcileSpouseLink(transaction, upsertedSpouse.id, upsertedSpouse.ghanaCardId, item.memberId, existingSpouse?.ghanaCardId);
+        if (change) linkChanges = [change];
       }
       if (item.type === "BENEFICIARY_ADD") await transaction.beneficiary.create({ data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId } });
       if (item.type === "BENEFICIARY_UPDATE") await transaction.beneficiary.update({ where: { id: item.targetBeneficiaryId! }, data: beneficiarySchema.parse(item.proposedData) });
@@ -444,6 +464,7 @@ changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL
       await transaction.memberChangeRequest.update({ where: { id: item.id }, data: { status: "APPROVED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
     });
     await invalidateMemberAuth(item.memberId);
+    await auditLinkChanges(request, actor, linkChanges);
   } else {
     await prisma.memberChangeRequest.update({ where: { id: item.id }, data: { status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
   }
@@ -477,19 +498,20 @@ changeRequestRouter.post(
           results.push({ id, success: false, message: "Not found, outside your access scope, or no longer pending" });
           continue;
         }
+        let existingSpouse: { id: number; ghanaCardId: string | null } | null = null;
         if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
           const data = memberDetailsChangeSchema.parse(item.proposedData);
-          if (await ghanaCardConflict(data.ghanaCardId, item.memberId)) {
+          if (await memberGhanaCardConflict(data.ghanaCardId, { memberId: item.memberId })) {
             results.push({ id, success: false, message: "The proposed Ghana Card ID is already in use" });
             continue;
           }
         }
         if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
           const data = spouseSchema.parse(item.proposedData);
-          const spouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true } });
+          existingSpouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true, ghanaCardId: true } });
           if (
             data.ghanaCardId === item.member.ghanaCardId ||
-            (await ghanaCardConflict(data.ghanaCardId, item.memberId, spouse?.id))
+            (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
           ) {
             results.push({ id, success: false, message: "The proposed spouse Ghana Card ID is already in use" });
             continue;
@@ -499,11 +521,12 @@ changeRequestRouter.post(
           results.push({ id, success: false, message: "A member cannot have more than 10 beneficiaries" });
           continue;
         }
+        let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
         if (body.data.action === "APPROVE") {
           await prisma.$transaction(async (transaction) => {
             if (item.type === "MEMBER_DETAILS") {
               const data = memberDetailsChangeSchema.parse(item.proposedData);
-              await transaction.member.update({
+              const updatedMember = await transaction.member.update({
                 where: { id: item.memberId },
                 data: {
                   ...data,
@@ -512,10 +535,13 @@ changeRequestRouter.post(
                     : {}),
                 },
               });
+              if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
+                linkChanges = await relinkSpousesForMember(transaction, item.memberId, updatedMember.ghanaCardId);
+              }
             }
             if (item.type === "SPOUSE") {
               const data = spouseSchema.parse(item.proposedData);
-              await transaction.spouse.upsert({
+              const upsertedSpouse = await transaction.spouse.upsert({
                 where: { memberId: item.memberId },
                 update: data,
                 create: { ...data, memberId: item.memberId },
@@ -524,6 +550,8 @@ changeRequestRouter.post(
                 where: { id: item.memberId },
                 data: { spouseDeclarationStatus: "HAS_SPOUSE" },
               });
+              const change = await reconcileSpouseLink(transaction, upsertedSpouse.id, upsertedSpouse.ghanaCardId, item.memberId, existingSpouse?.ghanaCardId);
+              if (change) linkChanges = [change];
             }
             if (item.type === "BENEFICIARY_ADD")
               await transaction.beneficiary.create({
@@ -546,6 +574,7 @@ changeRequestRouter.post(
             });
           });
           await invalidateMemberAuth(item.memberId);
+          await auditLinkChanges(request, actor, linkChanges);
         } else {
           await prisma.memberChangeRequest.update({
             where: { id: item.id },

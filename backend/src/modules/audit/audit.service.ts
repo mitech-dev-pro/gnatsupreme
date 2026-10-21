@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
-type AuditRequestSource =
+export type AuditRequestSource =
   | Request
   | { ip?: string | null; userAgent?: string | null };
 

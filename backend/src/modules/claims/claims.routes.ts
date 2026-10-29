@@ -1,4 +1,9 @@
-import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "./claims.service.js";
+import {
+  activeBenefit,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "./claims.service.js";
 import { Router } from "express";
 import { z } from "zod";
 import {
@@ -130,7 +135,11 @@ claimsRouter.get("/estimate", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
   response.json({
     success: true,
     data: {
@@ -176,7 +185,14 @@ claimsRouter.post("/submissions", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, member, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      member,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -218,7 +234,11 @@ claimsRouter.post("/submissions", async (request, response) => {
     return;
   }
 
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)
@@ -414,7 +434,7 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       member: { is: memberScope(user) },
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },
-    select: { id: true, deliveryState: true },
+    select: { id: true, deliveryState: true, member: { select: { controllerId: true } } },
   });
   if (!claim) {
     response.status(409).json({
@@ -430,7 +450,40 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     return;
   }
   const wasRetry = claim.deliveryState !== "NOT_SENT";
-  const delivered = await deliverClaim(claim.id);
+  const historyChecked = claim.deliveryState === "UNKNOWN";
+  if (historyChecked) {
+    if (request.body?.historyChecked !== true) {
+      response.status(409).json({
+        success: false,
+        message: "Check Mankrado history and confirm there is no matching claim before retrying.",
+      });
+      return;
+    }
+    try {
+      const history = await claimsProvider.history(claim.member.controllerId);
+      if (history.some((item) => item.staffId && item.staffId !== claim.member.controllerId))
+        throw new Error("History member mismatch");
+    } catch {
+      await recordAudit({
+        request,
+        actor: user,
+        action: "CLAIM_RETRY_BLOCKED",
+        entityType: "EXTERNAL_CLAIM_SUBMISSION",
+        entityId: claim.id,
+        description: "Unconfirmed delivery retry blocked because history could not be checked",
+        afterData: { historyChecked: true, historyCheckOutcome: "UNAVAILABLE" },
+      });
+      response.status(503).json({
+        success: false,
+        message: "Mankrado history is unavailable. Retry is blocked until history can be checked.",
+      });
+      return;
+    }
+  }
+  const delivered = await deliverClaim(claim.id, undefined, {
+    allowUnknown: historyChecked,
+    expectedDeliveryState: claim.deliveryState,
+  });
   await recordAudit({
     request,
     actor: user,
@@ -440,7 +493,11 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     description: wasRetry
       ? "Retried delivery of a claim after a previous failed or unconfirmed attempt"
       : "Recorded delivery of a previously unsent claim",
-    afterData: { deliveryState: delivered.deliveryState },
+    afterData: {
+      deliveryState: delivered.deliveryState,
+      historyChecked,
+      historyCheckOutcome: historyChecked ? "SUCCESS" : "NOT_REQUIRED",
+    },
   });
   response.json({ success: true, data: delivered });
 });
@@ -521,6 +578,7 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
       paymentDetails: true,
       documentIds: true,
       notes: true,
+      externalAssessment: true,
     },
   });
   if (!submission) {
@@ -591,11 +649,20 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
       (details.staffId && details.staffId !== claim.member.controllerId)
     )
       throw new Error("Claim mismatch");
+    const lastSyncedAt = new Date();
+    const externalAssessment = {
+      claimNumber: details.claimNumber,
+      name: details.name,
+      claimDate: details.claimDate,
+      amountPayable: details.amountPayable,
+      status: details.status ?? "Not provided by Mankrado",
+      rejectReason: details.rejectReason,
+    };
     await prisma.externalClaimSubmission.update({
       where: { id: claim.id },
-      data: { externalStatus: details.status, lastSyncedAt: new Date() },
+      data: { externalAssessment, externalStatus: externalAssessment.status, lastSyncedAt },
     });
-    response.json({ success: true, data: details });
+    response.json({ success: true, data: { ...details, lastSyncedAt } });
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,

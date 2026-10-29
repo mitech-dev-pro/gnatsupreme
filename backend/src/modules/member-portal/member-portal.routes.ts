@@ -1,5 +1,10 @@
 import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
-import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "../claims/claims.service.js";
+import {
+  activeBenefit,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "../claims/claims.service.js";
 import path from "node:path";
 import {
   ClaimDocumentError,
@@ -490,6 +495,7 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
     select: {
       ...claimSelect,
       claimantIdType: true,
+      externalAssessment: true,
       claimantIdNumber: true,
       claimantContact: true,
       paymentMethod: true,
@@ -548,7 +554,14 @@ memberPortalRouter.post("/claims", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -604,7 +617,8 @@ memberPortalRouter.post("/claims", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
+    null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {
@@ -706,7 +720,14 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -762,7 +783,8 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
+    null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {

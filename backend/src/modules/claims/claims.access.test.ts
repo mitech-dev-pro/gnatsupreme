@@ -123,6 +123,17 @@ test("detail sync stores external status without changing local review status", 
     ) => {
       assert.equal(args.data.externalStatus, "ASSESSING");
       assert.equal(args.data.status, undefined);
+      assert.deepEqual(args.data.externalAssessment, {
+        claimNumber: "MC-1",
+        name: "Test Member",
+        claimDate: null,
+        amountPayable: "8095.64",
+        status: "ASSESSING",
+        rejectReason: null,
+      });
+      assert.equal(args.data.estimatedAmount, undefined);
+      assert.equal(args.data.claimDetails, undefined);
+      assert.ok(args.data.lastSyncedAt instanceof Date);
       return {};
     },
   );
@@ -132,9 +143,91 @@ test("detail sync stores external status without changing local review status", 
     res,
   );
   assert.equal(res.code, 200);
+  assert.ok((res.body as { data: { lastSyncedAt: Date } }).data.lastSyncedAt instanceof Date);
 });
 
+test("unconfirmed retry requires acknowledgment before contacting history or sending", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    deliveryState: "UNKNOWN",
+    member: { controllerId: "123456" },
+  }));
+  t.mock.method(claimsProvider, "isConfigured", () => true);
+  const history = t.mock.method(claimsProvider, "history", async () => []);
+  const send = t.mock.method(claimsProvider, "createSubmission", async () => {
+    throw new Error("must not send");
+  });
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/send")({ params: { id: "1" }, body: {} }, res);
+  assert.equal(res.code, 409);
+  assert.equal(history.mock.callCount(), 0);
+  assert.equal(send.mock.callCount(), 0);
+});
+
+test("unconfirmed retry is blocked and audited when scoped history is unavailable", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    deliveryState: "UNKNOWN",
+    member: { controllerId: "123456" },
+  }));
+  t.mock.method(claimsProvider, "isConfigured", () => true);
+  t.mock.method(claimsProvider, "history", async () => {
+    throw new Error("offline");
+  });
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  const send = t.mock.method(claimsProvider, "createSubmission", async () => {
+    throw new Error("must not send");
+  });
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/send")(
+    { params: { id: "1" }, body: { historyChecked: true } },
+    res,
+  );
+  assert.equal(res.code, 503);
+  assert.equal(send.mock.callCount(), 0);
+});
+
+for (const history of [[], [{ id: "other", claimNumber: "MC-OTHER", staffId: "123456" }]]) {
+  test(`unconfirmed retry accepts a successful ${history.length ? "populated" : "empty"} history and preserves the delivery lock`, async (t) => {
+    stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+      id: 1,
+      deliveryState: "UNKNOWN",
+      member: { controllerId: "123456" },
+    }));
+    t.mock.method(claimsProvider, "isConfigured", () => true);
+    t.mock.method(claimsProvider, "history", async (staffId: string) => {
+      assert.equal(staffId, "123456");
+      return history;
+    });
+    stub(
+      t,
+      prisma.externalClaimSubmission,
+      "updateMany",
+      async (args: Prisma.ExternalClaimSubmissionUpdateManyArgs) => {
+        assert.equal(args.where?.deliveryState, "UNKNOWN");
+        return { count: 0 }; // Another attempt already holds the delivery lock.
+      },
+    );
+    stub(t, prisma.externalClaimSubmission, "findUniqueOrThrow", async () => ({
+      id: 1,
+      deliveryState: "SENDING",
+    }));
+    stub(t, prisma.auditLog, "create", async () => ({}));
+    const send = t.mock.method(claimsProvider, "createSubmission", async () => {
+      throw new Error("must not send twice");
+    });
+    const res = response();
+    await routeHandler(claimsRouter, "/submissions/:id/send")(
+      { params: { id: "1" }, body: { historyChecked: true } },
+      res,
+    );
+    assert.equal(res.code, 200);
+    assert.equal(send.mock.callCount(), 0);
+  });
+}
+
 test("saved-claim recovery is scoped and only reaches a claim in a deliverable state", async (t) => {
+  const history = t.mock.method(claimsProvider, "history", async () => []);
   stub(
     t,
     prisma.externalClaimSubmission,
@@ -164,7 +257,39 @@ test("saved-claim recovery is scoped and only reaches a claim in a deliverable s
   await routeHandler(claimsRouter, "/submissions/:id/send")({ params: { id: "1" } }, res);
   assert.equal(res.code, 409);
   assert.equal(remote.mock.callCount(), 0);
+  assert.equal(history.mock.callCount(), 0);
 });
+
+for (const failure of ["unavailable", "wrong-member", "wrong-reference"]) {
+  test(`assessment snapshot is not overwritten when the provider is ${failure}`, async (t) => {
+    stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+      id: 1,
+      member: { controllerId: "123456" },
+    }));
+    t.mock.method(claimsProvider, "details", async () => {
+      if (failure === "unavailable") throw new Error("offline");
+      return {
+        id: failure === "wrong-reference" ? "other" : "42",
+        staffId: failure === "wrong-member" ? "654321" : "123456",
+        claimNumber: "MC-42",
+        name: null,
+        claimDate: null,
+        amountPayable: "0",
+        status: "Paid",
+        rejectReason: null,
+      };
+    });
+    stub(t, prisma.externalClaimSubmission, "update", async () =>
+      assert.fail("must retain saved assessment and timestamp"),
+    );
+    const res = response();
+    await routeHandler(claimsRouter, "/claimdetails/:externalId")(
+      { params: { externalId: "42" } },
+      res,
+    );
+    assert.equal(res.code, 502);
+  });
+}
 
 test("review return records the decision atomically without sending a claim", async (t) => {
   stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({

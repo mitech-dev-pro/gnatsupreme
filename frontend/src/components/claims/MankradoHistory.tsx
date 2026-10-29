@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
 import Button from "@/components/ui/Button";
@@ -14,47 +14,61 @@ type ExternalClaim = {
 };
 export default function MankradoHistory({
   staffId,
+  manual = false,
+  onChecked,
 }: {
   staffId: string;
   externalId?: string | null;
+  manual?: boolean;
+  onChecked?: (success: boolean) => void;
 }) {
-  const [items, setItems] = useState<ExternalClaim[] | null>(null);
+  const [history, setHistory] = useState<{ staffId: string; items: ExternalClaim[] } | null>(null);
+  const items = history?.staffId === staffId ? history.items : null;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const checkedRef = useRef(onChecked);
   useEffect(() => {
+    checkedRef.current = onChecked;
+  }, [onChecked]);
+  useEffect(() => {
+    if (manual && refresh === 0) return;
     const controller = new AbortController();
-    setItems(null);
     setError("");
     setBusy(true);
+    checkedRef.current?.(false);
     api
       .get(`/claims/history/${encodeURIComponent(staffId)}`, { signal: controller.signal })
       .then((response) => {
-        if (!controller.signal.aborted) setItems(response.data.data);
+        if (!controller.signal.aborted) {
+          setHistory({ staffId, items: response.data.data });
+          checkedRef.current?.(true);
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setError("No claims found for this staff ID");
+        if (!controller.signal.aborted)
+          setError("Mankrado history is unavailable. Any previous results below may be outdated.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [staffId, refresh]);
+  }, [staffId, refresh, manual]);
   return (
     <section
       className="mt-5 border-t border-border-default pt-5"
-      aria-label="Claim history"
+      aria-label="Member claim history"
       aria-busy={busy}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-extrabold text-text-strong">Claim History</h2>
+        <h2 className="text-lg font-extrabold text-text-strong">Member claim history</h2>
         <Button
-          variant="secondary"
+          variant={manual ? "primary" : "secondary"}
           size="sm"
           loading={busy}
           onClick={() => setRefresh((value) => value + 1)}
         >
-          Refresh history
+          {manual ? "Check Mankrado history" : "Refresh history"}
         </Button>
       </div>
       {error && <Alert tone="warning">{error}</Alert>}
@@ -82,7 +96,7 @@ export default function MankradoHistory({
                   Claim date
                 </th>
                 <th scope="col" className="p-2 text-right">
-                  Amount payable (GHS)
+                  Amount payable — reported by Mankrado
                 </th>
                 <th scope="col" className="p-2">
                   Claim status
@@ -96,8 +110,8 @@ export default function MankradoHistory({
                   <td className="p-2">{item.name || "Not provided"}</td>
                   <td className="whitespace-nowrap p-2">{item.claimDate ?? "Not provided"}</td>
                   <td className="p-2 text-right tabular-nums">
-                    {item.amountPayable === "0.00"
-                      ? "Not available yet"
+                    {item.amountPayable == null
+                      ? "Not provided by Mankrado"
                       : formatCurrency(item.amountPayable)}
                   </td>
                   <td className="p-2">{item.status}</td>

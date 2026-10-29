@@ -30,7 +30,7 @@ it("requires a reason for return or rejection and allows approval without one", 
   expect(confirm).toHaveBeenCalledOnce();
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Approve" }));
+  await user.click(screen.getByRole("button", { name: "Approve and forward" }));
   await user.clear(screen.getByLabelText(/Review note/));
-  expect(screen.getByRole("button", { name: "Confirm approve" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Confirm approve and forward" })).toBeEnabled();
 });

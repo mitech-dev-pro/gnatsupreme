@@ -58,6 +58,8 @@ export type MemberNotification = {
   createdAt: string;
 };
 export type ClaimItem = {
+  externalStatus?: string | null;
+  lastSyncedAt?: string | null;
   deliveryState?: string;
   reviewedAt?: string | null;
   id: number;

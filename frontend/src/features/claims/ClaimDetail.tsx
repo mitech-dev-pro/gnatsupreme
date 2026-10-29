@@ -1,11 +1,11 @@
 import { ClaimReviewControls, type ClaimDecision } from "@/features/claims/ClaimReviewControls";
 import MankradoDetails from "@/components/claims/MankradoDetails";
 import MankradoHistory from "@/components/claims/MankradoHistory";
-import Button from "@/components/ui/Button";
+import ClaimDeliveryControls from "@/components/claims/ClaimDeliveryControls";
+import ClaimStageSummary from "@/components/claims/ClaimStageSummary";
+import type { MankradoAssessment } from "./assessment.types";
 import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
-import StatusBadge from "@/components/ui/StatusBadge";
-import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import api from "@/lib/api";
 import { reviewClaim } from "./claims.api";
 import { useClaimDocument } from "./useClaimDocument";
@@ -17,7 +17,7 @@ import {
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 type Decision = ClaimDecision;
@@ -35,6 +35,7 @@ type ClaimSubmissionDetail = {
   provider: string;
   deliveryState: string;
   externalStatus: string | null;
+  externalAssessment: MankradoAssessment | null;
   status: string;
   source: "STAFF" | "MEMBER_PORTAL";
   claimType: ClaimType | null;
@@ -111,21 +112,32 @@ export default function ClaimDetail() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
 
+  const requestRef = useRef<AbortController | null>(null);
   const load = async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const signal = controller.signal;
     setLoading(true);
     setError("");
     try {
-      const response = await api.get(`/claims/submissions/${id}`);
-      setClaim(response.data.data);
+      const response = await api.get(`/claims/submissions/${id}`, { signal });
+      if (!signal?.aborted) setClaim(response.data.data);
     } catch (caught: unknown) {
-      setError(getApiError(caught)?.message || "This claim could not be loaded.");
+      if (!signal?.aborted)
+        setError(getApiError(caught)?.message || "This claim could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
   useEffect(() => {
+    setClaim(null);
+    setDecision(null);
+    setReviewNote("");
+    setReviewError("");
     void load();
+    return () => requestRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -167,7 +179,7 @@ export default function ClaimDetail() {
         &larr; All claims
       </Link>
 
-      {loading ? (
+      {loading || (claim && String(claim.id) !== id) ? (
         <div className="rounded-xl border border-border-default bg-(--surface-raised) p-5">
           <table className="w-full">
             <tbody>
@@ -183,42 +195,15 @@ export default function ClaimDetail() {
             eyebrow={claim.member.fullName}
             title={`${labelize(claim.claimType)} claim`}
             description={`Filed ${formatDate(claim.createdAt)}${claim.source === "MEMBER_PORTAL" ? " · Filed by member" : ""}`}
-            actions={
-              <StatusBadge tone={claimStatusTone(claim.externalStatus ?? claim.status)}>
-                {claimStatusLabel(claim.externalStatus ?? claim.status)}
-              </StatusBadge>
-            }
           />
 
-          {claim.provider === "Claims System" &&
-            (claim.deliveryState === "NOT_SENT" ||
-              claim.deliveryState === "FAILED" ||
-              claim.deliveryState === "UNKNOWN") &&
-            claim.status === "PENDING" &&
-            (claim.source === "STAFF" || claim.reviewedAt) && (
-              <div className="mb-4">
-                <Button
-                  loading={reviewBusy}
-                  onClick={async () => {
-                    setReviewBusy(true);
-                    setReviewError("");
-                    try {
-                      await api.post(`/claims/submissions/${claim.id}/send`);
-                      await load();
-                    } catch (caught: unknown) {
-                      setReviewError(
-                        getApiError(caught)?.message || "Delivery could not be started.",
-                      );
-                    } finally {
-                      setReviewBusy(false);
-                    }
-                  }}
-                >
-                  {claim.deliveryState === "NOT_SENT" ? "Send saved claim" : "Retry submission"}
-                </Button>
-                {reviewError && <Alert tone="error">{reviewError}</Alert>}
-              </div>
-            )}
+          <ClaimStageSummary claim={claim} />
+          <ClaimDeliveryControls
+            key={`delivery:${claim.id}`}
+            claim={claim}
+            staffId={claim.member.controllerId}
+            onSent={() => load()}
+          />
           {claim.errorMessage && (
             <div className="mb-4">
               <Alert tone="error">{claim.errorMessage}</Alert>
@@ -230,9 +215,30 @@ export default function ClaimDetail() {
             </div>
           )}
 
-          {claim.provider === "Claims System" && (
-            <MankradoDetails externalId={claim.externalClaimId} />
-          )}
+          {claim.status === "PENDING" &&
+            claim.source === "MEMBER_PORTAL" &&
+            !claim.reviewedAt &&
+            claim.deliveryState === "NOT_SENT" && (
+              <div className="mb-4 rounded-xl border border-border-default bg-surface-subtle p-5">
+                <p className="mb-2 text-sm font-bold text-text-strong">
+                  Review this member-submitted claim
+                </p>
+                {reviewError && (
+                  <div className="mb-3">
+                    <Alert tone="error">{reviewError}</Alert>
+                  </div>
+                )}
+                <ClaimReviewControls
+                  decision={decision}
+                  note={reviewNote}
+                  busy={reviewBusy}
+                  onDecision={setDecision}
+                  onNote={setReviewNote}
+                  onCancel={() => setDecision(null)}
+                  onConfirm={() => void submitReview()}
+                />
+              </div>
+            )}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Overview">
               <dl className="grid grid-cols-2 gap-4">
@@ -250,10 +256,13 @@ export default function ClaimDetail() {
                   value={claim.claimantName ?? labelize(claim.claimantType)}
                 />
                 <Field
-                  label="Estimated amount"
+                  label="Estimated benefit — subject to insurer assessment"
                   value={claim.estimatedAmount ? formatCurrency(claim.estimatedAmount) : ""}
                 />
-                <Field label="Reference" value={claim.externalClaimId} />
+                <Field
+                  label="External lookup reference"
+                  value={claim.externalClaimId ?? "Available after Mankrado confirms receipt"}
+                />
                 <Field label="Provider" value={claim.provider} />
                 <Field
                   label="Delivery"
@@ -264,7 +273,11 @@ export default function ClaimDetail() {
                   }
                 />
                 <Field label="Mankrado status" value={claim.externalStatus} />
-                <Field label="Submitted" value={formatDate(claim.submittedAt)} />
+                <Field label="Filed on" value={formatDate(claim.createdAt)} />
+                <Field
+                  label="Sent to Mankrado on"
+                  value={claim.submittedAt ? formatDate(claim.submittedAt) : "Not yet confirmed"}
+                />
                 <Field
                   label="Filed by"
                   value={
@@ -390,35 +403,32 @@ export default function ClaimDetail() {
           </div>
 
           {claim.provider === "Claims System" && (
+            <MankradoDetails
+              key={`assessment:${claim.id}`}
+              externalId={claim.externalClaimId}
+              savedAssessment={claim.externalAssessment}
+              lastSyncedAt={claim.lastSyncedAt}
+              onUpdated={(result) =>
+                setClaim((previous) =>
+                  previous?.id === claim.id
+                    ? {
+                        ...previous,
+                        externalAssessment: result,
+                        externalStatus: result.status,
+                        lastSyncedAt: result.lastSyncedAt,
+                      }
+                    : previous,
+                )
+              }
+            />
+          )}
+          {claim.provider === "Claims System" && claim.deliveryState !== "UNKNOWN" && (
             <MankradoHistory
+              key={`history:${claim.id}`}
               staffId={claim.member.controllerId}
               externalId={claim.externalClaimId}
             />
           )}
-          {claim.status === "PENDING" &&
-            claim.source === "MEMBER_PORTAL" &&
-            !claim.reviewedAt &&
-            claim.deliveryState === "NOT_SENT" && (
-              <div className="mt-4 rounded-xl border border-border-default bg-surface-subtle p-5">
-                <p className="mb-2 text-sm font-bold text-text-strong">
-                  Review this member-submitted claim
-                </p>
-                {reviewError && (
-                  <div className="mb-3">
-                    <Alert tone="error">{reviewError}</Alert>
-                  </div>
-                )}
-                <ClaimReviewControls
-                  decision={decision}
-                  note={reviewNote}
-                  busy={reviewBusy}
-                  onDecision={setDecision}
-                  onNote={setReviewNote}
-                  onCancel={() => setDecision(null)}
-                  onConfirm={() => void submitReview()}
-                />
-              </div>
-            )}
         </>
       )}
     </div>

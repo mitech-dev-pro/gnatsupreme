@@ -871,6 +871,7 @@ model ExternalClaimSubmission {
   deliveryState       ClaimDeliveryState    @default(NOT_SENT) @map("delivery_state")
   deliveryStartedAt   DateTime?             @map("delivery_started_at")
   externalStatus      String?               @map("external_status")
+  externalAssessment  Json?                 @map("external_assessment")
   status              ExternalClaimStatus   @default(PENDING)
   claimType           BenefitType?          @map("claim_type")
   claimantType        String?               @map("claimant_type")

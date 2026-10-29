@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { formatCurrency } from "@/lib/currency";
 import Button from "@/components/ui/Button";
@@ -6,22 +6,47 @@ import { Alert } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { claimStatusTone } from "@/lib/claimStatus";
 
-type Details = {
-  claimNumber: string;
-  name: string | null;
-  claimDate: string | null;
-  amountPayable: string | null;
-  status: string;
-  rejectReason: string | null;
-};
+import type { AssessmentUpdate, MankradoAssessment } from "@/features/claims/assessment.types";
 
-export default function MankradoDetails({ externalId }: { externalId: string | null }) {
-  const [details, setDetails] = useState<Details | null>(null);
+export default function MankradoDetails({
+  externalId,
+  savedAssessment = null,
+  lastSyncedAt = null,
+  onUpdated,
+}: {
+  externalId: string | null;
+  savedAssessment?: MankradoAssessment | null;
+  lastSyncedAt?: string | null;
+  onUpdated?: (result: AssessmentUpdate) => void;
+}) {
+  const [state, setState] = useState({
+    id: externalId,
+    details: savedAssessment,
+    checkedAt: lastSyncedAt,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const updatedRef = useRef(onUpdated);
   useEffect(() => {
-    setDetails(null);
+    updatedRef.current = onUpdated;
+  }, [onUpdated]);
+  const savedRef = useRef({ savedAssessment, lastSyncedAt });
+  useEffect(() => {
+    savedRef.current = { savedAssessment, lastSyncedAt };
+  }, [savedAssessment, lastSyncedAt]);
+  const details = state.id === externalId ? state.details : savedAssessment;
+  const checkedAt = state.id === externalId ? state.checkedAt : lastSyncedAt;
+  useEffect(() => {
+    setState((previous) =>
+      previous.id === externalId
+        ? previous
+        : {
+            id: externalId,
+            details: savedRef.current.savedAssessment,
+            checkedAt: savedRef.current.lastSyncedAt,
+          },
+    );
     setError("");
     if (!externalId) {
       setBusy(false);
@@ -34,13 +59,14 @@ export default function MankradoDetails({ externalId }: { externalId: string | n
         signal: controller.signal,
       })
       .then((response) => {
-        if (!controller.signal.aborted) setDetails(response.data.data);
+        if (!controller.signal.aborted) {
+          const result = response.data.data as AssessmentUpdate;
+          setState({ id: externalId, details: result, checkedAt: result.lastSyncedAt });
+          updatedRef.current?.(result);
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted)
-          setError(
-            "Mankrado details could not be loaded. Your saved claim details are available below.",
-          );
+        if (!controller.signal.aborted) setError("Could not refresh");
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
@@ -56,15 +82,17 @@ export default function MankradoDetails({ externalId }: { externalId: string | n
         ["Name on Mankrado", details.name || "Not provided"],
         ["Claim date", date],
         [
-          "Amount payable (GHS)",
-          details.amountPayable === null ? "Not provided" : formatCurrency(details.amountPayable),
+          "Amount payable — reported by Mankrado",
+          details.amountPayable == null
+            ? "Not provided by Mankrado"
+            : formatCurrency(details.amountPayable),
         ],
         ["Rejection reason", details.rejectReason?.trim() || "None reported"],
       ]
     : [];
   return (
     <section
-      className="mb-5 rounded-xl border border-border-default bg-(--surface-raised) p-5"
+      className="my-5 border-t border-border-default pt-5"
       aria-labelledby="mankrado-details-title"
       aria-busy={busy}
     >
@@ -85,10 +113,22 @@ export default function MankradoDetails({ externalId }: { externalId: string | n
       </div>
       {!externalId && (
         <p className="text-sm text-text-muted">
-          Mankrado details will appear once this claim has an external reference.
+          Assessment information becomes available after Mankrado confirms receipt.
         </p>
       )}
-      {error && <Alert tone="warning">{error}</Alert>}
+      {checkedAt && (
+        <p className="mb-3 text-xs text-text-muted">
+          Last checked: {new Date(checkedAt).toLocaleString()}. This records the last successful
+          retrieval.
+        </p>
+      )}
+      {error && (
+        <Alert tone="warning">
+          {details
+            ? "Could not refresh; showing the last saved assessment."
+            : "Mankrado assessment is unavailable. Your submitted information remains available."}
+        </Alert>
+      )}
       {busy && (
         <p role="status" className="text-sm text-text-muted">
           Loading Mankrado details…

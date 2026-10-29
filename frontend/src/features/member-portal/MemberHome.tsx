@@ -1,8 +1,8 @@
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { Alert } from "@/components/ui/Feedback";
 import api from "@/lib/api";
-import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
-import { deliveryLabel } from "@/lib/claimDocuments";
+import { claimStage, claimStatusTone } from "@/lib/claimStatus";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
@@ -108,9 +108,9 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
       const res = await api.get("/member-portal/claims/history");
       setClaimHistory(res.data.data);
     } catch (caught: unknown) {
-      setClaimHistory([]);
       setClaimHistoryError(
-        getApiError(caught)?.message || "Claim history is unavailable right now.",
+        getApiError(caught)?.message ||
+          "Mankrado history is unavailable. Previous results may be outdated.",
       );
     }
   };
@@ -1354,20 +1354,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
               ) : (
                 <ul className="divide-y divide-border-default">
                   {claims.map((claim) => {
-                    const statusLabel =
-                      claim.status === "PENDING" &&
-                      !claim.reviewedAt &&
-                      claim.source === "MEMBER_PORTAL"
-                        ? "Submitted — awaiting staff review"
-                        : claim.status === "RETURNED"
-                          ? "Returned — needs your attention"
-                          : claim.status.charAt(0) + claim.status.slice(1).toLowerCase();
-                    const tone =
-                      claim.status === "SUBMITTED" || claim.status === "SYNCHRONIZED"
-                        ? "text-success"
-                        : claim.status === "FAILED"
-                          ? "text-danger"
-                          : "text-warning";
+                    const stage = claimStage(claim);
                     return (
                       <li
                         key={claim.id}
@@ -1379,12 +1366,18 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                               ? (CLAIM_TYPE_LABELS[claim.claimType] ?? claim.claimType)
                               : "Claim"}
                           </div>
-                          <div className={`mt-0.5 text-xs font-semibold ${tone}`}>
-                            {statusLabel}
+                          <div className="mt-0.5">
+                            <StatusBadge tone={stage.tone}>{stage.label}</StatusBadge>
                           </div>
-                          {claim.deliveryState && (
+                          <p className="mt-1 text-xs text-text-muted">{stage.next}</p>
+                          {claim.externalStatus && (
                             <p className="text-xs text-text-muted">
-                              {deliveryLabel(claim.deliveryState)}
+                              Mankrado: {claim.externalStatus}
+                            </p>
+                          )}
+                          {claim.lastSyncedAt && (
+                            <p className="text-xs text-text-muted">
+                              Last checked: {new Date(claim.lastSyncedAt).toLocaleString()}
                             </p>
                           )}
                           {claim.status === "RETURNED" && claim.reviewNote && (
@@ -1421,22 +1414,23 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 </ul>
               )}
               <div className="border-t border-border-default px-4 py-4 sm:px-5">
-                <h3 className="text-sm font-bold text-text-strong">Claim history</h3>
+                <h3 className="text-sm font-bold text-text-strong">Member claim history</h3>
                 <p className="mt-1 text-xs text-text-muted">
                   Every claim on file for you with {settings.schemeSponsor || "the insurer"}.
                 </p>
               </div>
-              {claimHistoryError ? (
+              {claimHistoryError && (
                 <div className="px-4 pb-4 sm:px-5">
                   <Alert tone="warning">{claimHistoryError}</Alert>
                 </div>
-              ) : claimHistory === null ? (
+              )}
+              {claimHistory === null ? (
                 <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
-                  Loading claim history…
+                  {claimHistoryError ? "History could not be checked." : "Loading claim history…"}
                 </p>
               ) : claimHistory.length === 0 ? (
                 <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
-                  No claims have been returned for you yet.
+                  No claims returned by Mankrado for your membership.
                 </p>
               ) : (
                 <ul className="divide-y divide-border-default border-t border-border-default">
@@ -1465,14 +1459,15 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                             </span>
                           </div>
                           <div className={`mt-0.5 text-xs font-semibold ${toneClass}`}>
-                            {claimStatusLabel(item.status)}
+                            {item.status}
                           </div>
                         </div>
                         <div className="text-left sm:text-right">
                           <div className="text-sm font-semibold text-ink">
-                            {item.amountPayable
+                            Amount payable — reported by Mankrado:{" "}
+                            {item.amountPayable != null
                               ? formatCurrency(item.amountPayable)
-                              : "Not available yet"}
+                              : "Not provided by Mankrado"}
                           </div>
                           <div className="text-xs text-text-muted">
                             {item.claimDate ?? "Date not provided"}

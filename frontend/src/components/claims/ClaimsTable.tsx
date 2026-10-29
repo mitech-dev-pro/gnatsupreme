@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { reviewClaim } from "@/features/claims/claims.api";
 import ClaimDetailModal from "@/components/claims/ClaimDetailModal";
-import { deliveryLabel } from "@/lib/claimDocuments";
-import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
+import { claimStage } from "@/lib/claimStatus";
 import { formatCurrency } from "@/lib/currency";
 import { TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -83,7 +82,10 @@ function ClaimActionMenu({
     if (rect) {
       const menuHeight = canReview ? 84 : 44;
       setPosition({
-        top: rect.bottom + menuHeight > window.innerHeight ? rect.top - menuHeight - 5 : rect.bottom + 5,
+        top:
+          rect.bottom + menuHeight > window.innerHeight
+            ? rect.top - menuHeight - 5
+            : rect.bottom + 5,
         left: Math.max(8, rect.right - 154),
       });
     }
@@ -115,6 +117,7 @@ function ClaimActionMenu({
               role="menuitem"
               onClick={() => {
                 setOpen(false);
+                buttonRef.current?.focus();
                 onView();
               }}
               className="block w-full rounded-md px-2.5 py-2 text-left text-xs font-semibold text-ink hover:bg-info-soft hover:text-action-primary"
@@ -195,9 +198,9 @@ export default function ClaimsTable({
             <th className="px-4 py-2.5">Member</th>
             <th className="px-4 py-2.5">Claim</th>
             <th className="px-4 py-2.5">Reference</th>
-            <th className="px-4 py-2.5">Estimate</th>
+            <th className="px-4 py-2.5">Estimated benefit — subject to insurer assessment</th>
             <th className="px-4 py-2.5">Status</th>
-            <th className="px-4 py-2.5">Submitted</th>
+            <th className="px-4 py-2.5">Sent to Mankrado on</th>
             <th className="px-4 py-2.5">Action</th>
           </tr>
         </thead>
@@ -234,7 +237,7 @@ export default function ClaimsTable({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="font-mono text-xs text-ink">
-                      {row.externalClaimId ?? "Not assigned"}
+                      {row.externalClaimId ?? "Awaiting receipt confirmation"}
                     </div>
                     <div className="text-xs text-text-muted">{row.provider}</div>
                   </td>
@@ -242,14 +245,13 @@ export default function ClaimsTable({
                     {row.estimatedAmount ? formatCurrency(row.estimatedAmount) : "Not available"}
                   </td>
                   <td className="px-4 py-2.5">
-                    <StatusBadge tone={claimStatusTone(row.externalStatus ?? row.status)}>
-                      {claimStatusLabel(row.externalStatus ?? row.status)}
-                    </StatusBadge>
-                    <div className="mt-1 text-xs text-text-muted">
-                      {row.provider === "SIMULATION"
-                        ? "Historical simulation"
-                        : deliveryLabel(row.deliveryState)}
-                    </div>
+                    <StatusBadge tone={claimStage(row).tone}>{claimStage(row).label}</StatusBadge>
+                    <div className="mt-1 text-xs text-text-muted">{claimStage(row).next}</div>
+                    {row.externalStatus && (
+                      <div className="mt-1 text-xs text-text-muted">
+                        Mankrado: {row.externalStatus}
+                      </div>
+                    )}
                     {row.errorMessage && (
                       <div className="mt-0.5 text-xs text-danger">{row.errorMessage}</div>
                     )}

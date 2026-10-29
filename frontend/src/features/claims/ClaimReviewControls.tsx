@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 
 export type ClaimDecision = "APPROVE" | "RETURN" | "REJECT";
 const decisions = [
-  { value: "APPROVE", label: "Approve", selected: "border-success bg-success-soft text-success" },
+  {
+    value: "APPROVE",
+    label: "Approve and forward",
+    selected: "border-success bg-success-soft text-success",
+  },
   {
     value: "RETURN",
     label: "Return for correction",
@@ -34,6 +38,10 @@ export function ClaimReviewControls({
 }: Props) {
   return (
     <>
+      <p className="mb-2 text-xs text-text-muted">
+        Approval forwards this claim to Mankrado for insurer assessment; it does not approve
+        payment.
+      </p>
       <div className="flex flex-wrap gap-2">
         {decisions.map((item) => (
           <button
@@ -77,7 +85,9 @@ export function ClaimReviewControls({
               disabled={decision !== "APPROVE" && !note.trim()}
               onClick={onConfirm}
             >
-              Confirm {decision.toLowerCase()}
+              {decision === "APPROVE"
+                ? "Confirm approve and forward"
+                : `Confirm ${decision.toLowerCase()}`}
             </Button>
           </div>
         </div>

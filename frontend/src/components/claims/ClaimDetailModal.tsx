@@ -16,12 +16,13 @@ import {
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
+import { Link } from "react-router-dom";
 
 type ClaimDocument = {
   id: number;
   slotKey: string | null;
   originalName: string;
-  storedName: string;
+  storedName?: string;
 };
 
 type ClaimDetail = {
@@ -110,8 +111,10 @@ export default function ClaimDetailModal({
   submissionId,
   onClose,
   onChanged,
+  audience = "staff",
 }: {
   submissionId: number;
+  audience?: "staff" | "member";
   onClose: () => void;
   // Notifies the caller (e.g. the table row this modal was opened from) that the claim's status
   // may have changed -- e.g. after a retried delivery -- so it can refresh its own data too.
@@ -120,7 +123,9 @@ export default function ClaimDetailModal({
   const [detail, setDetail] = useState<ClaimDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { open: openDocument, error: docError } = useClaimDocument();
+  const { open: openDocument, error: docError } = useClaimDocument(
+    audience === "member" ? submissionId : undefined,
+  );
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => {
@@ -170,10 +175,18 @@ export default function ClaimDetailModal({
     setDetail(null);
 
     return api
-      .get(`/claims/submissions/${submissionId}`, { signal })
+      .get(
+        audience === "member"
+          ? `/member-portal/claims/${submissionId}`
+          : `/claims/submissions/${submissionId}`,
+        { signal },
+      )
       .then((response) => {
         const data = response.data.data as ClaimDetail;
-        if (!signal?.aborted) setDetail(data);
+        if (!signal?.aborted) {
+          setDetail(data);
+          if (audience === "member") void onChanged?.();
+        }
       })
       .catch((caught: unknown) => {
         if (!signal?.aborted)
@@ -188,7 +201,7 @@ export default function ClaimDetailModal({
     void load();
     return () => requestRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submissionId]);
+  }, [submissionId, audience]);
 
   const particulars = detail
     ? claimDetailFields(detail.claimType, detail.claimDetails).filter(([, value]) => value)
@@ -253,15 +266,28 @@ export default function ClaimDetailModal({
             ) : (
               <>
                 <ClaimStageSummary claim={detail} />
-                <ClaimDeliveryControls
-                  key={`delivery:${detail.id}`}
-                  claim={detail}
-                  staffId={detail.member.controllerId}
-                  onSent={async () => {
-                    await load();
-                    await onChanged?.();
-                  }}
-                />
+                {audience === "staff" && (
+                  <ClaimDeliveryControls
+                    key={`delivery:${detail.id}`}
+                    claim={detail}
+                    staffId={detail.member.controllerId}
+                    onSent={async () => {
+                      await load();
+                      await onChanged?.();
+                    }}
+                  />
+                )}
+                {audience === "member" &&
+                  detail.status === "RETURNED" &&
+                  detail.deliveryState === "NOT_SENT" && (
+                    <Link
+                      to={`/member/claims/${detail.id}/resubmit`}
+                      onClick={onClose}
+                      className="mb-4 inline-block rounded-lg border border-action-primary px-3 py-2 text-sm font-bold text-action-primary hover:bg-info-soft"
+                    >
+                      Edit and resubmit
+                    </Link>
+                  )}
                 {detail.errorMessage && (
                   <div className="mb-4">
                     <Alert tone="error">{detail.errorMessage}</Alert>
@@ -331,6 +357,11 @@ export default function ClaimDetailModal({
                 </Section>
 
                 <Section title="Documents">
+                  {audience === "member" && documentGroups.length > 0 && (
+                    <p className="px-3 pt-3 text-xs text-text-muted">
+                      Select a document below to download it.
+                    </p>
+                  )}
                   {docError && (
                     <div className="border-b border-border-default p-3">
                       <Alert tone="error">{docError}</Alert>
@@ -349,7 +380,7 @@ export default function ClaimDetailModal({
                                 key={doc.id}
                                 type="button"
                                 onClick={() => void openDocument(doc)}
-                                className="rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong hover:underline"
+                                className="max-w-full wrap-break-word rounded-full bg-info-soft px-2.5 py-0.5 text-left text-xs font-semibold text-text-strong hover:underline"
                               >
                                 {doc.originalName}
                               </button>
@@ -379,6 +410,11 @@ export default function ClaimDetailModal({
                     <MankradoDetails
                       key={`assessment:${detail.id}`}
                       externalId={detail.externalClaimId}
+                      endpoint={
+                        audience === "member"
+                          ? `/member-portal/claims/${detail.id}/assessment`
+                          : undefined
+                      }
                       savedAssessment={detail.externalAssessment}
                       lastSyncedAt={detail.lastSyncedAt}
                       onUpdated={(result) => {
@@ -395,7 +431,7 @@ export default function ClaimDetailModal({
                         void onChanged?.();
                       }}
                     />
-                    {detail.deliveryState !== "UNKNOWN" && (
+                    {audience === "staff" && detail.deliveryState !== "UNKNOWN" && (
                       <MankradoHistory
                         key={`history:${detail.id}`}
                         staffId={detail.member.controllerId}

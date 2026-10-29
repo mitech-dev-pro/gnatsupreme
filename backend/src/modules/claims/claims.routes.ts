@@ -5,6 +5,8 @@ import {
   uploadedSlotKeys,
 } from "./claims.service.js";
 import { Router } from "express";
+import { notifyClaimReview } from "./claims.notifications.js";
+import { refreshClaimAssessment } from "./claims.assessment.js";
 import { z } from "zod";
 import {
   querySchema,
@@ -407,13 +409,23 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   await recordAudit({
     request,
     actor: user,
-    action: `CLAIM_${action}D`,
+    action: { APPROVE: "CLAIM_APPROVED", RETURN: "CLAIM_RETURNED", REJECT: "CLAIM_REJECTED" }[
+      action
+    ],
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
     description: `${action === "APPROVE" ? "Approved" : action === "RETURN" ? "Returned" : "Rejected"} a member-submitted ${claim.claimType?.toLowerCase().replaceAll("_", " ")} claim for ${claim.member.fullName}`,
     afterData: { action, note: note ?? null },
     regionId: claim.member.district?.regionId,
     districtId: claim.member.districtId,
+  });
+  await notifyClaimReview({
+    claimId: claim.id,
+    memberId: claim.memberId,
+    action,
+    reviewedAt,
+    note,
+    deliveryState: updated.deliveryState,
   });
   response.json({ success: true, data: updated });
 });
@@ -434,7 +446,15 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       member: { is: memberScope(user) },
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },
-    select: { id: true, deliveryState: true, member: { select: { controllerId: true } } },
+    select: {
+      id: true,
+      memberId: true,
+      source: true,
+      reviewedAt: true,
+      reviewNote: true,
+      deliveryState: true,
+      member: { select: { controllerId: true } },
+    },
   });
   if (!claim) {
     response.status(409).json({
@@ -484,6 +504,20 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     allowUnknown: historyChecked,
     expectedDeliveryState: claim.deliveryState,
   });
+  if (
+    claim.source === "MEMBER_PORTAL" &&
+    claim.reviewedAt &&
+    delivered.deliveryState === "ACCEPTED"
+  ) {
+    await notifyClaimReview({
+      claimId: claim.id,
+      memberId: claim.memberId,
+      action: "APPROVE",
+      reviewedAt: claim.reviewedAt,
+      note: claim.reviewNote,
+      deliveryState: delivered.deliveryState,
+    });
+  }
   await recordAudit({
     request,
     actor: user,
@@ -643,26 +677,12 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
     return;
   }
   try {
-    const details = await claimsProvider.details(externalId.data);
-    if (
-      details.id !== externalId.data ||
-      (details.staffId && details.staffId !== claim.member.controllerId)
-    )
-      throw new Error("Claim mismatch");
-    const lastSyncedAt = new Date();
-    const externalAssessment = {
-      claimNumber: details.claimNumber,
-      name: details.name,
-      claimDate: details.claimDate,
-      amountPayable: details.amountPayable,
-      status: details.status ?? "Not provided by Mankrado",
-      rejectReason: details.rejectReason,
-    };
-    await prisma.externalClaimSubmission.update({
-      where: { id: claim.id },
-      data: { externalAssessment, externalStatus: externalAssessment.status, lastSyncedAt },
-    });
-    response.json({ success: true, data: { ...details, lastSyncedAt } });
+    const details = await refreshClaimAssessment(
+      claim.id,
+      externalId.data,
+      claim.member.controllerId,
+    );
+    response.json({ success: true, data: details });
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,

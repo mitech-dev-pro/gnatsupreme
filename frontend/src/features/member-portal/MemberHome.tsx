@@ -1,3 +1,5 @@
+import MemberNotifications from "./MemberNotifications";
+import ClaimDetailModal from "@/components/claims/ClaimDetailModal";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import { Alert } from "@/components/ui/Feedback";
 import api from "@/lib/api";
@@ -9,7 +11,7 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import { isMinor } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BeneficiaryForm } from "./BeneficiaryForm";
 import { MemberDetailsForm } from "./MemberDetailsForm";
 import {
@@ -21,7 +23,6 @@ import {
   type ClaimHistoryItem,
   type ClaimItem,
   formatDate,
-  type MemberNotification,
   type MemberPortalSection,
   type MemberProfile,
   type ProfileCompletion,
@@ -36,14 +37,25 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   const { settings } = useOrganizationSettings();
   useMemberAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
   const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<MemberNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [claims, setClaims] = useState<ClaimItem[]>([]);
+  const [claimDetailId, setClaimDetailId] = useState<number | null>(null);
+  useEffect(() => {
+    setClaimDetailId(null);
+  }, [section]);
+  useEffect(() => {
+    if (loading || section !== "claims" || !/^#claim-[1-9]\d*$/.test(location.hash)) return;
+    const target = document.getElementById(location.hash.slice(1));
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      target.focus({ preventScroll: true });
+    }
+  }, [section, location.hash, claims, loading]);
   const [claimHistory, setClaimHistory] = useState<ClaimHistoryItem[] | null>(null);
   const [claimHistoryError, setClaimHistoryError] = useState("");
 
@@ -72,12 +84,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
     setProfile(res.data.data.member);
     setBenefitPlan(res.data.data.benefitPlan);
     setProfileCompletion(res.data.data.profileCompletion);
-  };
-
-  const loadNotifications = async () => {
-    const res = await api.get("/member-portal/notifications");
-    setNotifications(res.data.data);
-    setUnreadCount(res.data.unreadCount);
   };
 
   const loadRequests = async () => {
@@ -120,26 +126,8 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
     (async () => {
       try {
         await loadProfile();
-        if (!cancelled) {
-          try {
-            await loadNotifications();
-          } catch {
-            // Notifications are supplementary; the member profile remains usable.
-          }
-        }
       } finally {
         if (!cancelled) setLoading(false);
-      }
-    })();
-    (async () => {
-      try {
-        const res = await api.get("/member-portal/notifications");
-        if (!cancelled) {
-          setNotifications(res.data.data);
-          setUnreadCount(res.data.unreadCount);
-        }
-      } catch {
-        // notifications are supplementary — a failed fetch shouldn't block the page
       }
     })();
     void loadRequests();
@@ -149,17 +137,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
       cancelled = true;
     };
   }, []);
-
-  const markAllNotificationsRead = async () => {
-    await api.patch("/member-portal/notifications/read-all");
-    setNotifications((prev) =>
-      prev.map((item) => ({
-        ...item,
-        readAt: item.readAt ?? new Date().toISOString(),
-      })),
-    );
-    setUnreadCount(0);
-  };
 
   const afterRequestSubmitted = async () => {
     await Promise.all([loadRequests(), loadProfile()]);
@@ -1278,51 +1255,15 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             </div>
           )}
 
-          {section === "notifications" && (
-            <div className="rounded-2xl border border-border-default bg-white p-5 md:col-span-2">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-text-strong">Notifications</h2>
-                {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={markAllNotificationsRead}
-                    className="text-xs font-semibold text-action-primary hover:underline"
-                  >
-                    Mark all read
-                  </button>
-                )}
-              </div>
-              {notifications.length === 0 ? (
-                <div className="text-sm text-text-muted">No notifications yet.</div>
-              ) : (
-                <ul className="divide-y divide-[#e5e9f0]">
-                  {notifications.slice(0, 8).map((item) => (
-                    <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-                          {!item.readAt && (
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-action-primary" />
-                          )}
-                          {item.title}
-                        </div>
-                        <div className="mt-0.5 text-xs text-text-muted">{item.message}</div>
-                        {item.type === "PROFILE_COMPLETION_REQUIRED" && (
-                          <Link
-                            to="/member"
-                            className="mt-1.5 inline-block text-xs font-bold text-action-primary no-underline hover:underline"
-                          >
-                            Review missing details
-                          </Link>
-                        )}
-                      </div>
-                      <div className="whitespace-nowrap text-xs text-nav-muted">
-                        {timeAgo(item.createdAt)}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {section === "notifications" && <MemberNotifications />}
+          {section === "claims" && claimDetailId !== null && (
+            <ClaimDetailModal
+              key={`member:${claimDetailId}`}
+              submissionId={claimDetailId}
+              audience="member"
+              onClose={() => setClaimDetailId(null)}
+              onChanged={loadClaims}
+            />
           )}
 
           {section === "claims" && (
@@ -1358,6 +1299,9 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     return (
                       <li
                         key={claim.id}
+                        id={`claim-${claim.id}`}
+                        tabIndex={-1}
+                        aria-label={`Claim ${claim.id}`}
                         className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
                       >
                         <div>
@@ -1394,7 +1338,15 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                               </p>
                             )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setClaimDetailId(claim.id)}
+                            className="rounded-lg border border-action-primary px-3 py-2 text-xs font-bold text-action-primary hover:bg-info-soft"
+                            aria-label={`View details for claim ${claim.id}`}
+                          >
+                            View details
+                          </button>
                           <span className="text-xs text-text-muted">
                             {timeAgo(claim.createdAt)}
                           </span>
@@ -1414,9 +1366,10 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 </ul>
               )}
               <div className="border-t border-border-default px-4 py-4 sm:px-5">
-                <h3 className="text-sm font-bold text-text-strong">Member claim history</h3>
+                <h3 className="text-sm font-bold text-text-strong">Mankrado claim history</h3>
                 <p className="mt-1 text-xs text-text-muted">
-                  Every claim on file for you with {settings.schemeSponsor || "the insurer"}.
+                  History from the insurer. Use View details above to see your saved claim,
+                  including submissions awaiting GNAT review.
                 </p>
               </div>
               {claimHistoryError && (

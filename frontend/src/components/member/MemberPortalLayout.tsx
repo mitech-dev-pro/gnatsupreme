@@ -100,10 +100,22 @@ export default function MemberPortalLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    api
-      .get("/member-portal/notifications")
-      .then((response) => setUnreadCount(response.data.unreadCount ?? 0))
-      .catch(() => undefined);
+    const controller = new AbortController();
+    const refresh = () =>
+      api
+        .get("/member-portal/notifications", { signal: controller.signal })
+        .then((response) => {
+          if (!controller.signal.aborted) setUnreadCount(response.data.unreadCount ?? 0);
+        })
+        .catch(() => undefined);
+    void refresh();
+    const interval = setInterval(() => void refresh(), 30_000);
+    window.addEventListener("member-notifications-changed", refresh);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener("member-notifications-changed", refresh);
+    };
   }, [location.pathname]);
 
   useEffect(() => {

@@ -1,15 +1,12 @@
 import { InputField, TextareaField } from "@/components/ui/FormField";
 import { SectionTitle } from "./ClaimFormLayout";
-import type { ContactDetails } from "./claimForm.types";
 
 type Props = {
   source: "STAFF" | "MEMBER_PORTAL";
   paymentDetails: Record<string, string>;
-  contact: ContactDetails;
   declaration: boolean;
   notes: string;
   updatePayment: (key: string, value: string) => void;
-  updateContact: (key: keyof ContactDetails, value: string) => void;
   setDeclaration: (value: boolean) => void;
   setNotes: (value: string) => void;
 };
@@ -17,11 +14,9 @@ type Props = {
 export function ClaimPaymentSection({
   source,
   paymentDetails,
-  contact,
   declaration,
   notes,
   updatePayment,
-  updateContact,
   setDeclaration,
   setNotes,
 }: Props) {
@@ -36,19 +31,6 @@ export function ClaimPaymentSection({
           value={paymentDetails.payeeName ?? ""}
           onChange={(event) => updatePayment("payeeName", event.target.value)}
         />
-        {!contact.primaryPhone.trim() && (
-          <InputField
-            label="Contact phone number"
-            inputMode="tel"
-            hint={
-              source === "STAFF"
-                ? "Optional — no phone number is on file for this claimant. Add one if you have it."
-                : "Optional — we couldn't find a phone number on your profile. Add one if you have it."
-            }
-            value={contact.primaryPhone}
-            onChange={(event) => updateContact("primaryPhone", event.target.value)}
-          />
-        )}
       </div>
       <div className="mt-8">
         <SectionTitle>Declaration</SectionTitle>

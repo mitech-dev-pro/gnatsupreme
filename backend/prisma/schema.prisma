@@ -481,6 +481,7 @@ model Notification {
   type              String
   title             String
   message           String
+  actionUrl         String?             @map("action_url")
   idempotencyKey    String              @unique @map("idempotency_key")
   userId            Int?                @map("user_id")
   user              User?               @relation(fields: [userId], references: [id], onDelete: Cascade)

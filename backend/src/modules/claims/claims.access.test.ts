@@ -295,6 +295,7 @@ test("review return records the decision atomically without sending a claim", as
   stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
     id: 1,
     claimType: "DEATH",
+    memberId: 7,
     member: { fullName: "Test", districtId: 9 },
   }));
   stub(
@@ -317,6 +318,17 @@ test("review return records the decision atomically without sending a claim", as
     status: "RETURNED",
   }));
   stub(t, prisma.auditLog, "create", async () => ({}));
+  const notification = stub(
+    t,
+    prisma.notification,
+    "upsert",
+    async (args: Prisma.NotificationUpsertArgs) => {
+      assert.equal(args.create.memberId, 7);
+      assert.equal(args.create.actionUrl, "/member/claims/1/resubmit");
+      assert.match(args.create.message, /Replace document/);
+      return {};
+    },
+  );
   const remote = t.mock.method(claimsProvider, "createSubmission", async () => ({
     externalClaimId: "MK-1",
     status: "SUBMITTED" as const,
@@ -328,4 +340,48 @@ test("review return records the decision atomically without sending a claim", as
   );
   assert.equal(res.code, 200);
   assert.equal(remote.mock.callCount(), 0);
+  assert.equal(notification.mock.callCount(), 1);
+});
+
+test("a concurrent or repeated review cannot create another notification", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    memberId: 7,
+    member: { fullName: "Test" },
+  }));
+  stub(t, prisma.externalClaimSubmission, "updateMany", async () => ({ count: 0 }));
+  const write = stub(t, prisma.notification, "upsert", async () =>
+    assert.fail("must not notify twice"),
+  );
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/review")(
+    { params: { id: "1" }, body: { action: "RETURN", note: "Fix report" } },
+    res,
+  );
+  assert.equal(res.code, 409);
+  assert.equal(write.mock.callCount(), 0);
+});
+
+test("a notification storage failure still returns a successful committed review", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    memberId: 7,
+    member: { fullName: "Test" },
+  }));
+  stub(t, prisma.externalClaimSubmission, "updateMany", async () => ({ count: 1 }));
+  stub(t, prisma.externalClaimSubmission, "findUniqueOrThrow", async () => ({
+    id: 1,
+    status: "FAILED",
+  }));
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  stub(t, prisma.notification, "upsert", async () => {
+    throw new Error("offline");
+  });
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/review")(
+    { params: { id: "1" }, body: { action: "REJECT", note: "Invalid report" } },
+    res,
+  );
+  assert.equal(res.code, 200);
+  assert.equal((res.body as { data: { status: string } }).data.status, "FAILED");
 });

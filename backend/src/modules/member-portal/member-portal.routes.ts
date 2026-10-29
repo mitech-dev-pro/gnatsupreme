@@ -1,4 +1,5 @@
 import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
+import { refreshClaimAssessment } from "../claims/claims.assessment.js";
 import {
   activeBenefit,
   linkedClaimConflict,
@@ -495,6 +496,18 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
     select: {
       ...claimSelect,
       claimantIdType: true,
+      claimantName: true,
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          district: { select: { name: true } },
+        },
+      },
+      submittedBy: { select: { id: true, fullName: true } },
+      submittedByMember: { select: { id: true, fullName: true, controllerId: true } },
+      reviewedBy: { select: { id: true, fullName: true } },
       externalAssessment: true,
       claimantIdNumber: true,
       claimantContact: true,
@@ -510,11 +523,93 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
   }
   const documents = claim.documentIds.length
     ? await prisma.storedFile.findMany({
-        where: { id: { in: claim.documentIds } },
+        where: {
+          id: { in: claim.documentIds },
+          memberId: currentMember.id,
+          category: "CLAIM_DOCUMENT",
+        },
         select: { id: true, slotKey: true, originalName: true },
       })
     : [];
   response.json({ success: true, data: { ...claim, documents } });
+});
+
+memberPortalRouter.get("/claims/:id/assessment", async (request, response) => {
+  const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim ID" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id, provider: "Claims System" },
+    select: { id: true, externalClaimId: true },
+  });
+  if (!claim?.externalClaimId) {
+    response
+      .status(404)
+      .json({ success: false, message: "No Mankrado assessment is available for this claim yet" });
+    return;
+  }
+  try {
+    const details = await refreshClaimAssessment(
+      claim.id,
+      claim.externalClaimId,
+      currentMember.controllerId,
+    );
+    response.json({ success: true, data: details });
+  } catch (error) {
+    response
+      .status(error instanceof ClaimsProviderUnavailableError ? 503 : 502)
+      .json({
+        success: false,
+        message: "Mankrado assessment is unavailable. Your saved claim details remain available.",
+      });
+  }
+});
+
+memberPortalRouter.get("/claims/:id/documents/:documentId", async (request, response) => {
+  const params = z
+    .object({
+      id: z.coerce.number().int().positive(),
+      documentId: z.coerce.number().int().positive(),
+    })
+    .safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim document" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id },
+    select: { documentIds: true },
+  });
+  if (!claim?.documentIds.includes(params.data.documentId)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const file = await prisma.storedFile.findFirst({
+    where: { id: params.data.documentId, memberId: currentMember.id, category: "CLAIM_DOCUMENT" },
+    select: { storagePath: true, originalName: true, mimeType: true },
+  });
+  if (!file) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const absolute = path.resolve(uploadRoot, file.storagePath);
+  if (!absolute.startsWith(`${uploadRoot}${path.sep}`)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  response.setHeader("Cache-Control", "private, no-store");
+  response.type(file.mimeType);
+  response.attachment(file.originalName);
+  response.sendFile(absolute, (error) => {
+    if (error && !response.headersSent)
+      response
+        .status(404)
+        .json({ success: false, message: "Stored claim document is unavailable" });
+  });
 });
 
 memberPortalRouter.post("/claims", async (request, response) => {
@@ -671,6 +766,7 @@ memberPortalRouter.post("/claims", async (request, response) => {
     title: "New claim submitted",
     message: `${currentMember.fullName} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
     idempotencyKey: `claim-submitted:${claim.id}`,
+    actionUrl: `/claims/${claim.id}`,
   });
   response.status(201).json({ success: true, data: claim });
 });
@@ -834,6 +930,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     title: "Claim resubmitted",
     message: `${currentMember.fullName} resubmitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
     idempotencyKey: `claim-resubmitted:${existing.id}:${Date.now()}`,
+    actionUrl: `/claims/${existing.id}`,
   });
   response.json({ success: true, data: updated });
 });

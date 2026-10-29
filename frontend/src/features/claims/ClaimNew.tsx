@@ -7,6 +7,7 @@ import type { ContactDetails } from "./claimForm.types";
 import ClaimDocumentChecklist, {
   type UploadedClaimDocument,
 } from "@/components/claims/ClaimDocumentChecklist";
+import { claimantContactForSubmission } from "./claimForm.payload";
 import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 import { InputField } from "@/components/ui/FormField";
@@ -147,8 +148,6 @@ export default function ClaimNew() {
     documents.map((doc) => doc.slotKey).filter((key): key is string => Boolean(key)),
   );
   const documentsComplete = claimType ? hasRequiredDocuments(claimType, uploadedSlotKeys) : false;
-  const updateContact = (field: keyof ContactDetails, value: string) =>
-    setContact((current) => ({ ...current, [field]: value }));
   const updatePayment = (field: string, value: string) =>
     setPaymentDetails((current) => ({ ...current, [field]: value }));
 
@@ -298,7 +297,7 @@ export default function ClaimNew() {
           claimantType,
           claimantIdType,
           claimantIdNumber,
-          claimantContact: contact,
+          claimantContact: claimantContactForSubmission(contact),
           paymentMethod,
           paymentDetails,
           documentIds: documents.map((file) => file.id),
@@ -658,11 +657,9 @@ export default function ClaimNew() {
                 <ClaimPaymentSection
                   source="STAFF"
                   paymentDetails={paymentDetails}
-                  contact={contact}
                   declaration={declaration}
                   notes={notes}
                   updatePayment={updatePayment}
-                  updateContact={updateContact}
                   setDeclaration={setDeclaration}
                   setNotes={setNotes}
                 />

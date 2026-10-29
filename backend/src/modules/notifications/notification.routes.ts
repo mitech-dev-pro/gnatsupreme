@@ -41,7 +41,15 @@ notificationRouter.get("/", async (request, response) => {
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
-      select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true },
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        message: true,
+        actionUrl: true,
+        readAt: true,
+        createdAt: true,
+      },
     }),
     prisma.notification.count({ where }),
   ]);

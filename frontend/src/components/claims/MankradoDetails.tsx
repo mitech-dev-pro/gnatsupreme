@@ -13,14 +13,17 @@ export default function MankradoDetails({
   savedAssessment = null,
   lastSyncedAt = null,
   onUpdated,
+  endpoint,
 }: {
   externalId: string | null;
   savedAssessment?: MankradoAssessment | null;
   lastSyncedAt?: string | null;
   onUpdated?: (result: AssessmentUpdate) => void;
+  endpoint?: string;
 }) {
+  const requestIdentity = `${endpoint ?? "staff"}:${externalId ?? ""}`;
   const [state, setState] = useState({
-    id: externalId,
+    id: requestIdentity,
     details: savedAssessment,
     checkedAt: lastSyncedAt,
   });
@@ -35,14 +38,14 @@ export default function MankradoDetails({
   useEffect(() => {
     savedRef.current = { savedAssessment, lastSyncedAt };
   }, [savedAssessment, lastSyncedAt]);
-  const details = state.id === externalId ? state.details : savedAssessment;
-  const checkedAt = state.id === externalId ? state.checkedAt : lastSyncedAt;
+  const details = state.id === requestIdentity ? state.details : savedAssessment;
+  const checkedAt = state.id === requestIdentity ? state.checkedAt : lastSyncedAt;
   useEffect(() => {
     setState((previous) =>
-      previous.id === externalId
+      previous.id === requestIdentity
         ? previous
         : {
-            id: externalId,
+            id: requestIdentity,
             details: savedRef.current.savedAssessment,
             checkedAt: savedRef.current.lastSyncedAt,
           },
@@ -55,13 +58,13 @@ export default function MankradoDetails({
     const controller = new AbortController();
     setBusy(true);
     api
-      .get(`/claims/claimdetails/${encodeURIComponent(externalId)}`, {
+      .get(endpoint ?? `/claims/claimdetails/${encodeURIComponent(externalId)}`, {
         signal: controller.signal,
       })
       .then((response) => {
         if (!controller.signal.aborted) {
           const result = response.data.data as AssessmentUpdate;
-          setState({ id: externalId, details: result, checkedAt: result.lastSyncedAt });
+          setState({ id: requestIdentity, details: result, checkedAt: result.lastSyncedAt });
           updatedRef.current?.(result);
         }
       })
@@ -72,7 +75,7 @@ export default function MankradoDetails({
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [externalId, refresh]);
+  }, [externalId, refresh, endpoint, requestIdentity]);
 
   // The provider date has no timezone. Preserve its wall-clock time without browser conversion.
   const date = details?.claimDate ? details.claimDate.replace(/\.\d+$/, "") : "Not provided";

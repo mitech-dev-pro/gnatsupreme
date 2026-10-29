@@ -7,6 +7,7 @@ import type { ContactDetails } from "./claimForm.types";
 import ClaimDocumentChecklist, {
   type UploadedClaimDocument,
 } from "@/components/claims/ClaimDocumentChecklist";
+import { claimantContactForSubmission } from "./claimForm.payload";
 import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 import { InputField } from "@/components/ui/FormField";
@@ -116,11 +117,22 @@ export default function MemberClaimNew() {
         if (resubmitId) {
           const claimResponse = await api.get(`/member-portal/claims/${resubmitId}`);
           const claim = claimResponse.data.data;
+          // Older return notifications remain useful after the member has resubmitted:
+          // show the current claim instead of opening a correction form that cannot save.
+          if (claim.status !== "RETURNED" || claim.deliveryState !== "NOT_SENT") {
+            navigate(`/member/claims#claim-${claim.id}`, { replace: true });
+            return;
+          }
           const details = claim.claimDetails ?? {};
           setClaimType(claim.claimType);
           setClaimantType(claim.claimantType ?? "MEMBER");
           setClaimantIdNumber(claim.claimantIdNumber ?? "");
-          if (claim.claimantContact) setContact(claim.claimantContact);
+          if (claim.claimantContact)
+            setContact((previous) => ({
+              ...previous,
+              ...claim.claimantContact,
+              primaryPhone: claim.claimantContact.primaryPhone ?? "",
+            }));
           setPaymentDetails(claim.paymentDetails ?? {});
           setNotes(claim.notes ?? "");
           setDocuments(
@@ -152,7 +164,7 @@ export default function MemberClaimNew() {
         setLoading(false);
       }
     })();
-  }, [resubmitId]);
+  }, [resubmitId, navigate]);
 
   useEffect(() => {
     if (claimType !== "DEATH" && claimType !== "TOTAL_PERMANENT_DISABILITY") return;
@@ -176,8 +188,6 @@ export default function MemberClaimNew() {
     documents.map((doc) => doc.slotKey).filter((key): key is string => Boolean(key)),
   );
   const documentsComplete = claimType ? hasRequiredDocuments(claimType, uploadedSlotKeys) : false;
-  const updateContact = (field: keyof ContactDetails, value: string) =>
-    setContact((current) => ({ ...current, [field]: value }));
   const updatePayment = (field: string, value: string) =>
     setPaymentDetails((current) => ({ ...current, [field]: value }));
 
@@ -265,7 +275,7 @@ export default function MemberClaimNew() {
       claimantType,
       claimantIdType,
       claimantIdNumber,
-      claimantContact: contact,
+      claimantContact: claimantContactForSubmission(contact),
       paymentMethod,
       paymentDetails,
       documentIds: documents.map((file) => file.id),
@@ -527,11 +537,9 @@ export default function MemberClaimNew() {
                 <ClaimPaymentSection
                   source="MEMBER_PORTAL"
                   paymentDetails={paymentDetails}
-                  contact={contact}
                   declaration={declaration}
                   notes={notes}
                   updatePayment={updatePayment}
-                  updateContact={updateContact}
                   setDeclaration={setDeclaration}
                   setNotes={setNotes}
                 />

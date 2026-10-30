@@ -84,7 +84,7 @@ export default function ClaimDeliveryControls({
               checked={acknowledged}
               onChange={(event) => setAcknowledged(event.target.checked)}
             />
-            I checked this member’s Mankrado history and found no matching claim.
+            I checked this member’s Claims Portal history and found no matching claim.
           </label>
         </>
       )}

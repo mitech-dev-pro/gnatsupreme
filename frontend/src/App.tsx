@@ -20,6 +20,8 @@ const ImportReview = lazy(() => import("@/pages/members/ImportReview"));
 const Report20Upload = lazy(() => import("@/pages/imports/Report20Upload"));
 const Report20Review = lazy(() => import("@/pages/imports/Report20Review"));
 const MemberHome = lazy(() => import("@/pages/member/MemberHome"));
+const MemberClaims = lazy(() => import("@/features/member-portal/MemberClaims"));
+const MemberClaimHistory = lazy(() => import("@/features/member-portal/MemberClaimHistory"));
 const MemberClaimNew = lazy(() => import("@/pages/member/MemberClaimNew"));
 const MemberPortalLayout = lazy(() => import("@/components/member/MemberPortalLayout"));
 const ChangeRequests = lazy(() => import("@/pages/members/ChangeRequests"));
@@ -43,88 +45,89 @@ const REGIONAL_ROLES = [...NATIONAL_ROLES, "REGIONAL_ADMIN"];
 export default function App() {
   return (
     <ChunkErrorBoundary>
-    <AuthProvider>
-      <MemberAuthProvider>
-        <Suspense fallback={<AppLoading label="Loading page" />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+      <AuthProvider>
+        <MemberAuthProvider>
+          <Suspense fallback={<AppLoading label="Loading page" />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/members" element={<MembersList />} />
-                <Route path="/members/new" element={<AddMember />} />
-                <Route path="/members/upload" element={<UploadMembers />} />
-                <Route path="/members/upload/:id" element={<ImportReview />} />
-                <Route path="/members/:id" element={<MemberDetail />} />
-                <Route path="/change-requests" element={<ChangeRequests />} />
-                <Route path="/approvals" element={<PendingApprovals />} />
-                <Route
-                  path="/imports/report20"
-                  element={
-                    <RoleProtectedRoute roles={NATIONAL_ROLES}>
-                      <Report20Upload />
-                    </RoleProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/imports/report20/:id"
-                  element={
-                    <RoleProtectedRoute roles={NATIONAL_ROLES}>
-                      <Report20Review />
-                    </RoleProtectedRoute>
-                  }
-                />
-                {/* <Route path="/transfers" element={<Transfers />} /> */}
-                <Route path="/claims" element={<Claims />} />
-                <Route path="/claims/new" element={<ClaimNew />} />
-                <Route path="/claims/approvals" element={<ClaimApprovals />} />
-                <Route path="/claims/history" element={<ClaimHistory />} />
-                <Route path="/claims/:id" element={<ClaimDetail />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route
-                  path="/setup"
-                  element={
-                    <RoleProtectedRoute roles={REGIONAL_ROLES}>
-                      <Setup />
-                    </RoleProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/system"
-                  element={
-                    <RoleProtectedRoute roles={NATIONAL_ROLES}>
-                      <System />
-                    </RoleProtectedRoute>
-                  }
-                />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/unauthorized" element={<Unauthorized />} />
-                <Route path="*" element={<NotFound />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/members" element={<MembersList />} />
+                  <Route path="/members/new" element={<AddMember />} />
+                  <Route path="/members/upload" element={<UploadMembers />} />
+                  <Route path="/members/upload/:id" element={<ImportReview />} />
+                  <Route path="/members/:id" element={<MemberDetail />} />
+                  <Route path="/change-requests" element={<ChangeRequests />} />
+                  <Route path="/approvals" element={<PendingApprovals />} />
+                  <Route
+                    path="/imports/report20"
+                    element={
+                      <RoleProtectedRoute roles={NATIONAL_ROLES}>
+                        <Report20Upload />
+                      </RoleProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/imports/report20/:id"
+                    element={
+                      <RoleProtectedRoute roles={NATIONAL_ROLES}>
+                        <Report20Review />
+                      </RoleProtectedRoute>
+                    }
+                  />
+                  {/* <Route path="/transfers" element={<Transfers />} /> */}
+                  <Route path="/claims" element={<Claims />} />
+                  <Route path="/claims/new" element={<ClaimNew />} />
+                  <Route path="/claims/approvals" element={<ClaimApprovals />} />
+                  <Route path="/claims/history" element={<ClaimHistory />} />
+                  <Route path="/claims/:id" element={<ClaimDetail />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route
+                    path="/setup"
+                    element={
+                      <RoleProtectedRoute roles={REGIONAL_ROLES}>
+                        <Setup />
+                      </RoleProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/system"
+                    element={
+                      <RoleProtectedRoute roles={NATIONAL_ROLES}>
+                        <System />
+                      </RoleProtectedRoute>
+                    }
+                  />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/unauthorized" element={<Unauthorized />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route element={<MemberProtectedRoute />}>
-              <Route path="/member" element={<MemberPortalLayout />}>
-                <Route index element={<MemberHome section="profile" />} />
-                <Route path="profile" element={<Navigate to="/member" replace />} />
-                <Route path="household" element={<Navigate to="/member/requests" replace />} />
-                <Route path="coverage" element={<MemberHome section="coverage" />} />
-                <Route path="requests" element={<MemberHome section="requests" />} />
-                <Route path="claims" element={<MemberHome section="claims" />} />
-                <Route path="claims/new" element={<MemberClaimNew />} />
-                <Route path="claims/:id/resubmit" element={<MemberClaimNew />} />
-                <Route path="notifications" element={<MemberHome section="notifications" />} />
-                <Route path="help" element={<MemberHome section="help" />} />
+              <Route element={<MemberProtectedRoute />}>
+                <Route path="/member" element={<MemberPortalLayout />}>
+                  <Route index element={<MemberHome section="profile" />} />
+                  <Route path="profile" element={<Navigate to="/member" replace />} />
+                  <Route path="household" element={<Navigate to="/member/requests" replace />} />
+                  <Route path="coverage" element={<MemberHome section="coverage" />} />
+                  <Route path="requests" element={<MemberHome section="requests" />} />
+                  <Route path="claims" element={<MemberClaims />} />
+                  <Route path="claims/history" element={<MemberClaimHistory />} />
+                  <Route path="claims/new" element={<MemberClaimNew />} />
+                  <Route path="claims/:id/resubmit" element={<MemberClaimNew />} />
+                  <Route path="notifications" element={<MemberHome section="notifications" />} />
+                  <Route path="help" element={<MemberHome section="help" />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </Suspense>
-      </MemberAuthProvider>
-    </AuthProvider>
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Suspense>
+        </MemberAuthProvider>
+      </AuthProvider>
     </ChunkErrorBoundary>
   );
 }

@@ -1,3 +1,6 @@
+import ClaimDraftControls from "./ClaimDraftControls";
+import { useClaimDraft } from "./useClaimDraft";
+import type { ClaimDraftPayload } from "./claimDrafts.model";
 import { DeathDisabilitySection } from "./DeathDisabilitySection";
 import { CriticalIllnessSection } from "./CriticalIllnessSection";
 import { HospitalizationSection } from "./HospitalizationSection";
@@ -51,7 +54,7 @@ const PAGE_LABELS = ["Policy and identification", "Payment and declaration"];
 
 export default function ClaimNew() {
   const navigate = useNavigate();
-  const submissionKey = useRef(crypto.randomUUID());
+  const submissionKey = useRef<string>(crypto.randomUUID());
   const submitting = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [page, setPage] = useState(-1);
@@ -109,16 +112,79 @@ export default function ClaimNew() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const dirty = Boolean(member);
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  const restoredSubject = useRef(false);
+  const draftPayload: ClaimDraftPayload = {
+    claimType,
+    claimantType,
+    claimantIdNumber,
+    contact: claimantContactForSubmission(contact),
+    details: {
+      subjectName,
+      relationship,
+      dateOfEvent,
+      cause,
+      diagnosisDate,
+      diagnosingHospital,
+      diagnosingPhysician,
+      illness,
+      illnessOther,
+      hospitalName,
+      admissionDate,
+      dischargeDate,
+      reason,
+    },
+    paymentDetails,
+    notes,
+    page,
+  };
+  const draft = useClaimDraft({
+    audience: "staff",
+    memberId: member?.id,
+    payload: draftPayload,
+    documentIds: documents.map((file) => file.id),
+    ready: true,
+    getSubmissionKey: () => submissionKey.current,
+    setSubmissionKey: (value) => {
+      submissionKey.current = value;
+    },
+    pending: busy || Boolean(uploadingSlot),
+    apply: async (saved, signal) => {
+      const response = await api.get("/claims/member-lookup", {
+        params: { staffId: saved.member.controllerId },
+        signal,
+      });
+      if (signal.aborted) return;
+      setMember(response.data.data);
+      setStaffId(saved.member.controllerId);
+      restoredSubject.current =
+        saved.payload.claimType === "DEATH" ||
+        saved.payload.claimType === "TOTAL_PERMANENT_DISABILITY";
+      const data = saved.payload;
+      setClaimType(data.claimType);
+      setClaimantType(data.claimantType);
+      setClaimantIdNumber(data.claimantIdNumber);
+      setContact({ ...data.contact, primaryPhone: "", additionalPhone: "" });
+      setPaymentDetails(data.paymentDetails);
+      setNotes(data.notes);
+      setDocuments(saved.documents);
+      setDeclaration(false);
+      setPage(0);
+      setSubjectName(data.details.subjectName);
+      setRelationship(data.details.relationship);
+      setDateOfEvent(data.details.dateOfEvent);
+      setCause(data.details.cause);
+      setDiagnosisDate(data.details.diagnosisDate);
+      setDiagnosingHospital(data.details.diagnosingHospital);
+      setDiagnosingPhysician(data.details.diagnosingPhysician);
+      setIllness(data.details.illness);
+      setIllnessOther(data.details.illnessOther);
+      setHospitalName(data.details.hospitalName);
+      setAdmissionDate(data.details.admissionDate);
+      setDischargeDate(data.details.dischargeDate);
+      setReason(data.details.reason);
+    },
+  });
+
   useEffect(() => {
     if (page >= 0) {
       headingRef.current?.focus();
@@ -133,6 +199,10 @@ export default function ClaimNew() {
       .catch(() => setIllnesses([]));
   }, [claimType]);
   useEffect(() => {
+    if (restoredSubject.current) {
+      restoredSubject.current = false;
+      return;
+    }
     if (claimType !== "DEATH" && claimType !== "TOTAL_PERMANENT_DISABILITY") return;
     setSubjectName(
       claimantType === "SPOUSE" ? (member?.spouse?.fullName ?? "") : (member?.fullName ?? ""),
@@ -259,12 +329,7 @@ export default function ClaimNew() {
   };
 
   const removeDocument = async (file: UploadedClaimDocument) => {
-    try {
-      await api.delete(`/files/${file.id}`);
-      setDocuments((current) => current.filter((item) => item.id !== file.id));
-    } catch (caught: unknown) {
-      setDocError(getApiError(caught)?.message || "The document could not be removed.");
-    }
+    setDocuments((current) => current.filter((item) => item.id !== file.id));
   };
 
   const buildClaimDetails = () => {
@@ -283,15 +348,26 @@ export default function ClaimNew() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!member || !declaration || !claimType || submitting.current) return;
+    if (
+      !member ||
+      !declaration ||
+      !claimType ||
+      submitting.current ||
+      draft.saving ||
+      uploadingSlot
+    )
+      return;
     submitting.current = true;
     setBusy(true);
     setError("");
     try {
+      const savedDraft = await draft.persist();
       const response = await api.post(
         "/claims/submissions",
         {
           memberId: member.id,
+          draftId: savedDraft.id,
+          draftRevision: savedDraft.revision,
           claimType,
           claimDetails: buildClaimDetails(),
           claimantType,
@@ -305,6 +381,7 @@ export default function ClaimNew() {
         },
         { headers: { "Idempotency-Key": submissionKey.current } },
       );
+      draft.markSubmitted();
       if (response.data.data.deliveryState !== "ACCEPTED") {
         navigate(`/claims/${response.data.data.id}`, { replace: true });
         return;
@@ -331,15 +408,26 @@ export default function ClaimNew() {
     }
   };
 
-  const leave = () => {
-    if (!dirty || window.confirm("Leave this claim? Information entered here will be lost."))
-      navigate("/claims");
-  };
+  const leave = () => navigate("/claims");
   const page0Complete =
     Boolean(claimType) &&
     nightsEligible &&
     documentsComplete &&
     hasGhanaCardIdDigits(claimantIdNumber);
+
+  if (draft.loading || draft.loadError)
+    return (
+      <div className="space-y-4">
+        {draft.loading ? (
+          <p role="status">Loading saved draft…</p>
+        ) : (
+          <Alert tone="error">{draft.loadError}</Alert>
+        )}
+        <Button variant="secondary" onClick={leave}>
+          Back to claims
+        </Button>
+      </div>
+    );
 
   if (page === -1)
     return (
@@ -432,6 +520,12 @@ export default function ClaimNew() {
               <span>for Staff ID {member?.controllerId}</span>
               <span className="font-bold text-success">[{member?.status}]</span>
             </div>
+            <ClaimDraftControls
+              draft={draft}
+              payload={draftPayload}
+              documents={documents}
+              busy={busy || Boolean(uploadingSlot)}
+            />
             <p className="mb-5 text-xs font-semibold text-text-muted">
               Fields marked <span className="text-danger">*</span> are required.
             </p>
@@ -634,14 +728,8 @@ export default function ClaimNew() {
 
                 <div className="mt-7 rounded-lg bg-surface-subtle p-4">
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setMember(null);
-                        setPage(-1);
-                      }}
-                    >
-                      Back
+                    <Button variant="secondary" onClick={leave}>
+                      Cancel
                     </Button>
                     <Button type="submit" disabled={!page0Complete}>
                       Next
@@ -671,7 +759,7 @@ export default function ClaimNew() {
                     type="submit"
                     loading={busy}
                     loadingLabel="Submitting claim..."
-                    disabled={!declaration}
+                    disabled={!declaration || draft.saving || Boolean(uploadingSlot)}
                   >
                     Submit claim
                   </Button>

@@ -19,3 +19,16 @@ it("allows only claim actions in the correct portal", () => {
     expect(claimNotificationLink(path, "member")).toBeNull();
   expect(claimNotificationLink("/member/claims#claim-42", "staff")).toBeNull();
 });
+
+it("allows scoped change request links while rejecting cross-portal and external links", () => {
+  expect(claimNotificationLink("/member/requests#request-42", "member")).toBe(
+    "/member/requests#request-42",
+  );
+  expect(claimNotificationLink("/change-requests?request=42", "staff")).toBe(
+    "/change-requests?request=42",
+  );
+  expect(claimNotificationLink("/change-requests?request=42", "member")).toBeNull();
+  expect(
+    claimNotificationLink("https://example.test/member/requests#request-42", "member"),
+  ).toBeNull();
+});

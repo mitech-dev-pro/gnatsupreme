@@ -37,7 +37,7 @@ export function claimStage(claim: ClaimStageInput): {
     return {
       label: "Historical simulation",
       tone: "neutral",
-      next: "This historical record is not connected to Mankrado.",
+      next: "This historical record is not connected to Claims Portal.",
     };
   if (claim.status === "RETURNED")
     return {
@@ -55,7 +55,7 @@ export function claimStage(claim: ClaimStageInput): {
     return {
       label: "Delivery unconfirmed",
       tone: "warning",
-      next: "Staff must check this member’s Mankrado history before retrying; the claim may already have arrived.",
+      next: "Staff must check this member’s Claims Portal history before retrying; the claim may already have arrived.",
     };
   if (claim.deliveryState === "FAILED")
     return {
@@ -65,9 +65,9 @@ export function claimStage(claim: ClaimStageInput): {
     };
   if (claim.deliveryState === "SENDING")
     return {
-      label: "Sending to Mankrado",
+      label: "Sending to Claims Portal",
       tone: "info",
-      next: "Wait for confirmation that Mankrado received the claim.",
+      next: "Wait for confirmation that Claims Portal received the claim.",
     };
   if (
     claim.deliveryState === "ACCEPTED" ||
@@ -75,20 +75,20 @@ export function claimStage(claim: ClaimStageInput): {
     claim.status === "SYNCHRONIZED"
   )
     return {
-      label: "Received by Mankrado",
+      label: "Received by Claims Portal",
       tone: "info",
-      next: "Mankrado handles assessment and settlement. See the insurer’s reported status separately.",
+      next: "Claims Portal handles assessment and settlement. See the insurer’s reported status separately.",
     };
   if (claim.source === "MEMBER_PORTAL" && !claim.reviewedAt)
     return {
       label: "Awaiting GNAT review",
       tone: "info",
-      next: "GNAT staff must review this claim before forwarding it to Mankrado.",
+      next: "GNAT staff must review this claim before forwarding it to Claims Portal.",
     };
   return {
-    label: "Ready to send to Mankrado",
+    label: "Ready to send to Claims Portal",
     tone: "info",
-    next: "Staff must send this saved claim to Mankrado for assessment.",
+    next: "Staff must send this saved claim to Claims Portal for assessment.",
   };
 }
 

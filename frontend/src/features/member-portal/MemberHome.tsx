@@ -1,17 +1,14 @@
+import MemberChangeRequests from "./MemberChangeRequests";
 import MemberNotifications from "./MemberNotifications";
-import ClaimDetailModal from "@/components/claims/ClaimDetailModal";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
-import { Alert } from "@/components/ui/Feedback";
 import api from "@/lib/api";
-import { claimStage, claimStatusTone } from "@/lib/claimStatus";
-import StatusBadge from "@/components/ui/StatusBadge";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import { isMinor } from "@/lib/utils";
-import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { BeneficiaryForm } from "./BeneficiaryForm";
 import { MemberDetailsForm } from "./MemberDetailsForm";
 import {
@@ -19,46 +16,23 @@ import {
   BENEFIT_LABELS,
   type BenefitPlan,
   type ChangeRequest,
-  CLAIM_TYPE_LABELS,
-  type ClaimHistoryItem,
-  type ClaimItem,
   formatDate,
   type MemberPortalSection,
   type MemberProfile,
   type ProfileCompletion,
-  REQUEST_FIELD_LABELS,
-  REQUEST_STATUS_STYLES,
-  REQUEST_TYPE_LABELS,
-  requestValue,
-  timeAgo,
 } from "./MemberHome.shared";
 import { SpouseForm } from "./SpouseForm";
 export default function MemberHome({ section = "profile" }: { section?: MemberPortalSection }) {
   const { settings } = useOrganizationSettings();
   useMemberAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [benefitPlan, setBenefitPlan] = useState<BenefitPlan>(null);
   const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
-  const [claims, setClaims] = useState<ClaimItem[]>([]);
-  const [claimDetailId, setClaimDetailId] = useState<number | null>(null);
-  useEffect(() => {
-    setClaimDetailId(null);
-  }, [section]);
-  useEffect(() => {
-    if (loading || section !== "claims" || !/^#claim-[1-9]\d*$/.test(location.hash)) return;
-    const target = document.getElementById(location.hash.slice(1));
-    if (target) {
-      target.scrollIntoView({ block: "center" });
-      target.focus({ preventScroll: true });
-    }
-  }, [section, location.hash, claims, loading]);
-  const [claimHistory, setClaimHistory] = useState<ClaimHistoryItem[] | null>(null);
-  const [claimHistoryError, setClaimHistoryError] = useState("");
-
+  const requestsAbort = useRef<AbortController | null>(null);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requestsError, setRequestsError] = useState("");
   const [editingProfile, setEditingProfile] = useState(false);
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [addingBeneficiary, setAddingBeneficiary] = useState(false);
@@ -66,10 +40,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   const [removeError, setRemoveError] = useState("");
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [beneficiaryToRemove, setBeneficiaryToRemove] = useState<Beneficiary | null>(null);
-  const [requestFilter, setRequestFilter] = useState<"ALL" | "PENDING" | "COMPLETED">("ALL");
-  const [requestToCancel, setRequestToCancel] = useState<ChangeRequest | null>(null);
-  const [cancellingRequest, setCancellingRequest] = useState(false);
-  const [cancelRequestError, setCancelRequestError] = useState("");
   const [requestComposer, setRequestComposer] = useState<
     "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | null
   >(null);
@@ -87,37 +57,20 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   };
 
   const loadRequests = async () => {
+    requestsAbort.current?.abort();
+    const controller = new AbortController();
+    requestsAbort.current = controller;
+    setRequestsLoading(true);
+    setRequestsError("");
     try {
-      const res = await api.get("/member-portal/change-requests");
+      const res = await api.get("/member-portal/change-requests", { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setRequests(res.data.data);
     } catch {
-      // request history is supplementary — a failed fetch shouldn't block the page
-    }
-  };
-
-  const loadClaims = async () => {
-    try {
-      const res = await api.get("/member-portal/claims");
-      setClaims(res.data.data);
-    } catch {
-      // claim history is supplementary — a failed fetch shouldn't block the page
-    }
-  };
-
-  // Mankrado's own record of every claim on file for this member -- a live external call
-  // (unlike loadClaims, which only reads what this app itself has stored), so it's kept
-  // separate: a slow or unavailable Mankrado response never blocks the rest of the page, it just
-  // shows its own inline message where the history would be.
-  const loadClaimHistory = async () => {
-    setClaimHistoryError("");
-    try {
-      const res = await api.get("/member-portal/claims/history");
-      setClaimHistory(res.data.data);
-    } catch (caught: unknown) {
-      setClaimHistoryError(
-        getApiError(caught)?.message ||
-          "Mankrado history is unavailable. Previous results may be outdated.",
-      );
+      if (!controller.signal.aborted)
+        setRequestsError("Requests could not be refreshed. Try again.");
+    } finally {
+      if (!controller.signal.aborted) setRequestsLoading(false);
     }
   };
 
@@ -131,19 +84,18 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
       }
     })();
     void loadRequests();
-    void loadClaims();
-    void loadClaimHistory();
     return () => {
       cancelled = true;
+      requestsAbort.current?.abort();
     };
   }, []);
 
   const afterRequestSubmitted = async () => {
-    await Promise.all([loadRequests(), loadProfile()]);
+    await Promise.allSettled([loadRequests(), loadProfile()]);
   };
 
   const finishComposedRequest = async () => {
-    await Promise.all([loadRequests(), loadProfile()]);
+    await Promise.allSettled([loadRequests(), loadProfile()]);
     setRequestComposer(null);
   };
 
@@ -177,21 +129,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
     }
   };
 
-  const cancelChangeRequest = async () => {
-    if (!requestToCancel) return;
-    setCancellingRequest(true);
-    setCancelRequestError("");
-    try {
-      await api.patch(`/member-portal/change-requests/${requestToCancel.id}/cancel`);
-      await Promise.all([loadRequests(), loadProfile()]);
-      setRequestToCancel(null);
-    } catch (error: unknown) {
-      setCancelRequestError(getApiError(error)?.message || "Unable to cancel this request.");
-    } finally {
-      setCancellingRequest(false);
-    }
-  };
-
   const removeBeneficiary = async (beneficiary: Beneficiary) => {
     setRemovingId(beneficiary.id);
     setRemoveError("");
@@ -217,11 +154,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
 
   const spousePending = pendingFor("SPOUSE");
   const profilePending = pendingFor("MEMBER_DETAILS");
-  const visibleRequests = requests.filter((request) => {
-    if (requestFilter === "PENDING") return request.status === "PENDING";
-    if (requestFilter === "COMPLETED") return request.status !== "PENDING";
-    return true;
-  });
 
   return (
     <div>
@@ -976,7 +908,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 </h2>
                 <p className="mt-1 max-w-[70ch] text-xs leading-relaxed text-text-muted">
                   Choose what you want to update. Your current record stays unchanged until your
-                  district administrator reviews and approves the request.
+                  GNAT staff review and approve the request.
                 </p>
               </header>
               {!requestComposer && (
@@ -989,7 +921,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   >
                     <span className="block text-sm font-bold text-ink">Personal details</span>
                     <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-                      Name, date of birth, Ghana Card, phone number, or school.
+                      Name, Ghana Card, phone number, or school.
                     </span>
                     {profilePending && (
                       <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-xs font-bold text-warning">
@@ -1072,368 +1004,22 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             </section>
           )}
 
-          {section === "requests" && endorsementsTab === "requests" && requests.length > 0 && (
-            <section
-              className="overflow-hidden rounded-2xl border border-border-default bg-(--surface-raised) md:col-span-2"
-              aria-labelledby="requests-heading"
-            >
-              <header className="flex flex-col gap-3 border-b border-border-default px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
-                <div>
-                  <h2 id="requests-heading" className="text-lg font-bold text-(--brand-primary)">
-                    My requests
-                  </h2>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {requests.filter((request) => request.status === "PENDING").length} awaiting
-                    review, {requests.filter((request) => request.status !== "PENDING").length}{" "}
-                    completed
-                  </p>
-                </div>
-                <div
-                  className="flex gap-1 rounded-lg bg-surface-subtle p-1"
-                  role="group"
-                  aria-label="Filter requests"
-                >
-                  {(["ALL", "PENDING", "COMPLETED"] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      aria-pressed={requestFilter === filter}
-                      onClick={() => setRequestFilter(filter)}
-                      className={`min-h-8 rounded-lg px-3 text-xs font-bold transition focus:outline-none focus-visible:shadow-focus ${requestFilter === filter ? "bg-(--surface-raised) text-(--brand-primary) shadow-inset-panel" : "text-text-muted hover:text-ink"}`}
-                    >
-                      {filter === "ALL" ? "All" : filter === "PENDING" ? "Pending" : "Completed"}
-                    </button>
-                  ))}
-                </div>
-              </header>
-
-              {requestToCancel && (
-                <div className="border-b border-border-default p-4 sm:p-5">
-                  <ConfirmationPanel
-                    title={`Cancel ${REQUEST_TYPE_LABELS[requestToCancel.type].toLowerCase()} request?`}
-                    description="This removes the request from the review queue. Your current member record will not be changed."
-                    confirmLabel="Cancel request"
-                    busyLabel="Cancelling…"
-                    tone="warning"
-                    busy={cancellingRequest}
-                    onConfirm={cancelChangeRequest}
-                    onCancel={() => {
-                      setRequestToCancel(null);
-                      setCancelRequestError("");
-                    }}
-                  >
-                    {cancelRequestError && (
-                      <p role="alert" className="mt-2 text-xs font-semibold text-danger">
-                        {cancelRequestError}
-                      </p>
-                    )}
-                  </ConfirmationPanel>
-                </div>
-              )}
-
-              {visibleRequests.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-text-muted sm:px-5">
-                  No requests match this filter.
-                </p>
-              ) : (
-                <ol className="divide-y divide-border-default">
-                  {visibleRequests.map((request) => (
-                    <li key={request.id}>
-                      <details className="group">
-                        <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-4 hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-inset sm:px-5">
-                          <span
-                            aria-hidden="true"
-                            className={`mt-1 size-2 shrink-0 rounded-full ${request.status === "PENDING" ? "bg-warning" : request.status === "APPROVED" ? "bg-success" : "bg-text-muted"}`}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-2">
-                              <strong className="text-sm text-ink">
-                                {REQUEST_TYPE_LABELS[request.type]}
-                              </strong>
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${REQUEST_STATUS_STYLES[request.status]}`}
-                              >
-                                {request.status.charAt(0) + request.status.slice(1).toLowerCase()}
-                              </span>
-                            </span>
-                            <span className="mt-1 block text-xs text-text-muted">
-                              Submitted{" "}
-                              {new Date(request.requestedAt).toLocaleDateString(undefined, {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              })}{" "}
-                              ({timeAgo(request.requestedAt)})
-                            </span>
-                          </span>
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            className="mt-1 size-4 shrink-0 text-text-muted transition-transform duration-200 group-open:rotate-180"
-                          >
-                            <path
-                              d="m5 7.5 5 5 5-5"
-                              stroke="currentColor"
-                              strokeWidth="1.7"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </summary>
-                        <div className="px-4 pb-5 pl-9 sm:px-5 sm:pl-10">
-                          {request.proposedData && Object.keys(request.proposedData).length > 0 ? (
-                            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-border-default pt-4 sm:grid-cols-2">
-                              {Object.entries(request.proposedData).map(([field, value]) => (
-                                <div key={field}>
-                                  <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                                    {REQUEST_FIELD_LABELS[field] ??
-                                      field.replaceAll(/([A-Z])/g, " $1")}
-                                  </dt>
-                                  <dd className="mt-0.5 wrap-break-word text-sm font-semibold text-ink">
-                                    {requestValue(value)}
-                                  </dd>
-                                </div>
-                              ))}
-                            </dl>
-                          ) : (
-                            <p className="border-t border-border-default pt-4 text-xs text-text-muted">
-                              This request does not include replacement field values.
-                            </p>
-                          )}
-                          {request.requestNote && (
-                            <div className="mt-4">
-                              <h3 className="text-base font-semibold uppercase tracking-wide text-text-muted">
-                                Your note
-                              </h3>
-                              <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-ink">
-                                {request.requestNote}
-                              </p>
-                            </div>
-                          )}
-                          {request.reviewNote && (
-                            <div className="mt-4 rounded-lg bg-surface-subtle p-3">
-                              <h3 className="text-base font-semibold uppercase tracking-wide text-text-muted">
-                                Review note
-                              </h3>
-                              <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-ink">
-                                {request.reviewNote}
-                              </p>
-                            </div>
-                          )}
-                          {request.status === "PENDING" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRequestToCancel(request);
-                                setCancelRequestError("");
-                              }}
-                              className="mt-4 min-h-9 rounded-lg border border-danger-border px-3 text-xs font-bold text-danger hover:bg-danger-soft focus:outline-none focus-visible:shadow-focus"
-                            >
-                              Cancel request
-                            </button>
-                          )}
-                        </div>
-                      </details>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
+          {section === "requests" && endorsementsTab === "requests" && (
+            <MemberChangeRequests
+              items={requests}
+              profile={profile}
+              loading={requestsLoading}
+              error={requestsError}
+              onRefresh={afterRequestSubmitted}
+            />
           )}
           {section === "coverage" && !benefitPlan && (
             <div className="rounded-2xl border border-border-default bg-(--surface-raised) p-6 text-sm text-text-muted md:col-span-2">
               No active benefit plan is available yet.
             </div>
           )}
-          {section === "requests" && endorsementsTab === "requests" && requests.length === 0 && (
-            <div className="rounded-2xl border border-border-default bg-(--surface-raised) px-5 py-6 text-center md:col-span-2">
-              <h2 className="text-lg font-bold text-(--brand-primary)">No request history yet</h2>
-              <p className="mt-1 text-xs text-text-muted">
-                Choose an option above to submit your first change request.
-              </p>
-            </div>
-          )}
 
           {section === "notifications" && <MemberNotifications />}
-          {section === "claims" && claimDetailId !== null && (
-            <ClaimDetailModal
-              key={`member:${claimDetailId}`}
-              submissionId={claimDetailId}
-              audience="member"
-              onClose={() => setClaimDetailId(null)}
-              onChanged={loadClaims}
-            />
-          )}
-
-          {section === "claims" && (
-            <section
-              className="overflow-hidden rounded-2xl border border-border-default bg-(--surface-raised) md:col-span-2"
-              aria-labelledby="member-claims-heading"
-            >
-              <header className="flex flex-col gap-3 border-b border-border-default px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                <div>
-                  <h2 id="member-claims-heading" className="text-lg font-bold text-text-strong">
-                    Claims
-                  </h2>
-                  <p className="mt-1 max-w-[65ch] text-xs text-text-muted">
-                    File a claim and track its review status here.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate("/member/claims/new")}
-                  className="inline-flex min-h-9 items-center justify-center rounded-lg bg-action-primary px-4 text-xs font-bold text-text-on-action hover:bg-(--action-primary-hover)"
-                >
-                  File a claim
-                </button>
-              </header>
-              {claims.length === 0 ? (
-                <div className="px-4 py-8 text-center sm:px-5">
-                  <p className="text-sm text-text-muted">You haven't submitted any claims yet.</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border-default">
-                  {claims.map((claim) => {
-                    const stage = claimStage(claim);
-                    return (
-                      <li
-                        key={claim.id}
-                        id={`claim-${claim.id}`}
-                        tabIndex={-1}
-                        aria-label={`Claim ${claim.id}`}
-                        className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
-                      >
-                        <div>
-                          <div className="text-sm font-bold text-ink">
-                            {claim.claimType
-                              ? (CLAIM_TYPE_LABELS[claim.claimType] ?? claim.claimType)
-                              : "Claim"}
-                          </div>
-                          <div className="mt-0.5">
-                            <StatusBadge tone={stage.tone}>{stage.label}</StatusBadge>
-                          </div>
-                          <p className="mt-1 text-xs text-text-muted">{stage.next}</p>
-                          {claim.externalStatus && (
-                            <p className="text-xs text-text-muted">
-                              Mankrado: {claim.externalStatus}
-                            </p>
-                          )}
-                          {claim.lastSyncedAt && (
-                            <p className="text-xs text-text-muted">
-                              Last checked: {new Date(claim.lastSyncedAt).toLocaleString()}
-                            </p>
-                          )}
-                          {claim.status === "RETURNED" && claim.reviewNote && (
-                            <p className="mt-1 max-w-[55ch] text-xs text-text-muted">
-                              {claim.reviewNote}
-                            </p>
-                          )}
-                          {(claim.status === "FAILED" ||
-                            claim.deliveryState === "FAILED" ||
-                            claim.deliveryState === "UNKNOWN") &&
-                            (claim.reviewNote || claim.errorMessage) && (
-                              <p className="mt-1 max-w-[55ch] text-xs text-text-muted">
-                                {claim.errorMessage || claim.reviewNote}
-                              </p>
-                            )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setClaimDetailId(claim.id)}
-                            className="rounded-lg border border-action-primary px-3 py-2 text-xs font-bold text-action-primary hover:bg-info-soft"
-                            aria-label={`View details for claim ${claim.id}`}
-                          >
-                            View details
-                          </button>
-                          <span className="text-xs text-text-muted">
-                            {timeAgo(claim.createdAt)}
-                          </span>
-                          {claim.status === "RETURNED" && (
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/member/claims/${claim.id}/resubmit`)}
-                              className="rounded-lg border border-action-primary px-2.5 py-1 text-xs font-bold text-action-primary hover:bg-info-soft"
-                            >
-                              Edit &amp; resubmit
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <div className="border-t border-border-default px-4 py-4 sm:px-5">
-                <h3 className="text-sm font-bold text-text-strong">Mankrado claim history</h3>
-                <p className="mt-1 text-xs text-text-muted">
-                  History from the insurer. Use View details above to see your saved claim,
-                  including submissions awaiting GNAT review.
-                </p>
-              </div>
-              {claimHistoryError && (
-                <div className="px-4 pb-4 sm:px-5">
-                  <Alert tone="warning">{claimHistoryError}</Alert>
-                </div>
-              )}
-              {claimHistory === null ? (
-                <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
-                  {claimHistoryError ? "History could not be checked." : "Loading claim history…"}
-                </p>
-              ) : claimHistory.length === 0 ? (
-                <p className="px-4 pb-4 text-xs text-text-muted sm:px-5">
-                  No claims returned by Mankrado for your membership.
-                </p>
-              ) : (
-                <ul className="divide-y divide-border-default border-t border-border-default">
-                  {claimHistory.map((item, index) => {
-                    const tone = claimStatusTone(item.status);
-                    const toneClass =
-                      tone === "success"
-                        ? "text-success"
-                        : tone === "danger"
-                          ? "text-danger"
-                          : tone === "warning"
-                            ? "text-warning"
-                            : tone === "info"
-                              ? "text-ink"
-                              : "text-text-muted";
-                    return (
-                      <li
-                        key={`${item.claimNumber}:${index}`}
-                        className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
-                      >
-                        <div>
-                          <div className="text-sm font-bold text-ink">
-                            {item.name?.trim() || "Claim"}{" "}
-                            <span className="font-mono text-xs font-normal text-text-muted">
-                              {item.claimNumber}
-                            </span>
-                          </div>
-                          <div className={`mt-0.5 text-xs font-semibold ${toneClass}`}>
-                            {item.status}
-                          </div>
-                        </div>
-                        <div className="text-left sm:text-right">
-                          <div className="text-sm font-semibold text-ink">
-                            Amount payable — reported by Mankrado:{" "}
-                            {item.amountPayable != null
-                              ? formatCurrency(item.amountPayable)
-                              : "Not provided by Mankrado"}
-                          </div>
-                          <div className="text-xs text-text-muted">
-                            {item.claimDate ?? "Date not provided"}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          )}
-
           {section === "help" && (
             <div className="rounded-2xl border border-border-default bg-(--surface-raised) p-6 md:col-span-2">
               <h2 className="text-lg font-bold text-text-strong">Help and support</h2>

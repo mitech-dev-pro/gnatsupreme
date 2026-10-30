@@ -18,7 +18,7 @@ beforeEach(() => {
 
 it("explains waiting for receipt without an external request", () => {
   render(<MankradoDetails externalId={null} />);
-  expect(screen.getByText(/after Mankrado confirms receipt/)).toBeInTheDocument();
+  expect(screen.getByText(/after Claims Portal confirms receipt/)).toBeInTheDocument();
   expect(api.get).not.toHaveBeenCalled();
 });
 it("retains a persisted assessment and zero amount during outages and later visits", async () => {
@@ -28,7 +28,7 @@ it("retains a persisted assessment and zero amount during outages and later visi
   expect(screen.getByText("MC-42")).toBeInTheDocument();
   await screen.findByText("Could not refresh; showing the last saved assessment.");
   expect(screen.getByText(/Last checked:/)).toBeInTheDocument();
-  expect(screen.queryByText("Not provided by Mankrado")).not.toBeInTheDocument();
+  expect(screen.queryByText("Not provided by Claims Portal")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Refresh details" }));
   expect(screen.getByText("MC-42")).toBeInTheDocument();
   await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
@@ -48,7 +48,7 @@ it("returns the fresh assessment and timestamp to its parent and shows null paya
   const updated = vi.fn();
   render(<MankradoDetails externalId="42" savedAssessment={saved} onUpdated={updated} />);
   await screen.findByText("Awaiting Approval");
-  expect(screen.getByText("Not provided by Mankrado")).toBeInTheDocument();
+  expect(screen.getByText("Not provided by Claims Portal")).toBeInTheDocument();
   expect(updated).toHaveBeenCalledWith(result);
   expect(api.get).toHaveBeenCalledWith("/claims/claimdetails/42", expect.anything());
 });

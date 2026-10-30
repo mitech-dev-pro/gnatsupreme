@@ -24,9 +24,12 @@ it("loads the selected import and keeps pagination and filters in requests", asy
     result.current.setRowStatus("INVALID");
   });
   await waitFor(() =>
-    expect(api.get).toHaveBeenCalledWith("/imports/members/42/rows", {
-      params: { page: 2, limit: 50, status: "INVALID" },
-    }),
+    expect(api.get).toHaveBeenCalledWith(
+      "/imports/members/42/rows",
+      expect.objectContaining({
+        params: { page: 2, limit: 50, status: "INVALID" },
+      }),
+    ),
   );
 });
 
@@ -34,6 +37,6 @@ it("leaves the loading state and reports failed requests", async () => {
   vi.mocked(api.get).mockRejectedValue(new Error("offline"));
   const { result } = renderHook(useImportReview);
   await waitFor(() => expect(result.current.loading).toBe(false));
-  expect(result.current.error).toBe("Unable to load rows.");
+  expect(result.current.error).toMatch(/Unable to refresh this import/);
   expect(result.current.job).toBeNull();
 });

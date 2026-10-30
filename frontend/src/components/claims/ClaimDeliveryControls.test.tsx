@@ -29,7 +29,7 @@ it.each([
     expect(screen.getByRole("checkbox")).toBeDisabled();
     const retry = screen.getByRole("button", { name: "Retry submission" });
     expect(retry).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: "Check Mankrado history" }));
+    await userEvent.click(screen.getByRole("button", { name: "Check Claims Portal history" }));
     await waitFor(() => expect(screen.getByRole("checkbox")).toBeEnabled());
     expect(retry).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox"));
@@ -43,8 +43,8 @@ it.each([
 it("blocks acknowledgment when history fails", async () => {
   vi.mocked(api.get).mockRejectedValue(new Error("offline"));
   render(<ClaimDeliveryControls claim={claim} staffId="123456" onSent={vi.fn()} />);
-  await userEvent.click(screen.getByRole("button", { name: "Check Mankrado history" }));
-  await screen.findByText(/Mankrado history is unavailable/);
+  await userEvent.click(screen.getByRole("button", { name: "Check Claims Portal history" }));
+  await screen.findByText(/Claims Portal history is unavailable/);
   expect(screen.getByRole("checkbox")).toBeDisabled();
   expect(api.post).not.toHaveBeenCalled();
 });

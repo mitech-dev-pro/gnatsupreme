@@ -261,7 +261,7 @@ export default function ClaimDetail() {
                 />
                 <Field
                   label="External lookup reference"
-                  value={claim.externalClaimId ?? "Available after Mankrado confirms receipt"}
+                  value={claim.externalClaimId ?? "Available after Claims Portal confirms receipt"}
                 />
                 <Field label="Provider" value={claim.provider} />
                 <Field
@@ -272,10 +272,10 @@ export default function ClaimDetail() {
                       : deliveryLabel(claim.deliveryState)
                   }
                 />
-                <Field label="Mankrado status" value={claim.externalStatus} />
+                <Field label="Claims Portal status" value={claim.externalStatus} />
                 <Field label="Filed on" value={formatDate(claim.createdAt)} />
                 <Field
-                  label="Sent to Mankrado on"
+                  label="Sent to Claims Portal on"
                   value={claim.submittedAt ? formatDate(claim.submittedAt) : "Not yet confirmed"}
                 />
                 <Field

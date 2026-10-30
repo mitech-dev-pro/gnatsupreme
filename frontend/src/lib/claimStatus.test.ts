@@ -12,10 +12,14 @@ describe("claim stages", () => {
   it("identifies who acts next through review and delivery", () => {
     expect(claimStage(claim).label).toBe("Awaiting GNAT review");
     expect(claimStage({ ...claim, reviewedAt: "2026-10-29" }).label).toBe(
-      "Ready to send to Mankrado",
+      "Ready to send to Claims Portal",
     );
-    expect(claimStage({ ...claim, deliveryState: "SENDING" }).label).toBe("Sending to Mankrado");
-    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }).label).toBe("Received by Mankrado");
+    expect(claimStage({ ...claim, deliveryState: "SENDING" }).label).toBe(
+      "Sending to Claims Portal",
+    );
+    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }).label).toBe(
+      "Received by Claims Portal",
+    );
   });
   it("prioritizes delivery problems over a submitted status", () => {
     expect(claimStage({ ...claim, status: "SUBMITTED", deliveryState: "UNKNOWN" }).label).toBe(

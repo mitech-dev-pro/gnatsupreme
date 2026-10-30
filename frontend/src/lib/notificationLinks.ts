@@ -8,5 +8,9 @@ export function claimNotificationLink(
     audience === "staff"
       ? /^\/claims\/[1-9]\d*$/
       : /^\/member\/claims(?:#claim-[1-9]\d*|\/[1-9]\d*\/resubmit)$/;
-  return allowed.test(value) ? value : null;
+  const changeRequest =
+    audience === "staff"
+      ? /^\/change-requests\?request=[1-9]\d*$/
+      : /^\/member\/requests#request-[1-9]\d*$/;
+  return allowed.test(value) || changeRequest.test(value) ? value : null;
 }

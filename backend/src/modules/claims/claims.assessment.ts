@@ -13,7 +13,7 @@ export async function refreshClaimAssessment(claimId: number, externalId: string
     name: details.name,
     claimDate: details.claimDate,
     amountPayable: details.amountPayable,
-    status: details.status ?? "Not provided by Mankrado",
+    status: details.status ?? "Not provided by Claims Portal",
     rejectReason: details.rejectReason,
   };
   await prisma.externalClaimSubmission.update({

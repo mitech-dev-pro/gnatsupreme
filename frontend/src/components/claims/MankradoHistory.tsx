@@ -47,7 +47,9 @@ export default function MankradoHistory({
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setError("Mankrado history is unavailable. Any previous results below may be outdated.");
+          setError(
+            "Claims Portal history is unavailable. Any previous results below may be outdated.",
+          );
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
@@ -68,7 +70,7 @@ export default function MankradoHistory({
           loading={busy}
           onClick={() => setRefresh((value) => value + 1)}
         >
-          {manual ? "Check Mankrado history" : "Refresh history"}
+          {manual ? "Check Claims Portal history" : "Refresh history"}
         </Button>
       </div>
       {error && <Alert tone="warning">{error}</Alert>}
@@ -96,7 +98,7 @@ export default function MankradoHistory({
                   Claim date
                 </th>
                 <th scope="col" className="p-2 text-right">
-                  Amount payable — reported by Mankrado
+                  Amount payable — reported by Claims Portal
                 </th>
                 <th scope="col" className="p-2">
                   Claim status
@@ -111,7 +113,7 @@ export default function MankradoHistory({
                   <td className="whitespace-nowrap p-2">{item.claimDate ?? "Not provided"}</td>
                   <td className="p-2 text-right tabular-nums">
                     {item.amountPayable == null
-                      ? "Not provided by Mankrado"
+                      ? "Not provided by Claims Portal"
                       : formatCurrency(item.amountPayable)}
                   </td>
                   <td className="p-2">{item.status}</td>

@@ -1,3 +1,6 @@
+import { AppError } from "../../middleware/error-handler.js";
+import { reserveChangeReview } from "./change-request.concurrency.js";
+import { notifyChangeReviewed } from "./change-request.notifications.js";
 import { Router, type Response } from "express";
 import { accessibleMember, asJson } from "./workflow.service.js";
 
@@ -394,10 +397,11 @@ changeRequestRouter.get("/", async (request, response) => {
     response.status(400).json({ success: false, message: "Invalid query" });
     return;
   }
-  const { page, limit, status, type } = query.data;
+  const { page, limit, status, type, requestId } = query.data;
   const actor = user(response);
   const where = {
     member: { is: memberScope(actor) },
+    ...(requestId ? { id: requestId } : {}),
     ...(status ? { status } : {}),
     ...(type ? { type } : {}),
   };
@@ -409,7 +413,7 @@ changeRequestRouter.get("/", async (request, response) => {
         requestedBy: { select: { id: true, fullName: true } },
         reviewedBy: { select: { id: true, fullName: true } },
       },
-      orderBy: { requestedAt: "desc" },
+      orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -419,6 +423,7 @@ changeRequestRouter.get("/", async (request, response) => {
         scope: { role: actor.role, regionId: actor.regionId, districtId: actor.districtId },
         status,
         type,
+        requestId,
       },
       () => prisma.memberChangeRequest.count({ where }),
     ),
@@ -498,77 +503,184 @@ changeRequestRouter.post("/members/:id", async (request, response) => {
   response.status(201).json({ success: true, data: item });
 });
 
-changeRequestRouter.patch("/:id/review", authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"), async (request, response) => {
-  const params = changeRequestIdSchema.safeParse(request.params);
-  const body = reviewChangeRequestSchema.safeParse(request.body);
-  if (!params.success || !body.success) {
-    response.status(400).json({ success: false, message: "Invalid review request" });
-    return;
-  }
-  const actor = user(response);
-  const item = await prisma.memberChangeRequest.findFirst({ where: { id: params.data.id, status: "PENDING", member: { is: memberScope(actor) } }, include: { member: { include: { beneficiaries: true, district: { select: { regionId: true } } } } } });
-  if (!item) {
-    response.status(404).json({ success: false, message: "Pending change request not found" });
-    return;
-  }
-  let existingSpouse: { id: number; ghanaCardId: string | null } | null = null;
-  if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
-    const data = memberDetailsChangeSchema.parse(item.proposedData);
-    if (await memberGhanaCardConflict(data.ghanaCardId, { memberId: item.memberId })) {
-      response.status(409).json({ success: false, message: "The proposed Ghana Card ID is already in use" });
+changeRequestRouter.patch(
+  "/:id/review",
+  authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"),
+  async (request, response) => {
+    const params = changeRequestIdSchema.safeParse(request.params);
+    const body = reviewChangeRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      response.status(400).json({ success: false, message: "Invalid review request" });
       return;
     }
-  }
-  if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
-    const data = spouseSchema.parse(item.proposedData);
-    existingSpouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true, ghanaCardId: true } });
-    if (
-      data.ghanaCardId === item.member.ghanaCardId ||
-      (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
-    ) {
-      response.status(409).json({ success: false, message: "The proposed spouse Ghana Card ID is already in use" });
-      return;
-    }
-  }
-  if (body.data.action === "APPROVE" && item.type === "BENEFICIARY_ADD" && item.member.beneficiaries.length >= 10) {
-    response.status(409).json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
-    return;
-  }
-  let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
-  if (body.data.action === "APPROVE") {
-    await prisma.$transaction(async (transaction) => {
-      if (item.type === "MEMBER_DETAILS") {
-        const data = memberDetailsChangeSchema.parse(item.proposedData);
-        const updatedMember = await transaction.member.update({ where: { id: item.memberId }, data: { ...data, ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone ? { phoneVerifiedAt: null } : {}) } });
-        if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
-          linkChanges = await relinkSpousesForMember(transaction, item.memberId, updatedMember.ghanaCardId);
-        }
-      }
-      if (item.type === "SPOUSE") {
-        const data = spouseSchema.parse(item.proposedData);
-        const upsertedSpouse = await transaction.spouse.upsert({ where: { memberId: item.memberId }, update: data, create: { ...data, memberId: item.memberId } });
-        await transaction.member.update({ where: { id: item.memberId }, data: { spouseDeclarationStatus: "HAS_SPOUSE" } });
-        const change = await reconcileSpouseLink(transaction, upsertedSpouse.id, upsertedSpouse.ghanaCardId, item.memberId, existingSpouse?.ghanaCardId);
-        if (change) linkChanges = [change];
-      }
-      if (item.type === "BENEFICIARY_ADD") await transaction.beneficiary.create({ data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId } });
-      if (item.type === "BENEFICIARY_UPDATE") await transaction.beneficiary.update({ where: { id: item.targetBeneficiaryId! }, data: beneficiarySchema.parse(item.proposedData) });
-      if (item.type === "BENEFICIARY_REMOVE") {
-        if (item.member.beneficiaries.length <= 1) throw new Error("A member must retain at least one beneficiary");
-        await transaction.beneficiary.delete({ where: { id: item.targetBeneficiaryId! } });
-      }
-      await transaction.memberChangeRequest.update({ where: { id: item.id }, data: { status: "APPROVED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
+    const actor = user(response);
+    const item = await prisma.memberChangeRequest.findFirst({
+      where: { id: params.data.id, status: "PENDING", member: { is: memberScope(actor) } },
+      include: {
+        member: { include: { beneficiaries: true, district: { select: { regionId: true } } } },
+      },
     });
-    await invalidateMemberAuth(item.memberId);
-    await auditLinkChanges(request, actor, linkChanges);
-  } else {
-    await prisma.memberChangeRequest.update({ where: { id: item.id }, data: { status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() } });
-  }
-  const reviewed = await prisma.memberChangeRequest.findUnique({ where: { id: item.id } });
-  await recordAudit({ request, actor, action: `MEMBER_CHANGE_${reviewed!.status}`, entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `${reviewed!.status} ${item.type} change for ${item.member.fullName}`, afterData: { status: reviewed!.status, reviewNote: reviewed!.reviewNote }, regionId: item.member.district?.regionId, districtId: item.member.districtId });
-  await notifyMember({ memberId: item.memberId, type: `CHANGE_REQUEST_${reviewed!.status}`, title: "Change request updated", message: `Your ${item.type.toLowerCase().replaceAll("_", " ")} request was ${reviewed!.status.toLowerCase()}${reviewed!.reviewNote ? `: ${reviewed!.reviewNote}` : "."}`, idempotencyKey: `change-request-review:${item.id}:${reviewed!.status}` });
-  response.json({ success: true, data: reviewed });
-});
+    if (!item) {
+      response.status(404).json({ success: false, message: "Pending change request not found" });
+      return;
+    }
+    if (
+      body.data.expectedUpdatedAt &&
+      item.updatedAt.toISOString() !== body.data.expectedUpdatedAt
+    ) {
+      response.status(409).json({
+        success: false,
+        message: "This request changed. Refresh it before reviewing again.",
+      });
+      return;
+    }
+    let existingSpouse: { id: number; ghanaCardId: string | null } | null = null;
+    if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
+      const data = memberDetailsChangeSchema.parse(item.proposedData);
+      if (await memberGhanaCardConflict(data.ghanaCardId, { memberId: item.memberId })) {
+        response
+          .status(409)
+          .json({ success: false, message: "The proposed Ghana Card ID is already in use" });
+        return;
+      }
+    }
+    if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
+      const data = spouseSchema.parse(item.proposedData);
+      existingSpouse = await prisma.spouse.findUnique({
+        where: { memberId: item.memberId },
+        select: { id: true, ghanaCardId: true },
+      });
+      if (
+        (data.ghanaCardId != null && data.ghanaCardId === item.member.ghanaCardId) ||
+        (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
+      ) {
+        response
+          .status(409)
+          .json({ success: false, message: "The proposed spouse Ghana Card ID is already in use" });
+        return;
+      }
+    }
+    if (
+      body.data.action === "APPROVE" &&
+      item.type === "BENEFICIARY_ADD" &&
+      item.member.beneficiaries.length >= 10
+    ) {
+      response
+        .status(409)
+        .json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
+      return;
+    }
+    if (
+      body.data.action === "APPROVE" &&
+      item.targetBeneficiaryId &&
+      !item.member.beneficiaries.some((person) => person.id === item.targetBeneficiaryId)
+    )
+      throw new AppError(
+        409,
+        "The beneficiary is no longer on this member record. Refresh the request.",
+      );
+    let reviewed: Awaited<ReturnType<typeof prisma.memberChangeRequest.findUnique>> = null;
+    let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
+    if (body.data.action === "APPROVE") {
+      await prisma.$transaction(async (transaction) => {
+        await reserveChangeReview(transaction, item, actor);
+        if (item.type === "MEMBER_DETAILS") {
+          const data = memberDetailsChangeSchema.parse(item.proposedData);
+          const updatedMember = await transaction.member.update({
+            where: { id: item.memberId },
+            data: {
+              ...data,
+              ...(Object.prototype.hasOwnProperty.call(data, "phone") &&
+              data.phone !== item.member.phone
+                ? { phoneVerifiedAt: null }
+                : {}),
+            },
+          });
+          if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
+            linkChanges = await relinkSpousesForMember(
+              transaction,
+              item.memberId,
+              updatedMember.ghanaCardId,
+            );
+          }
+        }
+        if (item.type === "SPOUSE") {
+          const data = spouseSchema.parse(item.proposedData);
+          const upsertedSpouse = await transaction.spouse.upsert({
+            where: { memberId: item.memberId },
+            update: data,
+            create: { ...data, memberId: item.memberId },
+          });
+          await transaction.member.update({
+            where: { id: item.memberId },
+            data: { spouseDeclarationStatus: "HAS_SPOUSE" },
+          });
+          const change = await reconcileSpouseLink(
+            transaction,
+            upsertedSpouse.id,
+            upsertedSpouse.ghanaCardId,
+            item.memberId,
+            existingSpouse?.ghanaCardId,
+          );
+          if (change) linkChanges = [change];
+        }
+        if (item.type === "BENEFICIARY_ADD")
+          await transaction.beneficiary.create({
+            data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId },
+          });
+        if (item.type === "BENEFICIARY_UPDATE")
+          await transaction.beneficiary.update({
+            where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
+            data: beneficiarySchema.parse(item.proposedData),
+          });
+        if (item.type === "BENEFICIARY_REMOVE") {
+          if (item.member.beneficiaries.length <= 1)
+            throw new AppError(409, "A member must retain at least one beneficiary");
+          await transaction.beneficiary.delete({
+            where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
+          });
+        }
+        reviewed = await transaction.memberChangeRequest.update({
+          where: { id: item.id },
+          data: {
+            status: "APPROVED",
+            reviewedById: actor.id,
+            reviewNote: body.data.note,
+            reviewedAt: new Date(),
+          },
+        });
+      });
+      await invalidateMemberAuth(item.memberId);
+      await auditLinkChanges(request, actor, linkChanges);
+    } else {
+      await prisma.$transaction(async (transaction) => {
+        await reserveChangeReview(transaction, item, actor);
+        reviewed = await transaction.memberChangeRequest.update({
+          where: { id: item.id },
+          data: {
+            status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED",
+            reviewedById: actor.id,
+            reviewNote: body.data.note,
+            reviewedAt: new Date(),
+          },
+        });
+      });
+    }
+    await recordAudit({
+      request,
+      actor,
+      action: `MEMBER_CHANGE_${reviewed!.status}`,
+      entityType: "MEMBER_CHANGE_REQUEST",
+      entityId: item.id,
+      description: `${reviewed!.status} ${item.type} change for ${item.member.fullName}`,
+      afterData: { status: reviewed!.status, reviewNote: reviewed!.reviewNote },
+      regionId: item.member.district?.regionId,
+      districtId: item.member.districtId,
+    });
+    await notifyChangeReviewed(reviewed!);
+    response.json({ success: true, data: reviewed });
+  },
+);
 
 changeRequestRouter.post(
   "/bulk/review",
@@ -578,7 +690,8 @@ changeRequestRouter.post(
     if (!body.success) {
       response.status(400).json({
         success: false,
-        message: "Select between 1 and 100 valid change requests, and provide a note for a return or reject decision",
+        message:
+          "Select between 1 and 100 valid change requests, and provide a note for a return or reject decision",
       });
       return;
     }
@@ -588,51 +701,103 @@ changeRequestRouter.post(
       try {
         const item = await prisma.memberChangeRequest.findFirst({
           where: { id, status: "PENDING", member: { is: memberScope(actor) } },
-          include: { member: { include: { beneficiaries: true, district: { select: { regionId: true } } } } },
+          include: {
+            member: { include: { beneficiaries: true, district: { select: { regionId: true } } } },
+          },
         });
         if (!item) {
-          results.push({ id, success: false, message: "Not found, outside your access scope, or no longer pending" });
+          results.push({
+            id,
+            success: false,
+            message: "Not found, outside your access scope, or no longer pending",
+          });
+          continue;
+        }
+        if (
+          body.data.versions?.[String(id)] &&
+          item.updatedAt.toISOString() !== body.data.versions[String(id)]
+        ) {
+          results.push({
+            id,
+            success: false,
+            message: "This request changed. Refresh it before reviewing again.",
+          });
           continue;
         }
         let existingSpouse: { id: number; ghanaCardId: string | null } | null = null;
         if (body.data.action === "APPROVE" && item.type === "MEMBER_DETAILS") {
           const data = memberDetailsChangeSchema.parse(item.proposedData);
           if (await memberGhanaCardConflict(data.ghanaCardId, { memberId: item.memberId })) {
-            results.push({ id, success: false, message: "The proposed Ghana Card ID is already in use" });
+            results.push({
+              id,
+              success: false,
+              message: "The proposed Ghana Card ID is already in use",
+            });
             continue;
           }
         }
         if (body.data.action === "APPROVE" && item.type === "SPOUSE") {
           const data = spouseSchema.parse(item.proposedData);
-          existingSpouse = await prisma.spouse.findUnique({ where: { memberId: item.memberId }, select: { id: true, ghanaCardId: true } });
+          existingSpouse = await prisma.spouse.findUnique({
+            where: { memberId: item.memberId },
+            select: { id: true, ghanaCardId: true },
+          });
           if (
-            data.ghanaCardId === item.member.ghanaCardId ||
+            (data.ghanaCardId != null && data.ghanaCardId === item.member.ghanaCardId) ||
             (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
           ) {
-            results.push({ id, success: false, message: "The proposed spouse Ghana Card ID is already in use" });
+            results.push({
+              id,
+              success: false,
+              message: "The proposed spouse Ghana Card ID is already in use",
+            });
             continue;
           }
         }
-        if (body.data.action === "APPROVE" && item.type === "BENEFICIARY_ADD" && item.member.beneficiaries.length >= 10) {
-          results.push({ id, success: false, message: "A member cannot have more than 10 beneficiaries" });
+        if (
+          body.data.action === "APPROVE" &&
+          item.type === "BENEFICIARY_ADD" &&
+          item.member.beneficiaries.length >= 10
+        ) {
+          results.push({
+            id,
+            success: false,
+            message: "A member cannot have more than 10 beneficiaries",
+          });
           continue;
         }
+        if (
+          body.data.action === "APPROVE" &&
+          item.targetBeneficiaryId &&
+          !item.member.beneficiaries.some((person) => person.id === item.targetBeneficiaryId)
+        )
+          throw new AppError(
+            409,
+            "The beneficiary is no longer on this member record. Refresh the request.",
+          );
+        let reviewed: Awaited<ReturnType<typeof prisma.memberChangeRequest.findUnique>> = null;
         let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
         if (body.data.action === "APPROVE") {
           await prisma.$transaction(async (transaction) => {
+            await reserveChangeReview(transaction, item, actor);
             if (item.type === "MEMBER_DETAILS") {
               const data = memberDetailsChangeSchema.parse(item.proposedData);
               const updatedMember = await transaction.member.update({
                 where: { id: item.memberId },
                 data: {
                   ...data,
-                  ...(Object.prototype.hasOwnProperty.call(data, "phone") && data.phone !== item.member.phone
+                  ...(Object.prototype.hasOwnProperty.call(data, "phone") &&
+                  data.phone !== item.member.phone
                     ? { phoneVerifiedAt: null }
                     : {}),
                 },
               });
               if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
-                linkChanges = await relinkSpousesForMember(transaction, item.memberId, updatedMember.ghanaCardId);
+                linkChanges = await relinkSpousesForMember(
+                  transaction,
+                  item.memberId,
+                  updatedMember.ghanaCardId,
+                );
               }
             }
             if (item.type === "SPOUSE") {
@@ -646,7 +811,13 @@ changeRequestRouter.post(
                 where: { id: item.memberId },
                 data: { spouseDeclarationStatus: "HAS_SPOUSE" },
               });
-              const change = await reconcileSpouseLink(transaction, upsertedSpouse.id, upsertedSpouse.ghanaCardId, item.memberId, existingSpouse?.ghanaCardId);
+              const change = await reconcileSpouseLink(
+                transaction,
+                upsertedSpouse.id,
+                upsertedSpouse.ghanaCardId,
+                item.memberId,
+                existingSpouse?.ghanaCardId,
+              );
               if (change) linkChanges = [change];
             }
             if (item.type === "BENEFICIARY_ADD")
@@ -655,34 +826,43 @@ changeRequestRouter.post(
               });
             if (item.type === "BENEFICIARY_UPDATE")
               await transaction.beneficiary.update({
-                where: { id: item.targetBeneficiaryId! },
+                where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
                 data: beneficiarySchema.parse(item.proposedData),
               });
             if (item.type === "BENEFICIARY_REMOVE") {
               if (item.member.beneficiaries.length <= 1) {
-                throw new Error("A member must retain at least one beneficiary");
+                throw new AppError(409, "A member must retain at least one beneficiary");
               }
-              await transaction.beneficiary.delete({ where: { id: item.targetBeneficiaryId! } });
+              await transaction.beneficiary.delete({
+                where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
+              });
             }
-            await transaction.memberChangeRequest.update({
+            reviewed = await transaction.memberChangeRequest.update({
               where: { id: item.id },
-              data: { status: "APPROVED", reviewedById: actor.id, reviewNote: body.data.note, reviewedAt: new Date() },
+              data: {
+                status: "APPROVED",
+                reviewedById: actor.id,
+                reviewNote: body.data.note,
+                reviewedAt: new Date(),
+              },
             });
           });
           await invalidateMemberAuth(item.memberId);
           await auditLinkChanges(request, actor, linkChanges);
         } else {
-          await prisma.memberChangeRequest.update({
-            where: { id: item.id },
-            data: {
-              status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED",
-              reviewedById: actor.id,
-              reviewNote: body.data.note,
-              reviewedAt: new Date(),
-            },
+          await prisma.$transaction(async (transaction) => {
+            await reserveChangeReview(transaction, item, actor);
+            reviewed = await transaction.memberChangeRequest.update({
+              where: { id: item.id },
+              data: {
+                status: body.data.action === "RETURN" ? "RETURNED" : "REJECTED",
+                reviewedById: actor.id,
+                reviewNote: body.data.note,
+                reviewedAt: new Date(),
+              },
+            });
           });
         }
-        const reviewed = await prisma.memberChangeRequest.findUnique({ where: { id: item.id } });
         await recordAudit({
           request,
           actor,
@@ -694,16 +874,14 @@ changeRequestRouter.post(
           regionId: item.member.district?.regionId,
           districtId: item.member.districtId,
         });
-        await notifyMember({
-          memberId: item.memberId,
-          type: `CHANGE_REQUEST_${reviewed!.status}`,
-          title: "Change request updated",
-          message: `Your ${item.type.toLowerCase().replaceAll("_", " ")} request was ${reviewed!.status.toLowerCase()}${reviewed!.reviewNote ? `: ${reviewed!.reviewNote}` : "."}`,
-          idempotencyKey: `change-request-review:${item.id}:${reviewed!.status}`,
-        });
+        await notifyChangeReviewed(reviewed!);
         results.push({ id, success: true, status: reviewed!.status });
       } catch (error) {
-        results.push({ id, success: false, message: error instanceof Error ? error.message : "Review failed" });
+        results.push({
+          id,
+          success: false,
+          message: error instanceof Error ? error.message : "Review failed",
+        });
       }
     }
     const succeeded = results.filter((item) => item.success).length;

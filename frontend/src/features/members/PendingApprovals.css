@@ -294,15 +294,7 @@
   color: oklch(0.6 0.02 273);
   font-size: var(--text-sm);
 }
-.approvals-table-shell td:last-child button {
-  height: 29px;
-  border: 1px solid oklch(0.86 0.012 273);
-  border-radius: var(--radius-lg);
-  background: oklch(0.99 0.004 273);
-  color: oklch(0.42 0.06 275);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
+
 .approval-signals {
   display: flex;
   flex-wrap: wrap;

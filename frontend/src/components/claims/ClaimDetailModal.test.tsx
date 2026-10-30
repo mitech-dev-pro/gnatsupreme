@@ -59,7 +59,7 @@ it("shows saved details and documents immediately through the member endpoint wi
   expect(api.get).toHaveBeenCalledWith("/member-portal/claims/1", expect.anything());
 });
 
-it("keeps local details and the last assessment visible when Mankrado is unavailable", async () => {
+it("keeps local details and the last assessment visible when Claims Portal is unavailable", async () => {
   vi.mocked(api.get).mockImplementation(async (url) => {
     if (url === "/member-portal/claims/1")
       return {

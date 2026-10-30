@@ -1,3 +1,5 @@
+import { isMinor } from "../../lib/age.js";
+import { AppError } from "../../middleware/error-handler.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 import { prisma } from "../../lib/prisma.js";
@@ -166,16 +168,19 @@ export async function stageMemberImport(
   filePath: string,
   mimeType: string,
   user: AuthenticatedUser,
+  startedAt?: Date,
 ) {
   const job = await prisma.importJob.findUniqueOrThrow({
     where: { id: jobId },
     select: { defaultEmploymentCategory: true, defaultRegionId: true },
   });
   const sourceRows = await spreadsheetRows(filePath, mimeType, job.defaultEmploymentCategory);
-  await prisma.importJob.update({
-    where: { id: jobId },
+  const active = await prisma.importJob.updateMany({
+    where: { id: jobId, ...(startedAt ? { status: "PROCESSING" as const, startedAt } : {}) },
     data: { totalRows: sourceRows.length, processedRows: 0 },
   });
+  if (!active.count)
+    throw new AppError(409, "A newer import attempt has replaced this validation.");
   const districts = await prisma.district.findMany({
     include: { region: { select: { name: true } } },
   });
@@ -256,8 +261,12 @@ export async function stageMemberImport(
   // (real duplicate identity), but matching an existing SPOUSE row elsewhere no longer does (the
   // policy-legitimate "spouse is independently a member" case gets linked at commit time
   // instead, not flagged here). Symmetrically for a row's spouse card.
-  const usedMemberCards = new Set(existingCards.map((record) => record.ghanaCardId).filter(Boolean));
-  const usedSpouseCards = new Set(existingSpouseCards.map((record) => record.ghanaCardId).filter(Boolean));
+  const usedMemberCards = new Set(
+    existingCards.map((record) => record.ghanaCardId).filter(Boolean),
+  );
+  const usedSpouseCards = new Set(
+    existingSpouseCards.map((record) => record.ghanaCardId).filter(Boolean),
+  );
   const reportIds = new Set(reportRows.map((row) => row.controllerId).filter(Boolean));
   const seenIds = new Set<string>();
   // Also split, for the same reason -- otherwise one row's member card matching another row's
@@ -278,9 +287,7 @@ export async function stageMemberImport(
       // Fallback only -- a file with a Fullname column matches that first, unchanged.
       const fullName =
         readField(data, aliases.fullName) ??
-        (surname && firstname
-          ? [firstname, otherNames, surname].filter(Boolean).join(" ")
-          : null);
+        (surname && firstname ? [firstname, otherNames, surname].filter(Boolean).join(" ") : null);
       const districtName = readField(data, aliases.district);
       const regionName = readField(data, aliases.region);
       const ghanaCardId = readField(data, aliases.ghanaCardId)?.toUpperCase() ?? null;
@@ -313,11 +320,13 @@ export async function stageMemberImport(
       const relationship = parseRelationship(relationshipValue);
       const spouseName = readField(data, aliases.spouseName);
       const spouseGhanaCardId = readField(data, aliases.spouseGhanaCardId)?.toUpperCase() ?? null;
-      parseDate(
+      const beneficiaryBirthDate = parseDate(
         readField(data, aliases.beneficiaryDateOfBirth),
         "Beneficiary date of birth",
         issues,
       );
+      if (!isNonTeaching && isMinor(beneficiaryBirthDate) && !readField(data, aliases.trusteeName))
+        issues.push("Trustee name is required for a beneficiary under 18");
       if (!controllerId || !/^[A-Z0-9]{4,20}$/.test(controllerId))
         issues.push("Controller ID must be 4 to 20 letters/digits");
       if (!fullName || fullName.length < 2) issues.push("Full name is required");
@@ -416,10 +425,9 @@ export async function stageMemberImport(
     },
   );
   await prisma.$transaction(
-    [
-      prisma.memberBulkImportRow.createMany({ data: rows }),
-      prisma.importJob.update({
-        where: { id: jobId },
+    async (transaction) => {
+      const reserved = await transaction.importJob.updateMany({
+        where: { id: jobId, ...(startedAt ? { status: "PROCESSING" as const, startedAt } : {}) },
         data: {
           status: "COMPLETED",
           totalRows: rows.length,
@@ -429,11 +437,13 @@ export async function stageMemberImport(
           duplicateRows: counts.DUPLICATE,
           unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE,
           completedAt: new Date(),
+          errorMessage: null,
         },
-      }),
-    ],
-    // Default 5s timeout is far too short for inserting up to MAX_ROWS rows; this now runs off the
-    // HTTP request path (see member-import.routes.ts), so there's no user-facing timeout pressure.
+      });
+      if (!reserved.count)
+        throw new AppError(409, "A newer import attempt has replaced this validation.");
+      await transaction.memberBulkImportRow.createMany({ data: rows });
+    },
     { timeout: 600_000 },
   );
 }
@@ -450,4 +460,60 @@ export function bulkRawFields(raw: Prisma.JsonValue) {
     gender: parseGender(readField(data, aliases.gender)),
     placeOfWork: readField(data, aliases.placeOfWork),
   };
+}
+
+// Canonical columns preserve editable source values, including zero-prefixed IDs and phones.
+export const RECOVERY_HEADERS = [
+  "Controller ID",
+  "Full Name",
+  "Gender",
+  "Ghana Card ID",
+  "Phone",
+  "School",
+  "District",
+  "Region",
+  "Place of Work",
+  "Spouse Name",
+  "Spouse Ghana Card ID",
+  "Beneficiary Name",
+  "Beneficiary Relationship",
+  "Beneficiary Date of Birth",
+  "Trustee Name",
+  "Employment Category",
+  "Original Row",
+  "Import Status",
+  "Issues",
+  "Next Step",
+];
+export function recoveryValues(
+  raw: Prisma.JsonValue,
+  category: string | null,
+  region: string | null,
+) {
+  const data = raw as Record<string, string>;
+  return [
+    readField(data, aliases.controllerId),
+    readField(data, aliases.fullName) ??
+      [
+        readField(data, aliases.firstname),
+        readField(data, aliases.otherNames),
+        readField(data, aliases.surname),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    readField(data, aliases.gender),
+    readField(data, aliases.ghanaCardId),
+    readField(data, aliases.phone),
+    readField(data, aliases.school),
+    readField(data, aliases.district),
+    readField(data, aliases.region) ?? region,
+    readField(data, aliases.placeOfWork),
+    readField(data, aliases.spouseName),
+    readField(data, aliases.spouseGhanaCardId),
+    readField(data, aliases.beneficiaryName),
+    readField(data, aliases.beneficiaryRelationship),
+    readField(data, aliases.beneficiaryDateOfBirth),
+    readField(data, aliases.trusteeName),
+    category,
+  ].map((value) => value ?? "");
 }

@@ -291,6 +291,7 @@ model User {
   requestedTransfers          MemberTransfer[]              @relation("TransferRequestedBy")
   reviewedTransfers           MemberTransfer[]              @relation("TransferReviewedBy")
   claimSubmissions            ExternalClaimSubmission[]
+  claimDrafts                 ClaimDraft[]
   reviewedClaimSubmissions    ExternalClaimSubmission[]     @relation("ClaimReviewedBy")
   importJobs                  ImportJob[]
   benefitPlans                BenefitPlanVersion[]
@@ -354,6 +355,8 @@ model Member {
   transfers                    MemberTransfer[]
   claimSubmissions             ExternalClaimSubmission[]
   claimSubmissionsFiled        ExternalClaimSubmission[]  @relation("ClaimSubmittedByMember")
+  claimDrafts                  ClaimDraft[]               @relation("DraftPolicyMember")
+  preparedClaimDrafts          ClaimDraft[]               @relation("DraftPreparedByMember")
   importRows                   Report20Row[]
   bulkImportRows               MemberBulkImportRow[]
   workflowEvents               MemberWorkflowEvent[]
@@ -384,12 +387,12 @@ model Member {
 }
 
 model Spouse {
-  id          Int          @id @default(autoincrement())
-  memberId    Int          @unique @map("member_id")
-  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  fullName    String       @map("full_name")
-  dateOfBirth DateTime?    @map("date_of_birth") @db.Date
-  ghanaCardId String?      @unique @map("ghana_card_id")
+  id             Int          @id @default(autoincrement())
+  memberId       Int          @unique @map("member_id")
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  fullName       String       @map("full_name")
+  dateOfBirth    DateTime?    @map("date_of_birth") @db.Date
+  ghanaCardId    String?      @unique @map("ghana_card_id")
   // Set when this spouse's Ghana Card ID matches an independently-enrolled Member -- i.e. this
   // person is themselves a GNAT member, not just a dependent. Drives activeBenefit() paying the
   // full member rate instead of the spousal rate for a SPOUSE claim. Reconciled by
@@ -397,11 +400,11 @@ model Spouse {
   // onDelete: SetNull, not Cascade or Restrict: this is an informational cross-reference, not an
   // ownership relation, so deleting the linked Member must never cascade-delete or block deleting
   // this Spouse row.
-  linkedMemberId Int?      @map("linked_member_id")
-  linkedMember   Member?   @relation("SpouseLinkedMember", fields: [linkedMemberId], references: [id], onDelete: SetNull)
-  files       StoredFile[]
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  linkedMemberId Int?         @map("linked_member_id")
+  linkedMember   Member?      @relation("SpouseLinkedMember", fields: [linkedMemberId], references: [id], onDelete: SetNull)
+  files          StoredFile[]
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   @@index([linkedMemberId])
   @@map("spouses")
@@ -853,6 +856,7 @@ enum ClaimDeliveryState {
 }
 
 model ExternalClaimSubmission {
+  consumedDraft       ClaimDraft?
   id                  Int                   @id @default(autoincrement())
   memberId            Int                   @map("member_id")
   member              Member                @relation(fields: [memberId], references: [id], onDelete: Restrict)
@@ -914,4 +918,28 @@ model ExternalClaimSubmission {
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([memberId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("external_claim_submissions")
+}
+
+model ClaimDraft {
+  id                 Int                      @id @default(autoincrement())
+  memberId           Int                      @map("member_id")
+  member             Member                   @relation("DraftPolicyMember", fields: [memberId], references: [id], onDelete: Cascade)
+  preparedById       Int?                     @map("prepared_by_id")
+  preparedBy         User?                    @relation(fields: [preparedById], references: [id], onDelete: Cascade)
+  preparedByMemberId Int?                     @map("prepared_by_member_id")
+  preparedByMember   Member?                  @relation("DraftPreparedByMember", fields: [preparedByMemberId], references: [id], onDelete: Cascade)
+  submissionKey      String                   @unique @default(uuid()) @map("submission_key")
+  payload            Json
+  documentIds        Int[]                    @default([]) @map("document_ids")
+  revision           Int                      @default(1)
+  submittedClaimId   Int?                     @unique @map("submitted_claim_id")
+  submittedClaim     ExternalClaimSubmission? @relation(fields: [submittedClaimId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([preparedById, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([preparedByMemberId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([memberId])
+  @@index([documentIds], type: Gin)
+  @@map("claim_drafts")
 }

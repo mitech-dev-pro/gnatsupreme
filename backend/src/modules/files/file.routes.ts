@@ -246,23 +246,6 @@ fileRouter.get("/:storedName", async (request, response) => {
     response.status(404).json({ success: false, message: "File not found" });
     return;
   }
-  if (file.category === "CLAIM_DOCUMENT") {
-    const attached = await prisma.externalClaimSubmission.findFirst({
-      where: {
-        documentIds: { has: file.id },
-        NOT: { status: "RETURNED", deliveryState: "NOT_SENT" },
-      },
-      select: { id: true },
-    });
-    if (attached) {
-      response.status(409).json({
-        success: false,
-        message:
-          "Documents on a filed claim cannot be deleted. Request a return for correction first.",
-      });
-      return;
-    }
-  }
   const filePath = absoluteStoragePath(file.storagePath);
   if (!filePath) {
     response.status(500).json({ success: false, message: "Stored file path is invalid" });
@@ -315,6 +298,39 @@ fileRouter.delete("/:id", async (request, response) => {
     return;
   }
 
+  if (file.category === "CLAIM_DOCUMENT") {
+    const attached = await prisma.externalClaimSubmission.findFirst({
+      where: {
+        documentIds: { has: file.id },
+        NOT: { status: "RETURNED", deliveryState: "NOT_SENT" },
+      },
+      select: { id: true },
+    });
+    if (attached) {
+      response.status(409).json({
+        success: false,
+        message:
+          "Documents on a filed claim cannot be deleted. Request a return for correction first.",
+      });
+      return;
+    }
+  }
+  if (
+    file.category === "CLAIM_DOCUMENT" &&
+    (await prisma.claimDraft.findFirst({
+      where: { documentIds: { has: file.id }, submittedClaimId: null },
+      select: { id: true },
+    }))
+  ) {
+    response
+      .status(409)
+      .json({
+        success: false,
+        message:
+          "This attachment belongs to a saved draft. Remove it from the saved draft before deleting it.",
+      });
+    return;
+  }
   const filePath = absoluteStoragePath(file.storagePath);
   if (filePath) await removeUploadedFile(filePath);
   await prisma.storedFile.delete({ where: { id: file.id } });

@@ -1,4 +1,5 @@
 import Button from "@/components/ui/Button";
+import Dialog from "@/components/ui/Dialog";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
@@ -9,7 +10,7 @@ import TableFrame from "@/components/ui/TableFrame";
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
 import { useDistricts } from "@/lib/useDistricts";
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ROLES,
   ROLE_LABELS,
@@ -49,6 +50,22 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [newPassword, setNewPassword] = useState("");
   const [success, setSuccess] = useState("");
 
+  const [actionError, setActionError] = useState("");
+  const [discarding, setDiscarding] = useState(false);
+  const initialForm = useRef("");
+  const actionLock = useRef(false);
+  const closeForm = (discard = false) => {
+    if (formBusy) return;
+    if (JSON.stringify(form) !== initialForm.current && !discard) {
+      setDiscarding(true);
+      return;
+    }
+    setShowCreate(false);
+    setEditingId(null);
+    setDiscarding(false);
+    setFormError("");
+    resetForm();
+  };
   const availableRoles = isSuperAdmin ? ROLES : ROLES.filter((r) => r !== "SUPER_ADMIN");
 
   const load = useCallback(
@@ -65,6 +82,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             role: roleFilter || undefined,
           },
         });
+        if (signal?.aborted) return;
         setRows(res.data.data);
         setTotal(res.data.pagination.total);
         setTotalPages(Math.max(1, res.data.pagination.totalPages));
@@ -104,11 +122,22 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       districtId: row.districtId ? String(row.districtId) : "",
       password: "",
     });
+    initialForm.current = JSON.stringify({
+      fullName: row.fullName,
+      email: row.email,
+      role: row.role,
+      regionId: row.regionId ? String(row.regionId) : "",
+      districtId: row.districtId ? String(row.districtId) : "",
+      password: "",
+    });
+    setDiscarding(false);
     setFormError("");
   };
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault();
+    if (actionLock.current) return;
+    actionLock.current = true;
     setFormBusy(true);
     setFormError("");
     try {
@@ -137,11 +166,14 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           "Unable to create this account.",
       );
     } finally {
+      actionLock.current = false;
       setFormBusy(false);
     }
   };
 
   const submitEdit = async (id: number) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setFormBusy(true);
     setFormError("");
     try {
@@ -169,37 +201,44 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           "Unable to update this account.",
       );
     } finally {
+      actionLock.current = false;
       setFormBusy(false);
     }
   };
 
   const toggleActive = async (row: StaffUser) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusyId(row.id);
-    setError("");
+    setActionError("");
     try {
       await api.patch(`/users/${row.id}/status`, { isActive: !row.isActive });
       setStatusTarget(null);
       setSuccess(`${row.fullName} was ${row.isActive ? "deactivated" : "activated"}.`);
       await load();
     } catch (err: unknown) {
-      setError(getApiError(err)?.message || "Unable to update this account's status.");
+      setActionError(getApiError(err)?.message || "Unable to update this account's status.");
     } finally {
+      actionLock.current = false;
       setBusyId(null);
     }
   };
 
   const resetPassword = async (row: StaffUser) => {
     if (!newPassword) return;
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusyId(row.id);
-    setError("");
+    setActionError("");
     try {
       await api.patch(`/users/${row.id}/password`, { password: newPassword });
       setPasswordTarget(null);
       setNewPassword("");
       setSuccess(`Password updated for ${row.fullName}. Existing sessions were revoked.`);
     } catch (err: unknown) {
-      setError(getApiError(err)?.message || "Unable to reset this account's password.");
+      setActionError(getApiError(err)?.message || "Unable to reset this account's password.");
     } finally {
+      actionLock.current = false;
       setBusyId(null);
     }
   };
@@ -207,8 +246,11 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const roleFields = (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div>
-        <label className={labelClasses}>Full Name</label>
+        <label htmlFor="staff-name" className={labelClasses}>
+          Full Name
+        </label>
         <input
+          id="staff-name"
           value={form.fullName}
           onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
           className={inputClasses}
@@ -216,8 +258,11 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         />
       </div>
       <div>
-        <label className={labelClasses}>Email</label>
+        <label htmlFor="staff-email" className={labelClasses}>
+          Email
+        </label>
         <input
+          id="staff-email"
           type="email"
           value={form.email}
           onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
@@ -226,8 +271,12 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         />
       </div>
       <div>
-        <label className={labelClasses}>Role</label>
+        <label htmlFor="staff-role" className={labelClasses}>
+          Role
+        </label>
         <Dropdown
+          id="staff-role"
+          aria-label="Role"
           value={form.role}
           onChange={(value) =>
             setForm((f) => ({ ...f, role: value, regionId: "", districtId: "" }))
@@ -237,8 +286,12 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       </div>
       {form.role === "REGIONAL_ADMIN" && (
         <div>
-          <label className={labelClasses}>Region</label>
+          <label htmlFor="staff-region" className={labelClasses}>
+            Region
+          </label>
           <Dropdown
+            id="staff-region"
+            aria-label="Region"
             value={form.regionId}
             onChange={(value) => setForm((f) => ({ ...f, regionId: value }))}
             placeholder="Select region"
@@ -248,8 +301,12 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       )}
       {form.role === "DISTRICT_ADMIN" && (
         <div>
-          <label className={labelClasses}>District</label>
+          <label htmlFor="staff-district" className={labelClasses}>
+            District
+          </label>
           <Dropdown
+            id="staff-district"
+            aria-label="District"
             value={form.districtId}
             onChange={(value) => setForm((f) => ({ ...f, districtId: value }))}
             placeholder="Select district"
@@ -290,15 +347,24 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           />
         </div>
         <Button
-          variant={showCreate ? "secondary" : "primary"}
+          variant="primary"
           onClick={() => {
-            setShowCreate((v) => !v);
+            setShowCreate(true);
+            setDiscarding(false);
+            initialForm.current = JSON.stringify({
+              fullName: "",
+              email: "",
+              role: "DISTRICT_ADMIN",
+              regionId: "",
+              districtId: "",
+              password: "",
+            });
             setEditingId(null);
             resetForm();
             setFormError("");
           }}
         >
-          {showCreate ? "Close" : "Add Staff Account"}
+          Add Staff Account
         </Button>
       </div>
 
@@ -306,78 +372,152 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       {success && <Alert tone="success">{success}</Alert>}
 
       {statusTarget && (
-        <ConfirmationPanel
-          title={`${statusTarget.isActive ? "Deactivate" : "Activate"} ${statusTarget.fullName}?`}
-          description={
-            statusTarget.isActive
-              ? "This person will immediately lose access. Existing sessions may no longer be usable."
-              : "This person will regain access according to their assigned role and scope."
-          }
-          confirmLabel={statusTarget.isActive ? "Deactivate account" : "Activate account"}
-          busyLabel="Updating…"
-          busy={busyId === statusTarget.id}
-          onConfirm={() => void toggleActive(statusTarget)}
-          onCancel={() => setStatusTarget(null)}
-        />
+        <Dialog
+          title={statusTarget.isActive ? "Deactivate staff account" : "Activate staff account"}
+          description={statusTarget.email}
+          busy={busyId !== null}
+          onClose={() => setStatusTarget(null)}
+        >
+          {actionError && <Alert tone="error">{actionError}</Alert>}
+          <ConfirmationPanel
+            title={statusTarget.fullName}
+            description={
+              statusTarget.isActive
+                ? "This person will immediately lose access. Existing sessions may no longer be usable."
+                : "This person will regain access according to their assigned role and scope."
+            }
+            confirmVariant={statusTarget.isActive ? "danger" : "primary"}
+            confirmLabel={statusTarget.isActive ? "Deactivate account" : "Activate account"}
+            busyLabel="Updating…"
+            busy={busyId !== null}
+            onConfirm={() => void toggleActive(statusTarget)}
+            onCancel={() => setStatusTarget(null)}
+          />
+        </Dialog>
       )}
-
       {passwordTarget && (
-        <ConfirmationPanel
-          title={`Set a new password for ${passwordTarget.fullName}`}
-          description="Saving the new password will revoke this user's existing sessions. Share the password through an approved secure channel."
-          confirmLabel="Update password"
-          busyLabel="Updating…"
-          busy={busyId === passwordTarget.id}
-          onConfirm={() => void resetPassword(passwordTarget)}
-          onCancel={() => {
+        <Dialog
+          title="Reset staff password"
+          description={passwordTarget.fullName + " · " + passwordTarget.email}
+          busy={busyId !== null}
+          onClose={() => {
             setPasswordTarget(null);
             setNewPassword("");
           }}
         >
-          <div className="mt-4 max-w-96">
-            <InputField
-              label="New temporary password"
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              hint="At least 12 characters with mixed case, a number, and a symbol."
-              autoComplete="new-password"
-            />
-          </div>
-        </ConfirmationPanel>
-      )}
-
-      {showCreate && (
-        <form
-          onSubmit={submitCreate}
-          className="rounded-xl border border-border-default bg-white p-5"
-        >
-          <h2 className="mb-4 text-lg font-bold text-text-strong">New staff account</h2>
-          {roleFields}
-          <div className="mt-4 max-w-80">
-            <label className={labelClasses}>Temporary Password</label>
-            <input
-              type="text"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              placeholder="At least 12 characters, mixed case, number, symbol"
-              className={inputClasses}
-              required
-            />
-          </div>
-          {formError && (
-            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
-              {formError}
-            </div>
-          )}
-          <button
-            type="submit"
-            disabled={formBusy}
-            className="mt-4 rounded-lg bg-action-primary px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          <p className="mb-4 text-sm text-text-muted">
+            Saving the new password will revoke this user's existing sessions. Share the password
+            through an approved secure channel.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void resetPassword(passwordTarget);
+            }}
           >
-            {formBusy ? "Creating…" : "Create account"}
-          </button>
-        </form>
+            <fieldset disabled={busyId !== null} className="min-w-0 space-y-4">
+              <InputField
+                label="New temporary password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+                minLength={12}
+                hint="At least 12 characters with mixed case, a number, and a symbol."
+                autoComplete="new-password"
+              />
+              {actionError && <Alert tone="error">{actionError}</Alert>}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  disabled={!newPassword}
+                  loading={busyId !== null}
+                  loadingLabel="Updating…"
+                >
+                  Update password
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setPasswordTarget(null);
+                    setNewPassword("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </fieldset>
+          </form>
+        </Dialog>
+      )}
+      {(showCreate || editingId !== null) && (
+        <Dialog
+          title={showCreate ? "Add staff account" : "Edit staff account"}
+          description={
+            showCreate
+              ? "Set account details, access role and geographical scope."
+              : rows.find((row) => row.id === editingId)?.email
+          }
+          busy={formBusy}
+          onClose={() => closeForm()}
+        >
+          {discarding ? (
+            <div className="space-y-4">
+              <p className="text-sm text-text-muted">Discard your unsaved changes?</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="danger" onClick={() => closeForm(true)}>
+                  Discard changes
+                </Button>
+                <Button variant="secondary" onClick={() => setDiscarding(false)}>
+                  Keep editing
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form
+              onSubmit={(event) => {
+                if (showCreate) void submitCreate(event);
+                else {
+                  event.preventDefault();
+                  void submitEdit(editingId!);
+                }
+              }}
+            >
+              <fieldset disabled={formBusy} className="min-w-0 space-y-4">
+                {roleFields}
+                {showCreate && (
+                  <InputField
+                    label="Temporary password"
+                    type="password"
+                    value={form.password}
+                    onChange={(event) => setForm((f) => ({ ...f, password: event.target.value }))}
+                    required
+                    minLength={12}
+                    autoComplete="new-password"
+                    hint="At least 12 characters with mixed case, a number, and a symbol."
+                  />
+                )}
+                {formError && <Alert tone="error">{formError}</Alert>}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="submit"
+                    disabled={
+                      (form.role === "DISTRICT_ADMIN" && !form.districtId) ||
+                      (form.role === "REGIONAL_ADMIN" && !form.regionId)
+                    }
+                    loading={formBusy}
+                    loadingLabel={showCreate ? "Creating…" : "Saving…"}
+                  >
+                    {showCreate ? "Create account" : "Save changes"}
+                  </Button>
+                  <Button variant="secondary" onClick={() => closeForm()}>
+                    Cancel
+                  </Button>
+                </div>
+              </fieldset>
+            </form>
+          )}
+        </Dialog>
       )}
 
       <TableFrame label="Staff accounts" className="min-w-205">
@@ -405,86 +545,57 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </tr>
           ) : (
             rows.map((row) => (
-              <Fragment key={row.id}>
-                <tr className="border-b border-border-default last:border-0">
-                  <td className="px-4 py-2.5 font-semibold text-ink">{row.fullName}</td>
-                  <td className="px-4 py-2.5 text-text-muted">{row.email}</td>
-                  <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
-                  <td className="px-4 py-2.5 text-text-muted">
-                    {row.district?.name ?? row.region?.name ?? "National"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusBadge tone={row.isActive ? "success" : "danger"}>
-                      {row.isActive ? "Active" : "Inactive"}
-                    </StatusBadge>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(row)}
-                        className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPasswordTarget(row);
-                          setStatusTarget(null);
-                          setNewPassword("");
-                          setSuccess("");
-                        }}
-                        disabled={busyId === row.id}
-                        className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong disabled:opacity-60"
-                      >
-                        Reset password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStatusTarget(row);
-                          setPasswordTarget(null);
-                          setSuccess("");
-                        }}
-                        disabled={busyId === row.id}
-                        className={`rounded-lg border px-2.5 py-1 text-xs font-semibold disabled:opacity-60 ${row.isActive ? "border-danger text-danger" : "border-success text-success"}`}
-                      >
-                        {row.isActive ? "Deactivate" : "Activate"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {editingId === row.id && (
-                  <tr className="border-b border-border-default bg-surface-hover">
-                    <td colSpan={6} className="px-4 py-4">
-                      {roleFields}
-                      {formError && (
-                        <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
-                          {formError}
-                        </div>
-                      )}
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void submitEdit(row.id)}
-                          disabled={formBusy}
-                          className="rounded-lg bg-action-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
-                        >
-                          {formBusy ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(null)}
-                          className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-strong"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
+              <tr key={row.id} className="border-b border-border-default last:border-0">
+                <td className="px-4 py-2.5 font-semibold text-ink">{row.fullName}</td>
+                <td className="px-4 py-2.5 text-text-muted">{row.email}</td>
+                <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
+                <td className="px-4 py-2.5 text-text-muted">
+                  {row.district?.name ?? row.region?.name ?? "National"}
+                </td>
+                <td className="px-4 py-2.5">
+                  <StatusBadge tone={row.isActive ? "success" : "danger"}>
+                    {row.isActive ? "Active" : "Inactive"}
+                  </StatusBadge>
+                </td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(row)}
+                      className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionError("");
+                        setPasswordTarget(row);
+                        setStatusTarget(null);
+                        setNewPassword("");
+                        setSuccess("");
+                      }}
+                      disabled={busyId === row.id}
+                      className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong disabled:opacity-60"
+                    >
+                      Reset password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionError("");
+                        setStatusTarget(row);
+                        setPasswordTarget(null);
+                        setSuccess("");
+                      }}
+                      disabled={busyId === row.id}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold disabled:opacity-60 ${row.isActive ? "border-danger text-danger" : "border-success text-success"}`}
+                    >
+                      {row.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                  </div>
+                </td>
+              </tr>
             ))
           )}
         </tbody>

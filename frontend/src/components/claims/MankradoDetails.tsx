@@ -82,12 +82,12 @@ export default function MankradoDetails({
   const fields = details
     ? [
         ["Claim number", details.claimNumber],
-        ["Name on Mankrado", details.name || "Not provided"],
+        ["Name on Claims Portal", details.name || "Not provided"],
         ["Claim date", date],
         [
-          "Amount payable — reported by Mankrado",
+          "Amount payable — reported by Claims Portal",
           details.amountPayable == null
-            ? "Not provided by Mankrado"
+            ? "Not provided by Claims Portal"
             : formatCurrency(details.amountPayable),
         ],
         ["Rejection reason", details.rejectReason?.trim() || "None reported"],
@@ -101,7 +101,7 @@ export default function MankradoDetails({
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 id="mankrado-details-title" className="text-lg font-bold text-text-strong">
-          Mankrado assessment
+          Claims Portal assessment
         </h2>
         {externalId && (
           <Button
@@ -116,7 +116,7 @@ export default function MankradoDetails({
       </div>
       {!externalId && (
         <p className="text-sm text-text-muted">
-          Assessment information becomes available after Mankrado confirms receipt.
+          Assessment information becomes available after Claims Portal confirms receipt.
         </p>
       )}
       {checkedAt && (
@@ -129,18 +129,18 @@ export default function MankradoDetails({
         <Alert tone="warning">
           {details
             ? "Could not refresh; showing the last saved assessment."
-            : "Mankrado assessment is unavailable. Your submitted information remains available."}
+            : "Claims Portal assessment is unavailable. Your submitted information remains available."}
         </Alert>
       )}
       {busy && (
         <p role="status" className="text-sm text-text-muted">
-          Loading Mankrado details…
+          Loading Claims Portal details…
         </p>
       )}
       {details && (
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <dt className="text-xs font-semibold text-text-muted">Mankrado status</dt>
+            <dt className="text-xs font-semibold text-text-muted">Claims Portal status</dt>
             <dd className="mt-1">
               <StatusBadge tone={claimStatusTone(details.status)}>{details.status}</StatusBadge>
             </dd>

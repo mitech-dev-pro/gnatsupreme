@@ -104,8 +104,8 @@ export const MANKRADO_DOCUMENT_SLOTS: Record<ClaimType, string[]> = {
 export const deliveryLabel = (state?: string) =>
   ({
     NOT_SENT: "Not sent",
-    SENDING: "Sending to Mankrado",
-    ACCEPTED: "Received by Mankrado",
+    SENDING: "Sending to Claims Portal",
+    ACCEPTED: "Received by Claims Portal",
     FAILED: "Delivery failed",
     UNKNOWN: "Delivery unconfirmed",
   })[state ?? ""] ?? "Not sent";

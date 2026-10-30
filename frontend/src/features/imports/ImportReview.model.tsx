@@ -17,6 +17,7 @@ export type ImportJob = {
 };
 export const STUCK_JOB_THRESHOLD_MS = 15 * 60 * 1_000;
 export type ImportRow = {
+  rawData?: Record<string, unknown> | null;
   id: number;
   rowNumber: number;
   controllerId: string | null;

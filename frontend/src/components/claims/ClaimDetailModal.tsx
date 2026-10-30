@@ -303,7 +303,9 @@ export default function ClaimDetailModal({
                   <Row label="Filed on" value={formatDate(detail.createdAt)} />
                   <Row
                     label="External lookup reference"
-                    value={detail.externalClaimId ?? "Available after Mankrado confirms receipt"}
+                    value={
+                      detail.externalClaimId ?? "Available after Claims Portal confirms receipt"
+                    }
                   />
                   <Row label="Policy holder" value={detail.member.fullName} />
                   <Row label="Staff ID" value={detail.member.controllerId} />
@@ -321,7 +323,7 @@ export default function ClaimDetailModal({
                   <Row label="Provider" value={detail.provider} />
                   <Row label="Delivery" value={deliveryText} />
                   <Row
-                    label="Sent to Mankrado on"
+                    label="Sent to Claims Portal on"
                     value={
                       detail.submittedAt ? formatDate(detail.submittedAt) : "Not yet confirmed"
                     }

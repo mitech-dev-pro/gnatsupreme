@@ -187,7 +187,9 @@ export default function NotificationBell() {
                         }}
                         className="block px-3.5 pb-2.5 text-xs font-bold text-action-primary hover:underline"
                       >
-                        View claim
+                        {item.actionUrl?.startsWith("/change-requests?")
+                          ? "View request"
+                          : "View claim"}
                       </Link>
                     )}
                   </div>

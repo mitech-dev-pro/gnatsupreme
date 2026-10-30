@@ -23,7 +23,7 @@ it("preserves successful history during a failed refresh and distinguishes an ou
   render(<MankradoHistory staffId="123456" />);
   await screen.findByText("MC-42");
   await userEvent.click(screen.getByRole("button", { name: "Refresh history" }));
-  await screen.findByText(/Mankrado history is unavailable/);
+  await screen.findByText(/Claims Portal history is unavailable/);
   expect(screen.getByText("MC-42")).toBeInTheDocument();
   expect(screen.queryByText(/No claims returned/)).not.toBeInTheDocument();
 });

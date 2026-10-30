@@ -29,14 +29,14 @@ export async function notifyClaimReview(input: ClaimReviewNotification) {
           }
         : accepted
           ? {
-              title: "Claim forwarded to Mankrado",
+              title: "Claim forwarded to Claims Portal",
               message:
-                "GNAT approved forwarding your claim and Mankrado confirmed receipt. Mankrado will assess the claim; this is not approval of payment.",
+                "GNAT approved forwarding your claim and Claims Portal confirmed receipt. Claims Portal will assess the claim; this is not approval of payment.",
             }
           : {
               title: "Claim approved for forwarding",
               message:
-                "GNAT approved forwarding your claim, but receipt by Mankrado is not yet confirmed. Staff will follow up on delivery. This is not approval of payment.",
+                "GNAT approved forwarding your claim, but receipt by Claims Portal is not yet confirmed. Staff will follow up on delivery. This is not approval of payment.",
             };
   try {
     await notifyMember({

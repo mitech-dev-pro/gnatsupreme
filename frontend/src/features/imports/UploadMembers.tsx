@@ -1,3 +1,5 @@
+import { importStage, recoveryImportId } from "./importStatus";
+import Pagination from "@/components/ui/Pagination";
 import Button from "@/components/ui/Button";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
@@ -8,7 +10,7 @@ import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 type ImportJob = {
@@ -32,9 +34,6 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const jobTone = (status: string): "success" | "danger" | "warning" =>
-  status === "COMPLETED" ? "success" : status === "FAILED" ? "danger" : "warning";
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",
@@ -49,7 +48,6 @@ const TEMPLATE_HEADERS = [
   "Controller ID",
   "Full Name",
   "Gender",
-  "Date of Birth",
   "Ghana Card ID",
   "Phone",
   "School",
@@ -57,7 +55,6 @@ const TEMPLATE_HEADERS = [
   "Region",
   "Place of Work",
   "Spouse Name",
-  "Spouse Date of Birth",
   "Spouse Ghana Card ID",
   "Beneficiary Name",
   "Beneficiary Relationship",
@@ -69,7 +66,6 @@ const TEMPLATE_EXAMPLE_ROW = [
   "1188204",
   "Ama Serwaa",
   "Female",
-  "1985-04-12",
   "GHA-123456789-0",
   "0244000000",
   "Tema International Basic",
@@ -77,12 +73,11 @@ const TEMPLATE_EXAMPLE_ROW = [
   "Greater Accra",
   "",
   "Kwame Owusu",
-  "1983-01-01",
   "GHA-987654321-2",
   "Kojo Owusu",
   "CHILD",
   "2010-06-15",
-  "",
+  "Kwame Owusu",
 ];
 
 function downloadTemplate() {
@@ -111,6 +106,8 @@ export default function UploadMembers() {
   );
   const [regionId, setRegionId] = useState("");
   const [error, setError] = useState("");
+  const [existingImportId, setExistingImportId] = useState<number | null>(null);
+  const uploadLock = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -127,35 +124,63 @@ export default function UploadMembers() {
     );
   }, [districts]);
 
+  const [historyPage, setHistoryPage] = useState(1),
+    [historyStatus, setHistoryStatus] = useState("");
+  const [historyTotal, setHistoryTotal] = useState(0),
+    [historyPages, setHistoryPages] = useState(1);
+  const historyAbort = useRef<AbortController | null>(null);
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get("/imports/members");
-        if (!cancelled) setJobs(res.data.data);
-      } catch (err: unknown) {
-        if (!cancelled) {
-          setJobsError(getApiError(err)?.message || "Unable to load past uploads.");
-        }
-      } finally {
-        if (!cancelled) setJobsLoading(false);
+  const loadJobs = useCallback(async () => {
+    historyAbort.current?.abort();
+    const controller = new AbortController();
+    historyAbort.current = controller;
+    setJobsLoading(true);
+    setJobsError("");
+    try {
+      const res = await api.get("/imports/members", {
+        signal: controller.signal,
+        params: { page: historyPage, limit: 10, status: historyStatus || undefined },
+      });
+      if (controller.signal.aborted) return;
+      const pages = Math.max(1, res.data.pagination?.totalPages ?? 1);
+      if (historyPage > pages) {
+        setHistoryPage(pages);
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      setJobs(res.data.data);
+      setHistoryTotal(res.data.pagination?.total ?? res.data.data.length);
+      setHistoryPages(pages);
+    } catch (err) {
+      if (!controller.signal.aborted)
+        setJobsError(
+          getApiError(err)?.message ||
+            "Unable to refresh import history. Loaded results remain available.",
+        );
+    } finally {
+      if (!controller.signal.aborted) setJobsLoading(false);
+    }
+  }, [historyPage, historyStatus]);
+  useEffect(() => {
+    setJobs([]);
+    void loadJobs();
+    return () => historyAbort.current?.abort();
+  }, [loadJobs]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (uploadLock.current) return;
     setError("");
+    setExistingImportId(null);
 
     if (!file) {
       setError("Choose a CSV or XLSX file to upload.");
+      return;
+    }
+    if (!/\.(csv|xlsx)$/i.test(file.name) || file.size === 0) {
+      setError("Choose a non-empty CSV or XLSX file.");
       return;
     }
     if (!employmentCategory) {
@@ -172,6 +197,7 @@ export default function UploadMembers() {
     formData.append("employmentCategory", employmentCategory);
     if (needsRegionPicker && regionId) formData.append("regionId", regionId);
 
+    uploadLock.current = true;
     setUploading(true);
     setUploadProgress(0);
     try {
@@ -184,8 +210,14 @@ export default function UploadMembers() {
       });
       navigate(`/members/upload/${res.data.data.id}`, { replace: true });
     } catch (err: unknown) {
-      setError(getApiError(err)?.message || "Unable to upload this file.");
+      setError(
+        getApiError(err)?.message ||
+          "Unable to confirm this upload. Refresh import history before uploading again.",
+      );
+      setExistingImportId(recoveryImportId(err));
+      void loadJobs();
     } finally {
+      uploadLock.current = false;
       setUploading(false);
       setUploadProgress(0);
     }
@@ -234,7 +266,14 @@ export default function UploadMembers() {
 
       {error && (
         <div className="mb-4">
-          <Alert tone="error">{error}</Alert>
+          <Alert tone="error">
+            {error}{" "}
+            {existingImportId && (
+              <Link to={`/members/upload/${existingImportId}`} className="ml-1 font-bold underline">
+                Open saved import #{existingImportId}
+              </Link>
+            )}
+          </Alert>
         </div>
       )}
 
@@ -249,6 +288,8 @@ export default function UploadMembers() {
           <div className="flex gap-2">
             <button
               type="button"
+              disabled={uploading}
+              aria-pressed={employmentCategory === "TEACHING"}
               onClick={() => setEmploymentCategory("TEACHING")}
               className={`min-h-10 flex-1 rounded-lg border px-3 text-sm font-semibold transition ${
                 employmentCategory === "TEACHING"
@@ -260,6 +301,8 @@ export default function UploadMembers() {
             </button>
             <button
               type="button"
+              disabled={uploading}
+              aria-pressed={employmentCategory === "NON_TEACHING"}
               onClick={() => setEmploymentCategory("NON_TEACHING")}
               className={`min-h-10 flex-1 rounded-lg border px-3 text-sm font-semibold transition ${
                 employmentCategory === "NON_TEACHING"
@@ -277,6 +320,7 @@ export default function UploadMembers() {
               </div>
               <Dropdown
                 className="w-full"
+                disabled={uploading}
                 value={regionId}
                 onChange={setRegionId}
                 placeholder="Select a region"
@@ -287,9 +331,11 @@ export default function UploadMembers() {
           )}
         </div>
 
-        <div
+        <button
+          type="button"
+          disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
-          className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-default px-6 py-10 text-center transition hover:border-action-primary"
+          className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-default px-6 py-10 text-center transition hover:border-action-primary"
         >
           <svg
             viewBox="0 0 24 24"
@@ -305,25 +351,36 @@ export default function UploadMembers() {
             {file ? file.name : "Click to choose a file"}
           </div>
           <div className="mt-1 text-xs text-text-muted">CSV or XLSX</div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="hidden"
-          />
-        </div>
+        </button>
+        <input
+          aria-label="Member import file"
+          disabled={uploading}
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setError("");
+            setExistingImportId(null);
+          }}
+          className="hidden"
+        />
 
         {uploading && (
           <div className="mt-5">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-info-soft">
               <div
-                className="h-full rounded-full bg-action-primary transition-[width] duration-200"
-                style={{ width: `${uploadProgress}%` }}
+                className="h-full origin-left rounded-full bg-action-primary transition-transform duration-200 motion-reduce:transition-none"
+                role="progressbar"
+                aria-label="File upload"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadProgress}
+                style={{ transform: `scaleX(${uploadProgress / 100})` }}
               />
             </div>
             <div className="mt-1.5 text-xs text-text-muted">
-              {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Validating rows…"}
+              {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Saving upload…"}
             </div>
           </div>
         )}
@@ -332,18 +389,42 @@ export default function UploadMembers() {
           type="submit"
           disabled={!file || !employmentCategory || (needsRegionPicker && !regionId)}
           loading={uploading}
-          loadingLabel={uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Validating…"}
+          loadingLabel={uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Saving upload…"}
           className="mt-5"
         >
-          {uploading
-            ? uploadProgress < 100
-              ? `Uploading… ${uploadProgress}%`
-              : "Validating…"
-            : "Upload & Validate"}
+          Upload & Validate
         </Button>
       </form>
 
-      <h2 className="mb-3 mt-8 text-lg font-bold text-text-strong">Recent Uploads</h2>
+      <div className="mb-3 mt-8 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-text-strong">Import history</h2>
+        <div className="flex flex-wrap gap-2">
+          <Dropdown
+            className="w-60"
+            aria-label="Filter import history"
+            value={historyStatus}
+            onChange={(value) => {
+              setHistoryStatus(value);
+              setHistoryPage(1);
+            }}
+            options={[
+              { value: "", label: "All imports" },
+              { value: "PENDING", label: "Queued" },
+              { value: "PROCESSING", label: "Processing" },
+              { value: "COMPLETED", label: "Validation / enrollment finished" },
+              { value: "FAILED", label: "Failed" },
+            ]}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={jobsLoading}
+            onClick={() => void loadJobs()}
+          >
+            Refresh history
+          </Button>
+        </div>
+      </div>
 
       {jobsError && (
         <div className="mb-4">
@@ -354,6 +435,7 @@ export default function UploadMembers() {
       <TableFrame label="Recent member uploads" className="min-w-205">
         <thead>
           <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <th className="px-4 py-2.5">No.</th>
             <th className="px-4 py-2.5">File</th>
             <th className="px-4 py-2.5">Uploaded By</th>
             <th className="px-4 py-2.5">Date</th>
@@ -365,11 +447,11 @@ export default function UploadMembers() {
           </tr>
         </thead>
         <tbody>
-          {jobsLoading ? (
-            <TableSkeleton columns={8} />
+          {jobsLoading && jobs.length === 0 ? (
+            <TableSkeleton columns={9} />
           ) : jobs.length === 0 ? (
             <tr>
-              <td colSpan={8}>
+              <td colSpan={9}>
                 {!jobsError && (
                   <EmptyState
                     title="No uploads yet"
@@ -379,11 +461,14 @@ export default function UploadMembers() {
               </td>
             </tr>
           ) : (
-            jobs.map((job) => (
+            jobs.map((job, index) => (
               <tr
                 key={job.id}
                 className="border-b border-border-default last:border-0 hover:bg-surface-hover"
               >
+                <td className="px-4 py-2.5 text-text-muted">
+                  {(historyPage - 1) * 10 + index + 1}
+                </td>
                 <td className="px-4 py-2.5">
                   <Link
                     to={`/members/upload/${job.id}`}
@@ -403,15 +488,20 @@ export default function UploadMembers() {
                 <td className="px-4 py-2.5 text-danger">{job.invalidRows + job.duplicateRows}</td>
                 <td className="px-4 py-2.5 text-ink">{job.importedRows}</td>
                 <td className="px-4 py-2.5">
-                  <StatusBadge tone={jobTone(job.status)}>
-                    {job.status.charAt(0) + job.status.slice(1).toLowerCase()}
-                  </StatusBadge>
+                  <StatusBadge tone={importStage(job).tone}>{importStage(job).label}</StatusBadge>
                 </td>
               </tr>
             ))
           )}
         </tbody>
       </TableFrame>
+      <Pagination
+        page={historyPage}
+        totalPages={historyPages}
+        totalItems={historyTotal}
+        itemLabel="imports"
+        onPageChange={setHistoryPage}
+      />
     </div>
   );
 }

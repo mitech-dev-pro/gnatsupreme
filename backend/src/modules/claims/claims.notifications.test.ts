@@ -47,7 +47,7 @@ for (const action of ["APPROVE", "RETURN", "REJECT"] as const) {
 test("approval with unconfirmed delivery does not say the claim was forwarded", async (t) => {
   stub(t, prisma.notification, "upsert", async (args: Prisma.NotificationUpsertArgs) => {
     assert.equal(args.create.title, "Claim approved for forwarding");
-    assert.match(args.create.message, /receipt by Mankrado is not yet confirmed/);
+    assert.match(args.create.message, /receipt by Claims Portal is not yet confirmed/);
     return {};
   });
   await notifyClaimReview({ ...review, action: "APPROVE", deliveryState: "UNKNOWN" });

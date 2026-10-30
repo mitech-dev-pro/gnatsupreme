@@ -3,7 +3,7 @@ import Dropdown from "@/components/ui/Dropdown";
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import {
   type Beneficiary,
   inputClasses,
@@ -21,6 +21,7 @@ export function BeneficiaryForm({
   onClose: () => void;
   onSubmitted: () => void;
 }) {
+  const formId = useId();
   const [fullName, setFullName] = useState(beneficiary?.fullName ?? "");
   const [relationship, setRelationship] = useState(beneficiary?.relationship ?? "CHILD");
   const [dateOfBirth, setDateOfBirth] = useState(toDateInput(beneficiary?.dateOfBirth ?? null));
@@ -39,6 +40,7 @@ export function BeneficiaryForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     if (minor && !trusteeName.trim()) {
       setError("A trustee name is required for a beneficiary under 18.");
       return;
@@ -57,7 +59,7 @@ export function BeneficiaryForm({
         },
         requestNote: note.trim() || undefined,
       });
-      onSubmitted();
+      await onSubmitted();
       onClose();
     } catch (err: unknown) {
       setError(getApiError(err)?.message || "Unable to submit this request.");
@@ -73,8 +75,11 @@ export function BeneficiaryForm({
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className={labelClasses}>Full Name</label>
+          <label htmlFor={`${formId}-field-1`} className={labelClasses}>
+            Full Name
+          </label>
           <input
+            id={`${formId}-field-1`}
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             className={inputClasses}
@@ -83,8 +88,12 @@ export function BeneficiaryForm({
           />
         </div>
         <div>
-          <label className={labelClasses}>Relationship</label>
+          <label htmlFor={`${formId}-field-2`} className={labelClasses}>
+            Relationship
+          </label>
           <Dropdown
+            id={`${formId}-field-2`}
+            aria-label="Relationship"
             value={relationship}
             onChange={setRelationship}
             options={relationshipOptions.map((r) => ({
@@ -108,8 +117,11 @@ export function BeneficiaryForm({
         </p>
       )}
       <div>
-        <label className={labelClasses}>Trustee Name {minor ? "" : "(optional)"}</label>
+        <label htmlFor={`${formId}-field-3`} className={labelClasses}>
+          Trustee Name {minor ? "" : "(optional)"}
+        </label>
         <input
+          id={`${formId}-field-3`}
           value={trusteeName}
           onChange={(e) => setTrusteeName(e.target.value)}
           className={inputClasses}
@@ -117,8 +129,11 @@ export function BeneficiaryForm({
         />
       </div>
       <div>
-        <label className={labelClasses}>Note (optional)</label>
+        <label htmlFor={`${formId}-field-4`} className={labelClasses}>
+          Note (optional)
+        </label>
         <textarea
+          id={`${formId}-field-4`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
@@ -127,7 +142,10 @@ export function BeneficiaryForm({
         />
       </div>
       {error && (
-        <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+        <div
+          role="alert"
+          className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+        >
           {error}
         </div>
       )}
@@ -142,6 +160,7 @@ export function BeneficiaryForm({
         <button
           type="button"
           onClick={onClose}
+          disabled={busy}
           className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-strong"
         >
           Cancel

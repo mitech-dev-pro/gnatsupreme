@@ -1,3 +1,4 @@
+import { createClaimDraftRouter, commitClaimDraft } from "./claims.drafts.js";
 import {
   activeBenefit,
   linkedClaimConflict,
@@ -66,6 +67,7 @@ const submissionSelect = {
 } as const;
 
 claimsRouter.use(authenticate);
+claimsRouter.use("/drafts", createClaimDraftRouter("staff"));
 
 claimsRouter.get("/provider", (_request, response) => {
   response.json({
@@ -244,7 +246,7 @@ claimsRouter.post("/submissions", async (request, response) => {
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)
-      .json({ success: false, message: "Mankrado submissions are not configured." });
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
     return;
   }
   try {
@@ -272,32 +274,34 @@ claimsRouter.post("/submissions", async (request, response) => {
           ),
         }
       : parsed.data.claimDetails;
-  const claim = await prisma.externalClaimSubmission.upsert({
-    where: { idempotencyKey },
-    update: {},
-    create: {
-      memberId: member.id,
-      submittedById: user.id,
-      source: "STAFF",
-      provider: "Claims System",
-      idempotencyKey,
-      status: "PENDING",
-      claimType: parsed.data.claimType,
-      claimantType: parsed.data.claimantType,
-      claimantName:
-        parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
-      claimantIdType: parsed.data.claimantIdType,
-      claimantIdNumber: parsed.data.claimantIdNumber,
-      claimantContact: parsed.data.claimantContact,
-      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
-      claimDetails,
-      estimatedAmount: estimate.amount ?? null,
-      paymentMethod: parsed.data.paymentMethod,
-      paymentDetails: parsed.data.paymentDetails,
-      documentIds: uniqueDocumentIds,
-      notes: parsed.data.notes || null,
-    },
-  });
+  const claim = await commitClaimDraft(parsed.data, { user }, member.id, (transaction, draftKey) =>
+    transaction.externalClaimSubmission.upsert({
+      where: { idempotencyKey: draftKey ?? idempotencyKey },
+      update: {},
+      create: {
+        memberId: member.id,
+        submittedById: user.id,
+        source: "STAFF",
+        provider: "Claims System",
+        idempotencyKey: draftKey ?? idempotencyKey,
+        status: "PENDING",
+        claimType: parsed.data.claimType,
+        claimantType: parsed.data.claimantType,
+        claimantName:
+          parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
+        claimantIdType: parsed.data.claimantIdType,
+        claimantIdNumber: parsed.data.claimantIdNumber,
+        claimantContact: parsed.data.claimantContact,
+        incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+        claimDetails,
+        estimatedAmount: estimate.amount ?? null,
+        paymentMethod: parsed.data.paymentMethod,
+        paymentDetails: parsed.data.paymentDetails,
+        documentIds: uniqueDocumentIds,
+        notes: parsed.data.notes || null,
+      },
+    }),
+  );
   if (claim.memberId !== member.id) {
     response
       .status(409)
@@ -311,7 +315,7 @@ claimsRouter.post("/submissions", async (request, response) => {
     action: "CLAIM_DELIVERY_RECORDED",
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
-    description: "Recorded Mankrado claim delivery outcome",
+    description: "Recorded Claims Portal claim delivery outcome",
     afterData: { deliveryState: delivered.deliveryState },
     regionId: member.district?.regionId,
     districtId: member.districtId,
@@ -361,14 +365,14 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
     if (record.provider !== "Claims System") {
       response.status(409).json({
         success: false,
-        message: "Historical simulated claims cannot be sent to Mankrado. File a new claim.",
+        message: "Historical simulated claims cannot be sent to Claims Portal. File a new claim.",
       });
       return;
     }
     if (!claimsProvider.isConfigured()) {
       response
         .status(503)
-        .json({ success: false, message: "Mankrado submissions are not configured." });
+        .json({ success: false, message: "Claims Portal submissions are not configured." });
       return;
     }
     try {
@@ -466,7 +470,7 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)
-      .json({ success: false, message: "Mankrado submissions are not configured." });
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
     return;
   }
   const wasRetry = claim.deliveryState !== "NOT_SENT";
@@ -475,7 +479,8 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     if (request.body?.historyChecked !== true) {
       response.status(409).json({
         success: false,
-        message: "Check Mankrado history and confirm there is no matching claim before retrying.",
+        message:
+          "Check Claims Portal history and confirm there is no matching claim before retrying.",
       });
       return;
     }
@@ -495,7 +500,8 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       });
       response.status(503).json({
         success: false,
-        message: "Mankrado history is unavailable. Retry is blocked until history can be checked.",
+        message:
+          "Claims Portal history is unavailable. Retry is blocked until history can be checked.",
       });
       return;
     }
@@ -652,7 +658,7 @@ claimsRouter.get("/history/:staffId", async (request, response) => {
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,
-      message: "Mankrado history is unavailable. Local claims remain saved.",
+      message: "Claims Portal history is unavailable. Local claims remain saved.",
     });
   }
 });
@@ -686,7 +692,7 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,
-      message: "Mankrado claim details are unavailable. Local details remain saved.",
+      message: "Claims Portal claim details are unavailable. Local details remain saved.",
     });
   }
 });

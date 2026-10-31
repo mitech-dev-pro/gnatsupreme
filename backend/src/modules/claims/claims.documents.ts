@@ -48,7 +48,7 @@ export async function loadClaimDocuments(
     const field = file.slotKey ? CLAIM_FILE_FIELDS[claimType]?.[file.slotKey] : undefined;
     if (!field)
       throw new ClaimDocumentError(
-        `${file.originalName}: this document category is not supported by Mankrado. Remove it or choose a supported document category.`,
+        `${file.originalName}: this document category is not supported by Claims Portal. Remove it or choose a supported document category.`,
       );
     if (fields.has(field))
       throw new ClaimDocumentError(

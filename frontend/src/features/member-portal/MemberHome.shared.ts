@@ -54,10 +54,13 @@ export type MemberNotification = {
   type: string;
   title: string;
   message: string;
+  actionUrl?: string | null;
   readAt: string | null;
   createdAt: string;
 };
 export type ClaimItem = {
+  externalStatus?: string | null;
+  lastSyncedAt?: string | null;
   deliveryState?: string;
   reviewedAt?: string | null;
   id: number;
@@ -99,6 +102,7 @@ export type ProfileCompletion = {
   }>;
 };
 export type ChangeRequest = {
+  updatedAt: string;
   id: number;
   type:
     "MEMBER_DETAILS" | "SPOUSE" | "BENEFICIARY_ADD" | "BENEFICIARY_UPDATE" | "BENEFICIARY_REMOVE";
@@ -136,7 +140,7 @@ export const REQUEST_FIELD_LABELS: Record<string, string> = {
   trusteeGhanaCardId: "Trustee Ghana Card ID",
 };
 export function requestValue(value: unknown) {
-  if (value === null || value === "") return "Not provided";
+  if (value === null || value === undefined || value === "") return "Not provided";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value).replaceAll("_", " ");
 }
@@ -162,5 +166,4 @@ export function formatDate(iso: string | null) {
 export function toDateInput(iso: string | null) {
   return iso ? iso.slice(0, 10) : "";
 }
-export type MemberPortalSection =
-  "profile" | "coverage" | "requests" | "claims" | "notifications" | "help";
+export type MemberPortalSection = "profile" | "coverage" | "requests" | "notifications" | "help";

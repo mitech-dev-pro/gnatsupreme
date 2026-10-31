@@ -61,7 +61,8 @@ export async function expireStaleDeliveries() {
     data: {
       deliveryState: "UNKNOWN",
       errorCode: "INTERRUPTED",
-      errorMessage: "Delivery was interrupted. Check Mankrado history before submitting again.",
+      errorMessage:
+        "Delivery was interrupted. Check Claims Portal history before submitting again.",
     },
   });
 }
@@ -69,17 +70,27 @@ export async function expireStaleDeliveries() {
 export async function deliverClaim(
   id: number,
   dependencies: ClaimDeliveryDependencies = defaultDependencies,
+  options: {
+    allowUnknown?: boolean;
+    expectedDeliveryState?: ExternalClaimSubmission["deliveryState"];
+  } = {},
 ) {
   const { db, provider, documents: readDocuments } = dependencies;
   if (!provider.isConfigured())
     throw new ClaimsProviderUnavailableError(
-      "Mankrado is unavailable. Configure the backend API key and enable API mode.",
+      "Claims Portal is unavailable. Configure the backend API key and enable API mode.",
     );
+  // Only the scoped send endpoint authorizes UNKNOWN after acknowledgment and a fresh
+  // history lookup. Submission-key replays must never silently retry uncertain delivery.
+  if (options.expectedDeliveryState === "UNKNOWN" && !options.allowUnknown)
+    return db.externalClaimSubmission.findUniqueOrThrow({ where: { id } });
   const claimed = await db.externalClaimSubmission.updateMany({
     where: {
       id,
       provider: "Claims System",
-      deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
+      deliveryState: options.expectedDeliveryState ?? {
+        in: options.allowUnknown ? ["NOT_SENT", "FAILED", "UNKNOWN"] : ["NOT_SENT", "FAILED"],
+      },
       status: "PENDING",
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },
@@ -158,7 +169,7 @@ export async function deliverClaim(
           error instanceof ClaimDocumentError || error instanceof ClaimsDeliveryError
             ? error.message
             : requestStarted
-              ? "Acceptance could not be saved. Check Mankrado history before submitting again."
+              ? "Acceptance could not be saved. Check Claims Portal history before submitting again."
               : "Claim preparation failed. Check the documents before submitting again.",
       },
     });

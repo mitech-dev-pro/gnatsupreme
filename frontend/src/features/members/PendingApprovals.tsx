@@ -1,3 +1,6 @@
+import Dialog from "@/components/ui/Dialog";
+import ActionMenu from "@/components/ui/ActionMenu";
+import ReviewDecisionDialog from "@/components/ui/ReviewDecisionDialog";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
@@ -5,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import "./PendingApprovals.css";
 
@@ -67,7 +70,8 @@ function Report20Signal({
 
 export default function PendingApprovals() {
   const [params, setParams] = useSearchParams();
-  const page = Math.max(1, Number(params.get("page")) || 1);
+  const rawPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const limit = [5, 10, 20].includes(Number(params.get("limit")))
     ? Number(params.get("limit"))
     : 10;
@@ -84,6 +88,9 @@ export default function PendingApprovals() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const request = useRef<AbortController | null>(null);
+  const actionLock = useRef(false);
+  const [actionError, setActionError] = useState("");
   const [approvalIds, setApprovalIds] = useState<number[]>([]);
 
   const updateParams = (values: Record<string, string | null>) => {
@@ -94,12 +101,29 @@ export default function PendingApprovals() {
     setParams(next);
   };
   const load = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setLoading(true);
     setError("");
     try {
       const response = await api.get("/members", {
+        signal: controller.signal,
         params: { status: "PENDING", page, limit, search: search || undefined },
       });
+      if (controller.signal.aborted) return;
+      const pages = Math.max(1, response.data.pagination.totalPages);
+      if (page > pages) {
+        setParams(
+          (previous) => {
+            const next = new URLSearchParams(previous);
+            next.set("page", String(pages));
+            return next;
+          },
+          { replace: true },
+        );
+        return;
+      }
       setRows(response.data.data);
       setTotal(response.data.pagination.total);
       setTotalPages(Math.max(1, response.data.pagination.totalPages));
@@ -110,15 +134,25 @@ export default function PendingApprovals() {
         (current) => response.data.data.find((item: Member) => item.id === current?.id) ?? null,
       );
     } catch {
-      setError("Pending members could not be loaded.");
+      if (!controller.signal.aborted) {
+        setRows([]);
+        setError("Pending members could not be loaded.");
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [limit, page, search]);
+  }, [limit, page, search, setParams]);
 
   useEffect(() => {
+    setApprovalIds([]);
+    setReturning(false);
+    setReturnNote("");
     void load();
+    return () => request.current?.abort();
   }, [load]);
+  useEffect(() => {
+    setActionError("");
+  }, [approvalIds, returning]);
   const allSelected = rows.length > 0 && rows.every((item) => selected.includes(item.id));
   const toggleAll = () => setSelected(allSelected ? [] : rows.map((item) => item.id));
   const toggle = (id: number) =>
@@ -131,7 +165,7 @@ export default function PendingApprovals() {
   };
 
   const bulkApprove = async (memberIds = selected) => {
-    if (!memberIds.length) return;
+    if (!memberIds.length || actionLock.current) return;
     if (
       approvalIds.length !== memberIds.length ||
       memberIds.some((memberId) => !approvalIds.includes(memberId))
@@ -139,8 +173,9 @@ export default function PendingApprovals() {
       setApprovalIds(memberIds);
       return;
     }
+    actionLock.current = true;
     setBusy(true);
-    setError("");
+    setActionError("");
     setResult(null);
     try {
       const response = await api.post("/members/bulk/approve", { memberIds });
@@ -150,16 +185,20 @@ export default function PendingApprovals() {
       setApprovalIds([]);
       await load();
     } catch (requestError: unknown) {
-      setError(getApiError(requestError)?.message || "The selected members could not be approved.");
+      setActionError(
+        getApiError(requestError)?.message || "The selected members could not be approved.",
+      );
     } finally {
+      actionLock.current = false;
       setBusy(false);
     }
   };
 
   const bulkReturn = async () => {
-    if (!selected.length || !returnNote.trim()) return;
+    if (!selected.length || returnNote.trim().length < 2 || actionLock.current) return;
+    actionLock.current = true;
     setBusy(true);
-    setError("");
+    setActionError("");
     setResult(null);
     try {
       const response = await api.post("/members/bulk/return", {
@@ -172,8 +211,11 @@ export default function PendingApprovals() {
       setReturnNote("");
       await load();
     } catch (requestError: unknown) {
-      setError(getApiError(requestError)?.message || "The selected members could not be returned.");
+      setActionError(
+        getApiError(requestError)?.message || "The selected members could not be returned.",
+      );
     } finally {
+      actionLock.current = false;
       setBusy(false);
     }
   };
@@ -212,7 +254,12 @@ export default function PendingApprovals() {
       </div>
       {error && (
         <div className="mb-3">
-          <Alert tone="error">{error}</Alert>
+          <Alert tone="error">
+            {error}{" "}
+            <button type="button" className="underline" onClick={() => void load()}>
+              Try again
+            </button>
+          </Alert>
         </div>
       )}
       {result && (
@@ -248,11 +295,15 @@ export default function PendingApprovals() {
             <strong>{selected.length}</strong>
             <span>selected</span>
           </div>
-          <button disabled={busy} className="approve" onClick={() => setApprovalIds(selected)}>
+          <button
+            disabled={busy || loading}
+            className="approve"
+            onClick={() => setApprovalIds(selected)}
+          >
             Approve selected
           </button>
-          <button disabled={busy} className="return" onClick={() => setReturning(true)}>
-            Return selected
+          <button disabled={busy || loading} className="return" onClick={() => setReturning(true)}>
+            Return for correction
           </button>
           <button className="clear" onClick={() => setSelected([])}>
             Clear
@@ -260,63 +311,74 @@ export default function PendingApprovals() {
         </section>
       )}
       {approvalIds.length > 0 && (
-        <ConfirmationPanel
-          title={`Approve ${approvalIds.length} member${approvalIds.length === 1 ? "" : "s"}?`}
-          description="Members matched in Report 20 will become Active. Unmatched members will become Flagged for follow-up."
-          confirmLabel="Approve members"
-          busyLabel="Approving…"
-          tone="warning"
-          confirmVariant="primary"
+        <Dialog
+          title={`Approve ${approvalIds.length} member${approvalIds.length === 1 ? "" : "s"}`}
           busy={busy}
-          onConfirm={() => void bulkApprove(approvalIds)}
-          onCancel={() => setApprovalIds([])}
-        />
+          onClose={() => setApprovalIds([])}
+          description={
+            <ul className="max-h-32 overflow-y-auto">
+              {approvalIds.map((id) => (
+                <li key={id}>
+                  {rows.find((member) => member.id === id)?.fullName || `Member ${id}`}
+                </li>
+              ))}
+            </ul>
+          }
+        >
+          {actionError && (
+            <div className="mb-4">
+              <Alert tone="error">{actionError}</Alert>
+            </div>
+          )}
+          <ConfirmationPanel
+            title="Confirm approval"
+            description="Members matched in Report 20 will become Active. Unmatched members will become Flagged for follow-up."
+            confirmLabel="Approve members"
+            busyLabel="Approving…"
+            tone="warning"
+            confirmVariant="primary"
+            busy={busy}
+            onConfirm={() => void bulkApprove(approvalIds)}
+            onCancel={() => setApprovalIds([])}
+          />
+        </Dialog>
       )}
       {returning && (
-        <section className="approvals-return">
-          <div>
-            <h2>
-              Return {selected.length} member{selected.length === 1 ? "" : "s"} for correction
-            </h2>
-            <p>The same note will be sent to every selected member.</p>
-          </div>
-          <textarea
-            autoFocus
-            rows={3}
-            maxLength={500}
-            value={returnNote}
-            onChange={(event) => setReturnNote(event.target.value)}
-            placeholder="Explain what must be corrected"
-          />
-          <footer>
-            <span>{returnNote.length}/500</span>
-            <button
-              onClick={() => {
-                setReturning(false);
-                setReturnNote("");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              disabled={busy || returnNote.trim().length < 2}
-              onClick={() => void bulkReturn()}
-            >
-              {busy ? "Returning…" : "Confirm return"}
-            </button>
-          </footer>
-        </section>
+        <ReviewDecisionDialog
+          title={`Return ${selected.length} member${selected.length === 1 ? "" : "s"} for correction`}
+          description={
+            <ul className="max-h-32 overflow-y-auto">
+              {selected.map((id) => (
+                <li key={id}>
+                  {rows.find((member) => member.id === id)?.fullName || `Member ${id}`}
+                </li>
+              ))}
+            </ul>
+          }
+          help="The same correction note will be sent to every selected member."
+          decision="RETURN"
+          note={returnNote}
+          onNote={setReturnNote}
+          busy={busy}
+          error={actionError}
+          minNoteLength={2}
+          onClose={() => {
+            setReturning(false);
+            setReturnNote("");
+          }}
+          onConfirm={() => void bulkReturn()}
+        />
       )}
 
       <div className={`approvals-layout ${preview ? "has-preview" : ""}`}>
         <section className="approvals-table-shell">
           {loading ? (
-            <div className="approvals-skeleton">
+            <div className="approvals-skeleton" role="status" aria-label="Loading pending members">
               {Array.from({ length: limit }).map((_, index) => (
                 <span key={index} />
               ))}
             </div>
-          ) : rows.length === 0 ? (
+          ) : error ? null : rows.length === 0 ? (
             <EmptyState
               title="No pending approvals"
               description="New enrollments awaiting review will appear here."
@@ -335,15 +397,16 @@ export default function PendingApprovals() {
                         aria-label="Select all on this page"
                       />
                     </th>
+                    <th scope="col">No.</th>
                     <th>Member</th>
                     <th>Location</th>
                     <th>Eligibility signals</th>
                     <th>Covered lives</th>
-                    <th>Review</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((member) => {
+                  {rows.map((member, index) => {
                     const identityComplete = Boolean(member.ghanaCardId);
                     return (
                       <tr
@@ -358,6 +421,7 @@ export default function PendingApprovals() {
                             aria-label={`Select ${member.fullName}`}
                           />
                         </td>
+                        <td>{(page - 1) * limit + index + 1}</td>
                         <td>
                           <Link to={`/members/${member.id}`}>
                             <strong>{member.fullName}</strong>
@@ -399,17 +463,13 @@ export default function PendingApprovals() {
                           <span>{member.spouse ? "Spouse recorded" : "No spouse"}</span>
                         </td>
                         <td>
-                          <button
-                            className="approval-review-button"
-                            onClick={() => setPreview(member)}
-                            aria-label={`Review ${member.fullName}`}
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-                              <circle cx="12" cy="12" r="2.5" />
-                            </svg>
-                            <span>Review</span>
-                          </button>
+                          <ActionMenu
+                            label={`Actions for ${member.fullName}`}
+                            items={[
+                              { label: "View profile", to: `/members/${member.id}` },
+                              { label: "Review", onSelect: () => setPreview(member) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -428,7 +488,9 @@ export default function PendingApprovals() {
                 <h2>{preview.fullName}</h2>
                 <p>{preview.controllerId}</p>
               </div>
-              <button onClick={() => setPreview(null)}>×</button>
+              <button aria-label="Close member preview" onClick={() => setPreview(null)}>
+                ×
+              </button>
             </header>
             <dl>
               <div>
@@ -467,7 +529,9 @@ export default function PendingApprovals() {
             </div>
             <footer>
               <Link to={`/members/${preview.id}`}>Open full profile</Link>
-              <button onClick={() => void bulkApprove([preview.id])}>Approve member</button>
+              <button disabled={busy || loading} onClick={() => void bulkApprove([preview.id])}>
+                Approve member
+              </button>
               <button
                 onClick={() => {
                   setSelected([preview.id]);

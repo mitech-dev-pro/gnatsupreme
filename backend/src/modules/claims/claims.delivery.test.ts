@@ -38,8 +38,11 @@ function dependencies(
   const updateCalls: Record<string, unknown> = {};
   const db = {
     externalClaimSubmission: {
-      updateMany: async () => {
-        const allowed = ["NOT_SENT", "FAILED", "UNKNOWN"];
+      updateMany: async (args: { where: { deliveryState: { in: string[] } | string } }) => {
+        const allowed =
+          typeof args.where.deliveryState === "string"
+            ? [args.where.deliveryState]
+            : args.where.deliveryState.in;
         if (!allowed.includes(state.deliveryState)) return { count: 0 };
         state.deliveryState = "SENDING";
         return { count: 1 };
@@ -47,7 +50,8 @@ function dependencies(
       findUniqueOrThrow: async () => claimFixture(state.deliveryState),
       update: async (args: { data: Record<string, unknown> }) => {
         Object.assign(updateCalls, args.data);
-        if (typeof args.data.deliveryState === "string") state.deliveryState = args.data.deliveryState;
+        if (typeof args.data.deliveryState === "string")
+          state.deliveryState = args.data.deliveryState;
         return claimFixture(state.deliveryState);
       },
     },
@@ -68,7 +72,9 @@ function dependencies(
 for (const startingDeliveryState of ["NOT_SENT", "FAILED", "UNKNOWN"]) {
   test(`deliverClaim retries a claim starting from ${startingDeliveryState}`, async () => {
     const { deps, state } = dependencies({ startingDeliveryState });
-    const result = await deliverClaim(5, deps);
+    const result = await deliverClaim(5, deps, {
+      allowUnknown: startingDeliveryState === "UNKNOWN",
+    });
     assert.equal(state.deliveryState, "ACCEPTED");
     assert.equal((result as { deliveryState: string }).deliveryState, "ACCEPTED");
   });
@@ -76,15 +82,30 @@ for (const startingDeliveryState of ["NOT_SENT", "FAILED", "UNKNOWN"]) {
 
 for (const inFlightState of ["SENDING", "ACCEPTED"]) {
   test(`deliverClaim refuses to re-claim a delivery already in ${inFlightState}`, async () => {
-    const createSubmission = async (): Promise<{ externalClaimId: string; status: "SUBMITTED" }> => {
+    const createSubmission = async (): Promise<{
+      externalClaimId: string;
+      status: "SUBMITTED";
+    }> => {
       assert.fail("must not contact the provider for a delivery already in flight or accepted");
     };
-    const { deps, state } = dependencies({ startingDeliveryState: inFlightState, createSubmission });
+    const { deps, state } = dependencies({
+      startingDeliveryState: inFlightState,
+      createSubmission,
+    });
     await deliverClaim(5, deps);
     // updateMany's guard rejected the claim attempt, so state is untouched.
     assert.equal(state.deliveryState, inFlightState);
   });
 }
+
+test("unconfirmed delivery cannot be retried through an ordinary submission replay", async () => {
+  const { deps, state } = dependencies({
+    startingDeliveryState: "UNKNOWN",
+    createSubmission: async () => assert.fail("must not resend without a history check"),
+  });
+  await deliverClaim(5, deps);
+  assert.equal(state.deliveryState, "UNKNOWN");
+});
 
 test("deliverClaim records FAILED (not UNKNOWN) when preparation fails before the provider is ever contacted", async () => {
   // A document error thrown while loading documents happens before the provider request starts,

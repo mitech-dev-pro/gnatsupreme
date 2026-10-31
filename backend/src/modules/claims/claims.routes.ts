@@ -1,5 +1,13 @@
-import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "./claims.service.js";
+import { createClaimDraftRouter, commitClaimDraft } from "./claims.drafts.js";
+import {
+  activeBenefit,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "./claims.service.js";
 import { Router } from "express";
+import { notifyClaimReview } from "./claims.notifications.js";
+import { refreshClaimAssessment } from "./claims.assessment.js";
 import { z } from "zod";
 import {
   querySchema,
@@ -59,6 +67,7 @@ const submissionSelect = {
 } as const;
 
 claimsRouter.use(authenticate);
+claimsRouter.use("/drafts", createClaimDraftRouter("staff"));
 
 claimsRouter.get("/provider", (_request, response) => {
   response.json({
@@ -130,7 +139,11 @@ claimsRouter.get("/estimate", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
   response.json({
     success: true,
     data: {
@@ -176,7 +189,14 @@ claimsRouter.post("/submissions", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, member, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      member,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -218,11 +238,15 @@ claimsRouter.post("/submissions", async (request, response) => {
     return;
   }
 
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)
-      .json({ success: false, message: "Mankrado submissions are not configured." });
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
     return;
   }
   try {
@@ -250,32 +274,34 @@ claimsRouter.post("/submissions", async (request, response) => {
           ),
         }
       : parsed.data.claimDetails;
-  const claim = await prisma.externalClaimSubmission.upsert({
-    where: { idempotencyKey },
-    update: {},
-    create: {
-      memberId: member.id,
-      submittedById: user.id,
-      source: "STAFF",
-      provider: "Claims System",
-      idempotencyKey,
-      status: "PENDING",
-      claimType: parsed.data.claimType,
-      claimantType: parsed.data.claimantType,
-      claimantName:
-        parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
-      claimantIdType: parsed.data.claimantIdType,
-      claimantIdNumber: parsed.data.claimantIdNumber,
-      claimantContact: parsed.data.claimantContact,
-      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
-      claimDetails,
-      estimatedAmount: estimate.amount ?? null,
-      paymentMethod: parsed.data.paymentMethod,
-      paymentDetails: parsed.data.paymentDetails,
-      documentIds: uniqueDocumentIds,
-      notes: parsed.data.notes || null,
-    },
-  });
+  const claim = await commitClaimDraft(parsed.data, { user }, member.id, (transaction, draftKey) =>
+    transaction.externalClaimSubmission.upsert({
+      where: { idempotencyKey: draftKey ?? idempotencyKey },
+      update: {},
+      create: {
+        memberId: member.id,
+        submittedById: user.id,
+        source: "STAFF",
+        provider: "Claims System",
+        idempotencyKey: draftKey ?? idempotencyKey,
+        status: "PENDING",
+        claimType: parsed.data.claimType,
+        claimantType: parsed.data.claimantType,
+        claimantName:
+          parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
+        claimantIdType: parsed.data.claimantIdType,
+        claimantIdNumber: parsed.data.claimantIdNumber,
+        claimantContact: parsed.data.claimantContact,
+        incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+        claimDetails,
+        estimatedAmount: estimate.amount ?? null,
+        paymentMethod: parsed.data.paymentMethod,
+        paymentDetails: parsed.data.paymentDetails,
+        documentIds: uniqueDocumentIds,
+        notes: parsed.data.notes || null,
+      },
+    }),
+  );
   if (claim.memberId !== member.id) {
     response
       .status(409)
@@ -289,7 +315,7 @@ claimsRouter.post("/submissions", async (request, response) => {
     action: "CLAIM_DELIVERY_RECORDED",
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
-    description: "Recorded Mankrado claim delivery outcome",
+    description: "Recorded Claims Portal claim delivery outcome",
     afterData: { deliveryState: delivered.deliveryState },
     regionId: member.district?.regionId,
     districtId: member.districtId,
@@ -339,14 +365,14 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
     if (record.provider !== "Claims System") {
       response.status(409).json({
         success: false,
-        message: "Historical simulated claims cannot be sent to Mankrado. File a new claim.",
+        message: "Historical simulated claims cannot be sent to Claims Portal. File a new claim.",
       });
       return;
     }
     if (!claimsProvider.isConfigured()) {
       response
         .status(503)
-        .json({ success: false, message: "Mankrado submissions are not configured." });
+        .json({ success: false, message: "Claims Portal submissions are not configured." });
       return;
     }
     try {
@@ -387,13 +413,23 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   await recordAudit({
     request,
     actor: user,
-    action: `CLAIM_${action}D`,
+    action: { APPROVE: "CLAIM_APPROVED", RETURN: "CLAIM_RETURNED", REJECT: "CLAIM_REJECTED" }[
+      action
+    ],
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
     description: `${action === "APPROVE" ? "Approved" : action === "RETURN" ? "Returned" : "Rejected"} a member-submitted ${claim.claimType?.toLowerCase().replaceAll("_", " ")} claim for ${claim.member.fullName}`,
     afterData: { action, note: note ?? null },
     regionId: claim.member.district?.regionId,
     districtId: claim.member.districtId,
+  });
+  await notifyClaimReview({
+    claimId: claim.id,
+    memberId: claim.memberId,
+    action,
+    reviewedAt,
+    note,
+    deliveryState: updated.deliveryState,
   });
   response.json({ success: true, data: updated });
 });
@@ -414,7 +450,15 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       member: { is: memberScope(user) },
       OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
     },
-    select: { id: true, deliveryState: true },
+    select: {
+      id: true,
+      memberId: true,
+      source: true,
+      reviewedAt: true,
+      reviewNote: true,
+      deliveryState: true,
+      member: { select: { controllerId: true } },
+    },
   });
   if (!claim) {
     response.status(409).json({
@@ -426,11 +470,60 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)
-      .json({ success: false, message: "Mankrado submissions are not configured." });
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
     return;
   }
   const wasRetry = claim.deliveryState !== "NOT_SENT";
-  const delivered = await deliverClaim(claim.id);
+  const historyChecked = claim.deliveryState === "UNKNOWN";
+  if (historyChecked) {
+    if (request.body?.historyChecked !== true) {
+      response.status(409).json({
+        success: false,
+        message:
+          "Check Claims Portal history and confirm there is no matching claim before retrying.",
+      });
+      return;
+    }
+    try {
+      const history = await claimsProvider.history(claim.member.controllerId);
+      if (history.some((item) => item.staffId && item.staffId !== claim.member.controllerId))
+        throw new Error("History member mismatch");
+    } catch {
+      await recordAudit({
+        request,
+        actor: user,
+        action: "CLAIM_RETRY_BLOCKED",
+        entityType: "EXTERNAL_CLAIM_SUBMISSION",
+        entityId: claim.id,
+        description: "Unconfirmed delivery retry blocked because history could not be checked",
+        afterData: { historyChecked: true, historyCheckOutcome: "UNAVAILABLE" },
+      });
+      response.status(503).json({
+        success: false,
+        message:
+          "Claims Portal history is unavailable. Retry is blocked until history can be checked.",
+      });
+      return;
+    }
+  }
+  const delivered = await deliverClaim(claim.id, undefined, {
+    allowUnknown: historyChecked,
+    expectedDeliveryState: claim.deliveryState,
+  });
+  if (
+    claim.source === "MEMBER_PORTAL" &&
+    claim.reviewedAt &&
+    delivered.deliveryState === "ACCEPTED"
+  ) {
+    await notifyClaimReview({
+      claimId: claim.id,
+      memberId: claim.memberId,
+      action: "APPROVE",
+      reviewedAt: claim.reviewedAt,
+      note: claim.reviewNote,
+      deliveryState: delivered.deliveryState,
+    });
+  }
   await recordAudit({
     request,
     actor: user,
@@ -440,7 +533,11 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
     description: wasRetry
       ? "Retried delivery of a claim after a previous failed or unconfirmed attempt"
       : "Recorded delivery of a previously unsent claim",
-    afterData: { deliveryState: delivered.deliveryState },
+    afterData: {
+      deliveryState: delivered.deliveryState,
+      historyChecked,
+      historyCheckOutcome: historyChecked ? "SUCCESS" : "NOT_REQUIRED",
+    },
   });
   response.json({ success: true, data: delivered });
 });
@@ -521,6 +618,7 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
       paymentDetails: true,
       documentIds: true,
       notes: true,
+      externalAssessment: true,
     },
   });
   if (!submission) {
@@ -560,7 +658,7 @@ claimsRouter.get("/history/:staffId", async (request, response) => {
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,
-      message: "Mankrado history is unavailable. Local claims remain saved.",
+      message: "Claims Portal history is unavailable. Local claims remain saved.",
     });
   }
 });
@@ -585,21 +683,16 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
     return;
   }
   try {
-    const details = await claimsProvider.details(externalId.data);
-    if (
-      details.id !== externalId.data ||
-      (details.staffId && details.staffId !== claim.member.controllerId)
-    )
-      throw new Error("Claim mismatch");
-    await prisma.externalClaimSubmission.update({
-      where: { id: claim.id },
-      data: { externalStatus: details.status, lastSyncedAt: new Date() },
-    });
+    const details = await refreshClaimAssessment(
+      claim.id,
+      externalId.data,
+      claim.member.controllerId,
+    );
     response.json({ success: true, data: details });
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,
-      message: "Mankrado claim details are unavailable. Local details remain saved.",
+      message: "Claims Portal claim details are unavailable. Local details remain saved.",
     });
   }
 });

@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { safeMemberReturnTo } from "./memberNavigation";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
@@ -5,7 +7,7 @@ import { Alert, TableSkeleton } from "@/components/ui/Feedback";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { applyGhanaCardIdChange } from "@/lib/ghanaCardId";
 import { isMinor, parseISODate, toISODate } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import "./MemberDetail.css";
 import {
   Field,
@@ -17,6 +19,18 @@ import {
 } from "./MemberDetail.model";
 import { useMemberDetail } from "./useMemberDetail";
 export default function MemberDetail() {
+  const location = useLocation();
+  const returnTo =
+    safeMemberReturnTo(new URLSearchParams(location.search).get("returnTo")) ?? "/members";
+  const openedEdit = useRef("");
+  const focusedEdit = useRef("");
+  useEffect(() => {
+    if (location.hash !== "#workflow") {
+      const host = document.querySelector(".member-record")?.closest("main");
+      if (host) host.scrollTo({ top: 0, behavior: "instant" });
+      else window.scrollTo({ top: 0, behavior: "instant" });
+    }
+  }, [location.key, location.hash]);
   const {
     canReview,
     member,
@@ -105,10 +119,48 @@ export default function MemberDetail() {
     submitRemove,
     submitReactivate,
   } = useMemberDetail();
+  useEffect(() => {
+    if (!member || loading) return;
+    if (
+      new URLSearchParams(location.search).get("edit") === "member" &&
+      openedEdit.current !== location.key
+    ) {
+      openedEdit.current = location.key;
+      startEditing();
+    }
+  }, [member, loading, location.search, location.key, startEditing]);
+  const loadedMemberId = member?.id;
+  useEffect(() => {
+    if (
+      !editing ||
+      !loadedMemberId ||
+      new URLSearchParams(location.search).get("edit") !== "member" ||
+      focusedEdit.current === location.key
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      const input = document.querySelector<HTMLInputElement>(".member-panel--details form input");
+      if (input) {
+        input.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+        input.focus({ preventScroll: true });
+        focusedEdit.current = location.key;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editing, loadedMemberId, location.key, location.search]);
+  useEffect(() => {
+    if (!loadedMemberId || loading || location.hash !== "#workflow") return;
+    const frame = requestAnimationFrame(() => {
+      const panel = document.getElementById("workflow");
+      panel?.scrollIntoView({ block: "start", behavior: "instant" });
+      panel?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loadedMemberId, loading, location.hash]);
   return (
     <div className="member-record">
-      <Link to="/members" className="member-record__back">
-        &larr; All Members
+      <Link to={returnTo} className="member-record__back">
+        <span aria-hidden="true">&larr;</span> Back to members
       </Link>
 
       {loading ? (
@@ -465,7 +517,13 @@ export default function MemberDetail() {
                 <dl className="grid grid-cols-2 gap-4">
                   <Field
                     label="Gender"
-                    value={member.gender === "MALE" ? "Male" : member.gender === "FEMALE" ? "Female" : "—"}
+                    value={
+                      member.gender === "MALE"
+                        ? "Male"
+                        : member.gender === "FEMALE"
+                          ? "Female"
+                          : "—"
+                    }
                   />
                   <Field label="Ghana Card ID" value={member.ghanaCardId ?? "—"} />
                   <Field label="Phone" value={member.phone ?? "—"} />
@@ -885,7 +943,7 @@ export default function MemberDetail() {
               )}
             </div>
 
-            <div id="workflow" className="member-panel member-panel--workflow">
+            <div id="workflow" tabIndex={-1} className="member-panel member-panel--workflow">
               <div className="member-workflow-heading">
                 <div>
                   <h2>Workflow</h2>

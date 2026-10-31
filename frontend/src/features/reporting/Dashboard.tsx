@@ -367,7 +367,7 @@ export default function Dashboard() {
           </dl>
           {claimsTotal === 0 && (
             <p className="dash-quick__note">
-              Claim status totals will appear here after Mankrado begins sending submissions.
+              Claim status totals will appear here after Claims Portal begins sending submissions.
             </p>
           )}
         </section>

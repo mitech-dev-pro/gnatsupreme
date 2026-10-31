@@ -1,4 +1,6 @@
 import { InputField } from "@/components/ui/FormField";
+import DateField from "@/components/ui/DateField";
+import { toISODate } from "@/lib/utils";
 import { HOSPITALIZATION_MINIMUM_NIGHTS } from "@/lib/claimDocuments";
 import { ReadOnlyField, SectionTitle } from "./ClaimFormLayout";
 type Props = {
@@ -36,21 +38,19 @@ export function HospitalizationSection({
         placeholder="e.g. Komfo Anokye Teaching Hospital"
       />
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <InputField
+        <DateField
           label="Date of admission"
-          type="date"
           required
-          max={new Date().toISOString().slice(0, 10)}
+          max={toISODate(new Date())}
           value={admissionDate}
-          onChange={(event) => setAdmissionDate(event.target.value)}
+          onChange={setAdmissionDate}
         />
-        <InputField
+        <DateField
           label="Date of discharge"
-          type="date"
           required
-          max={new Date().toISOString().slice(0, 10)}
+          max={toISODate(new Date())}
           value={dischargeDate}
-          onChange={(event) => setDischargeDate(event.target.value)}
+          onChange={setDischargeDate}
         />
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

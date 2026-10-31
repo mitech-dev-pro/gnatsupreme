@@ -134,7 +134,7 @@ test("rejects missing/malformed status or claimId", () => {
 
 test("HTTP failures, timeouts and malformed responses never imply acceptance", async () => {
   for (const [status, outcome] of [
-    [401, "FAILED"],
+    [401, "UNKNOWN"],
     [422, "FAILED"],
     [500, "UNKNOWN"],
     [409, "UNKNOWN"],
@@ -176,7 +176,7 @@ test("history and details use encoded path segments and normalize provider respo
               {
                 claimNumber: 1788876358,
                 name: "Test Member",
-                claimDate: "2026-09-08",
+                claimDate: "2026-09-08 00:00:00",
                 amountPayable: "20,000.0",
                 claimStatus: "Awaiting Approval",
                 staff_id: "123456",
@@ -234,6 +234,7 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
     formUrl: null,
     deliveryStartedAt: null,
     externalStatus: null,
+    externalAssessment: null,
     incidentDate: null,
     estimatedAmount: null,
     notes: null,
@@ -259,9 +260,9 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
     db: {
       externalClaimSubmission: {
         updateMany: async ({ where, data }) => {
-          assert.deepEqual(where?.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
+          const allowed = (where?.deliveryState as { in: string[] } | undefined)?.in ?? [];
           if (
-            !["NOT_SENT", "FAILED", "UNKNOWN"].includes(row.deliveryState) ||
+            !allowed.includes(row.deliveryState) ||
             row.provider !== "Claims System" ||
             row.status !== "PENDING" ||
             (row.source === "MEMBER_PORTAL" && !row.reviewedAt)
@@ -315,9 +316,9 @@ test("an uncertain (UNKNOWN) outcome preserves review state and can be retried",
   assert.equal(fixture.sends(), 1);
   assert.equal(fixture.row.deliveryState, "UNKNOWN");
   assert.equal(fixture.row.status, "PENDING");
-  // A second attempt is allowed to reach the provider again -- UNKNOWN is retryable, unlike
+  // An explicitly authorized retry can reach the provider again -- unlike
   // SENDING/ACCEPTED (see the earlier atomic-delivery test for those exclusions).
-  await deliverClaim(1, fixture.dependencies);
+  await deliverClaim(1, fixture.dependencies, { allowUnknown: true });
   assert.equal(fixture.sends(), 2);
   assert.equal(fixture.row.deliveryState, "UNKNOWN");
   assert.equal(fixture.row.status, "PENDING");
@@ -376,7 +377,7 @@ test("history parses confirmed envelope and comma-formatted amounts without disc
   const item = {
     claimNumber: 1788876358,
     name: "Test Member",
-    claimDate: "2026-09-08",
+    claimDate: "2026-09-08 00:00:00",
     amountPayable: "20,000.0",
     claimStatus: "Awaiting Approval",
   };
@@ -386,7 +387,7 @@ test("history parses confirmed envelope and comma-formatted amounts without disc
     id: "1788876358",
     claimNumber: "1788876358",
     name: "Test Member",
-    claimDate: "2026-09-08",
+    claimDate: "2026-09-08 00:00:00",
     amountPayable: "20000.0",
     status: "Awaiting Approval",
     staffId: undefined,

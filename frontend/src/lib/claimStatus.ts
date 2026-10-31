@@ -8,7 +8,8 @@ export type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 const TONE_RULES: [RegExp, BadgeTone][] = [
   [/reject|declin|denied|fail|cancel|void/i, "danger"],
-  [/paid|complete|approv|settle|synchroniz|success|closed/i, "success"],
+  [/\b(awaiting|pending|under review|processing|assessing)\b/i, "info"],
+  [/^(paid|completed?|approved|settled|synchronized|success|closed)$/i, "success"],
   [/return|correction|resubmit|hold|query|more info/i, "warning"],
   [/submit|receiv|assess|await|review|process|redirect|sent|pending|open/i, "info"],
 ];
@@ -17,6 +18,78 @@ export function claimStatusTone(status?: string | null): BadgeTone {
   if (!status) return "neutral";
   for (const [pattern, tone] of TONE_RULES) if (pattern.test(status)) return tone;
   return "neutral";
+}
+
+export type ClaimStageInput = {
+  provider?: string;
+  status: string;
+  source?: string;
+  reviewedAt?: string | null;
+  deliveryState?: string;
+};
+
+export function claimStage(claim: ClaimStageInput): {
+  label: string;
+  tone: BadgeTone;
+  next: string;
+} {
+  if (claim.provider === "SIMULATION")
+    return {
+      label: "Historical simulation",
+      tone: "neutral",
+      next: "This historical record is not connected to Claims Portal.",
+    };
+  if (claim.status === "RETURNED")
+    return {
+      label: "Returned for correction",
+      tone: "warning",
+      next: "The member must correct and resubmit this claim for GNAT review.",
+    };
+  if (claim.status === "FAILED")
+    return {
+      label: "Rejected by GNAT",
+      tone: "danger",
+      next: "Read the review note for the reason and contact GNAT for help.",
+    };
+  if (claim.deliveryState === "UNKNOWN")
+    return {
+      label: "Delivery unconfirmed",
+      tone: "warning",
+      next: "Staff must check this member’s Claims Portal history before retrying; the claim may already have arrived.",
+    };
+  if (claim.deliveryState === "FAILED")
+    return {
+      label: "Delivery failed",
+      tone: "danger",
+      next: "Staff must resolve the delivery error and retry sending this saved claim.",
+    };
+  if (claim.deliveryState === "SENDING")
+    return {
+      label: "Sending to Claims Portal",
+      tone: "info",
+      next: "Wait for confirmation that Claims Portal received the claim.",
+    };
+  if (
+    claim.deliveryState === "ACCEPTED" ||
+    claim.status === "SUBMITTED" ||
+    claim.status === "SYNCHRONIZED"
+  )
+    return {
+      label: "Received by Claims Portal",
+      tone: "info",
+      next: "Claims Portal handles assessment and settlement. See the insurer’s reported status separately.",
+    };
+  if (claim.source === "MEMBER_PORTAL" && !claim.reviewedAt)
+    return {
+      label: "Awaiting GNAT review",
+      tone: "info",
+      next: "GNAT staff must review this claim before forwarding it to Claims Portal.",
+    };
+  return {
+    label: "Ready to send to Claims Portal",
+    tone: "info",
+    next: "Staff must send this saved claim to Claims Portal for assessment.",
+  };
 }
 
 // Internal enum values are UPPER_SNAKE_CASE and need humanising; Mankrado strings

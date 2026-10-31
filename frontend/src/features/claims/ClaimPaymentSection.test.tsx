@@ -3,19 +3,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ClaimPaymentSection } from "./ClaimPaymentSection";
-import type { ContactDetails } from "./claimForm.types";
 import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 
-const contact: ContactDetails = {
-  fullName: "Test Member",
-  primaryPhone: "0200000000",
-  additionalPhone: "",
-  email: "",
-  gpsAddress: "",
-  residentialAddress: "",
-  nationality: "Ghanaian",
-};
 function Form({ source, submit }: { source: "STAFF" | "MEMBER_PORTAL"; submit: () => void }) {
   const [payment, setPayment] = useState<Record<string, string>>({});
   const [declaration, setDeclaration] = useState(false);
@@ -30,11 +20,9 @@ function Form({ source, submit }: { source: "STAFF" | "MEMBER_PORTAL"; submit: (
       <ClaimPaymentSection
         source={source}
         paymentDetails={payment}
-        contact={contact}
         declaration={declaration}
         notes={notes}
         updatePayment={(key, value) => setPayment((previous) => ({ ...previous, [key]: value }))}
-        updateContact={vi.fn()}
         setDeclaration={setDeclaration}
         setNotes={setNotes}
       />
@@ -52,6 +40,8 @@ describe("claim payment and submission controls", () => {
       const submit = vi.fn();
       render(<Form source={source} submit={submit} />);
       expect(screen.getByLabelText(/Payee name/)).not.toBeRequired();
+      expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Contact for claim follow-up/)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Submit claim" })).toBeDisabled();
       await user.click(screen.getByRole("checkbox"));
       await user.click(screen.getByRole("button", { name: "Submit claim" }));

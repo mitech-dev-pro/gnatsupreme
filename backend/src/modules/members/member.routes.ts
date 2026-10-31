@@ -1,3 +1,4 @@
+import { memberSearchWhere } from "./member.search.js";
 import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 import {
@@ -98,23 +99,14 @@ memberRouter.get("/", async (request, response) => {
       : registered === "false"
         ? { passwordHash: null }
         : {}),
-    ...(search
-      ? {
-          OR: [
-            { fullName: { contains: search, mode: "insensitive" as const } },
-            { controllerId: { contains: search } },
-            { ghanaCardId: { contains: search, mode: "insensitive" as const } },
-            { school: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
+    ...(await memberSearchWhere(search, requestedScope)),
   };
 
   const [members, total] = await Promise.all([
     prisma.member.findMany({
       where,
       include: memberListInclude,
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -144,21 +136,26 @@ memberRouter.get("/stats", async (request, response) => {
   };
   const firstOfMonth = monthStart(new Date());
 
-  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth, registeredMembers] =
-    await Promise.all([
-      prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
-      prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
-      prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
-      prisma.memberWorkflowEvent.groupBy({
-        by: ["reason"],
-        where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
-        _count: { _all: true },
-      }),
-      // "Registered" means the member has completed self-service account setup (set a
-      // password via /member-auth/setup-account) -- distinct from totalMembers, which counts
-      // every member record regardless of whether they've ever activated a portal account.
-      prisma.member.count({ where: { ...scope, passwordHash: { not: null } } }),
-    ]);
+  const [
+    statusGroups,
+    missingFromReport20Count,
+    newThisMonth,
+    removalsThisMonth,
+    registeredMembers,
+  ] = await Promise.all([
+    prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
+    prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
+    prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
+    prisma.memberWorkflowEvent.groupBy({
+      by: ["reason"],
+      where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
+      _count: { _all: true },
+    }),
+    // "Registered" means the member has completed self-service account setup (set a
+    // password via /member-auth/setup-account) -- distinct from totalMembers, which counts
+    // every member record regardless of whether they've ever activated a portal account.
+    prisma.member.count({ where: { ...scope, passwordHash: { not: null } } }),
+  ]);
 
   const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
   const totalMembers = statusGroups.reduce((total, g) => total + g._count._all, 0);
@@ -280,7 +277,9 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
   if (parsed.data.spouse && (await spouseGhanaCardConflict(parsed.data.spouse.ghanaCardId))) {
-    response.status(409).json({ success: false, message: "The spouse Ghana Card ID is already in use" });
+    response
+      .status(409)
+      .json({ success: false, message: "The spouse Ghana Card ID is already in use" });
     return;
   }
   if (
@@ -294,8 +293,13 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
 
-  const { spouse, beneficiaries, districtId: _districtId, regionId: _regionId, ...memberData } =
-    parsed.data;
+  const {
+    spouse,
+    beneficiaries,
+    districtId: _districtId,
+    regionId: _regionId,
+    ...memberData
+  } = parsed.data;
   const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
     const created = await transaction.member.create({
       data: {
@@ -446,7 +450,9 @@ memberRouter.patch("/:id", async (request, response) => {
       user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
     const districtRegionId = body.data.districtId
       ? (patchedDistrictRegionId ?? null)
-      : (existing.districtId ? (existing.district?.regionId ?? null) : null);
+      : existing.districtId
+        ? (existing.district?.regionId ?? null)
+        : null;
     const resolvedRegion = resolveMemberRegionId(user, {
       districtRegionId,
       explicitRegionId: body.data.regionId ?? null,
@@ -463,7 +469,8 @@ memberRouter.patch("/:id", async (request, response) => {
       where: { id: existing.id },
       data: {
         ...body.data,
-        ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
+        ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
+        body.data.phone !== existing.phone
           ? { phoneVerifiedAt: null }
           : {}),
         ...clearingUpdate,

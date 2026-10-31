@@ -1,11 +1,7 @@
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
-import {
-  applyGhanaCardIdChange,
-  GHANA_CARD_ID_PREFIX,
-  ghanaCardIdOrNull,
-} from "@/lib/ghanaCardId";
-import { useState, type FormEvent } from "react";
+import { applyGhanaCardIdChange, GHANA_CARD_ID_PREFIX, ghanaCardIdOrNull } from "@/lib/ghanaCardId";
+import { useId, useState, type FormEvent } from "react";
 import { inputClasses, labelClasses, type Spouse } from "./MemberHome.shared";
 
 export function SpouseForm({
@@ -17,6 +13,7 @@ export function SpouseForm({
   onClose: () => void;
   onSubmitted: () => void;
 }) {
+  const formId = useId();
   const [fullName, setFullName] = useState(spouse?.fullName ?? "");
   const [ghanaCardId, setGhanaCardId] = useState(spouse?.ghanaCardId ?? GHANA_CARD_ID_PREFIX);
   const [note, setNote] = useState("");
@@ -25,6 +22,7 @@ export function SpouseForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -36,7 +34,7 @@ export function SpouseForm({
         },
         requestNote: note.trim() || undefined,
       });
-      onSubmitted();
+      await onSubmitted();
       onClose();
     } catch (err: unknown) {
       setError(getApiError(err)?.message || "Unable to submit this request.");
@@ -51,8 +49,11 @@ export function SpouseForm({
       className="mt-3 space-y-3 rounded-xl border border-border-default bg-surface-hover p-4"
     >
       <div>
-        <label className={labelClasses}>Full Name</label>
+        <label htmlFor={`${formId}-field-1`} className={labelClasses}>
+          Full Name
+        </label>
         <input
+          id={`${formId}-field-1`}
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           className={inputClasses}
@@ -61,8 +62,11 @@ export function SpouseForm({
         />
       </div>
       <div>
-        <label className={labelClasses}>Ghana Card ID</label>
+        <label htmlFor={`${formId}-field-2`} className={labelClasses}>
+          Ghana Card ID
+        </label>
         <input
+          id={`${formId}-field-2`}
           value={ghanaCardId}
           onChange={(e) => setGhanaCardId(applyGhanaCardIdChange(e))}
           placeholder="GHA-000000000-0"
@@ -70,8 +74,11 @@ export function SpouseForm({
         />
       </div>
       <div>
-        <label className={labelClasses}>Note (optional)</label>
+        <label htmlFor={`${formId}-field-3`} className={labelClasses}>
+          Note (optional)
+        </label>
         <textarea
+          id={`${formId}-field-3`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
@@ -80,7 +87,10 @@ export function SpouseForm({
         />
       </div>
       {error && (
-        <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+        <div
+          role="alert"
+          className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+        >
           {error}
         </div>
       )}
@@ -95,6 +105,7 @@ export function SpouseForm({
         <button
           type="button"
           onClick={onClose}
+          disabled={busy}
           className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-strong"
         >
           Cancel

@@ -1,4 +1,6 @@
 import { InputField } from "@/components/ui/FormField";
+import DateField from "@/components/ui/DateField";
+import { toISODate } from "@/lib/utils";
 import { SectionTitle } from "./ClaimFormLayout";
 type Props = {
   diagnosisDate: string;
@@ -30,13 +32,12 @@ export function CriticalIllnessSection({
     <div className="mt-7">
       <SectionTitle>Diagnosis details</SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
-        <InputField
+        <DateField
           label="Date of diagnosis"
-          type="date"
           required
-          max={new Date().toISOString().slice(0, 10)}
+          max={toISODate(new Date())}
           value={diagnosisDate}
-          onChange={(event) => setDiagnosisDate(event.target.value)}
+          onChange={setDiagnosisDate}
         />
         <InputField
           label="Diagnosing hospital / physician"

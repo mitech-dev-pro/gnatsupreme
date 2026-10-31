@@ -1,3 +1,4 @@
+import ClaimDraftList from "@/features/claims/ClaimDraftList";
 import ClaimsTable, { type ClaimSubmission } from "@/components/claims/ClaimsTable";
 import Button from "@/components/ui/Button";
 import Dropdown from "@/components/ui/Dropdown";
@@ -5,7 +6,7 @@ import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import api from "@/lib/api";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 const STATUSES = ["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"];
@@ -27,9 +28,11 @@ export default function Claims() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success] = useState((location.state as { success?: string } | null)?.success ?? "");
-  const page = Math.max(1, Number(params.get("page")) || 1);
+  const rawPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const request = useRef<AbortController | null>(null);
   const status = params.get("status") ?? "";
-  const limit = 20;
+  const limit = 10;
   const updateParams = (values: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     Object.entries(values).forEach(([key, value]) =>
@@ -37,30 +40,44 @@ export default function Claims() {
     );
     setParams(next);
   };
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      setLoading(true);
-      setError("");
-      try {
-        const response = await api.get("/claims/submissions", {
-          signal,
-          params: { page, limit, status: status || undefined },
-        });
-        setRows(response.data.data);
-        setTotal(response.data.pagination.total);
-        setTotalPages(Math.max(1, response.data.pagination.totalPages));
-      } catch {
-        if (!signal?.aborted) setError("Claim submissions could not be loaded.");
-      } finally {
-        if (!signal?.aborted) setLoading(false);
-      }
-    },
-    [page, status],
-  );
-  useEffect(() => {
+  const load = useCallback(async () => {
+    request.current?.abort();
     const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    request.current = controller;
+    const signal = controller.signal;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.get("/claims/submissions", {
+        signal,
+        params: { page, limit, status: status || undefined },
+      });
+      if (signal.aborted) return;
+      const pages = Math.max(1, response.data.pagination.totalPages);
+      if (page > pages) {
+        setParams(
+          (previous) => {
+            const next = new URLSearchParams(previous);
+            next.set("page", String(pages));
+            return next;
+          },
+          { replace: true },
+        );
+        return;
+      }
+      setRows(response.data.data);
+      setTotal(response.data.pagination.total);
+      setTotalPages(Math.max(1, response.data.pagination.totalPages));
+    } catch {
+      if (!signal?.aborted) setError("Claim submissions could not be loaded.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [page, status, setParams]);
+  useEffect(() => {
+    setRows([]);
+    void load();
+    return () => request.current?.abort();
   }, [load]);
   useEffect(() => {
     if (success) {
@@ -78,6 +95,8 @@ export default function Claims() {
         description="Create and track member claim submissions."
         actions={<Button onClick={() => navigate("/claims/new")}>File a claim</Button>}
       />
+      <ClaimDraftList audience="staff" />
+      <h2 className="mb-4 text-lg font-bold text-text-strong">Submitted claims</h2>
       {success && (
         <div className="mb-5">
           <Alert tone="success">{success}</Alert>
@@ -85,12 +104,18 @@ export default function Claims() {
       )}
       {error && (
         <div className="mb-4">
-          <Alert tone="error">{error}</Alert>
+          <Alert tone="error">
+            {error}{" "}
+            <button type="button" className="underline" onClick={() => void load()}>
+              Try again
+            </button>
+          </Alert>
         </div>
       )}
       <div className="mb-4 max-w-52">
         <label className="mb-1.5 block text-xs font-bold text-text-strong">Submission status</label>
         <Dropdown
+          aria-label="Submission status"
           value={status}
           onChange={(value) => updateParams({ status: value || null, page: null })}
           options={[
@@ -100,16 +125,19 @@ export default function Claims() {
         />
       </div>
       <ClaimsTable
+        rowOffset={(page - 1) * limit}
         rows={rows}
         loading={loading}
         onReviewed={load}
         onError={setError}
         emptyState={
-          <EmptyState
-            title="No claim submissions yet"
-            description="File the first claim to begin tracking its details and processing status."
-            action={<Button onClick={() => navigate("/claims/new")}>File a claim</Button>}
-          />
+          error ? null : (
+            <EmptyState
+              title="No claim submissions yet"
+              description="File the first claim to begin tracking its details and processing status."
+              action={<Button onClick={() => navigate("/claims/new")}>File a claim</Button>}
+            />
+          )
         }
       />
       <Pagination

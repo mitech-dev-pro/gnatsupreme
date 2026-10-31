@@ -1,3 +1,6 @@
+import { memberProfileLink } from "./memberNavigation";
+import { useMemberListReturn } from "./useMemberListReturn";
+import RowActionMenu from "@/components/ui/ActionMenu";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
@@ -8,13 +11,13 @@ import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
 import { useSchools } from "@/lib/useSchools";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "./MembersList.css";
 
 type MemberRow = {
   id: number;
   controllerId: string;
+  phone?: string | null;
   fullName: string;
   school: string;
   status: string;
@@ -182,81 +185,48 @@ function Status({ value }: { value: string }) {
   return <StatusBadge tone={tone}>{value.charAt(0) + value.slice(1).toLowerCase()}</StatusBadge>;
 }
 
-function ActionMenu({ member }: { member: MemberRow }) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const reposition = () => setOpen(false);
-    document.addEventListener("click", close);
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      document.removeEventListener("click", close);
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [open]);
-
-  const toggle = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      const menuHeight = ["PENDING", "RETURNED", "FLAGGED"].includes(member.status) ? 124 : 88;
-      setPosition({
-        top:
-          rect.bottom + menuHeight > window.innerHeight
-            ? rect.top - menuHeight - 5
-            : rect.bottom + 5,
-        left: Math.max(8, rect.right - 154),
-      });
-    }
-    setOpen((current) => !current);
-  };
-
+function ActionMenu({
+  member,
+  listPath,
+  onNavigate,
+}: {
+  member: MemberRow;
+  listPath: string;
+  onNavigate: (id: number) => void;
+}) {
   return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className="members-action-trigger"
-        onClick={toggle}
-        aria-expanded={open}
-        aria-label={`Actions for ${member.fullName}`}
-      >
-        •••
-      </button>
-      {open &&
-        createPortal(
-          <div
-            className="members-action-popover"
-            style={position}
-            onClick={(event) => event.stopPropagation()}
-            role="menu"
-          >
-            <Link to={`/members/${member.id}`} role="menuitem">
-              View profile
-            </Link>
-            <Link to={`/members/${member.id}?edit=member`} role="menuitem">
-              Edit member
-            </Link>
-            {["PENDING", "RETURNED", "FLAGGED"].includes(member.status) && (
-              <Link to={`/members/${member.id}#workflow`} role="menuitem">
-                Review workflow
-              </Link>
-            )}
-          </div>,
-          document.body,
-        )}
-    </>
+    <RowActionMenu
+      label={`Actions for ${member.fullName}`}
+      items={[
+        {
+          label: "View profile",
+          to: memberProfileLink(member.id, listPath),
+          onSelect: () => onNavigate(member.id),
+        },
+        {
+          label: "Edit member",
+          to: memberProfileLink(member.id, listPath, "edit"),
+          onSelect: () => onNavigate(member.id),
+        },
+        ...(["PENDING", "RETURNED", "FLAGGED"].includes(member.status)
+          ? [
+              {
+                label: "Review workflow",
+                to: memberProfileLink(member.id, listPath, "workflow"),
+                onSelect: () => onNavigate(member.id),
+              },
+            ]
+          : []),
+      ]}
+    />
   );
 }
 
 export default function MembersList() {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const loadAbort = useRef<AbortController | null>(null);
   const { user } = useAuth();
   const { districts } = useDistricts();
   const [rows, setRows] = useState<MemberRow[]>([]);
@@ -268,21 +238,28 @@ export default function MembersList() {
   const [selected, setSelected] = useState<number[]>([]);
   const [stats, setStats] = useState<MemberStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const listReturn = useMemberListReturn(
+    user?.id ?? 0,
+    loading || statsLoading,
+    error,
+    rows.map((member) => member.id),
+  );
   // Starts open when a filter is already active (e.g. from a shared/bookmarked URL) so the
   // applied filters aren't hidden behind a click; otherwise starts collapsed.
   const [filtersOpen, setFiltersOpen] = useState(() =>
     Boolean(
       params.get("status") ||
-        params.get("regionId") ||
-        params.get("districtId") ||
-        params.get("school") ||
-        params.get("missingFromReport20") ||
-        params.get("registered") ||
-        params.get("employmentCategory"),
+      params.get("regionId") ||
+      params.get("districtId") ||
+      params.get("school") ||
+      params.get("missingFromReport20") ||
+      params.get("registered") ||
+      params.get("employmentCategory"),
     ),
   );
 
-  const page = Math.max(1, Number(params.get("page")) || 1);
+  const rawPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const search = params.get("search") ?? "";
   const status = params.get("status") ?? "";
   const regionId = params.get("regionId") ?? "";
@@ -296,13 +273,13 @@ export default function MembersList() {
     : 10;
   const filtered = Boolean(
     search ||
-      status ||
-      regionId ||
-      districtId ||
-      school ||
-      missingFromReport20 ||
-      registered ||
-      employmentCategory,
+    status ||
+    regionId ||
+    districtId ||
+    school ||
+    missingFromReport20 ||
+    registered ||
+    employmentCategory,
   );
   // Status and Registration share one dropdown, so they count as a single active facet.
   const activeFilterCount = [
@@ -347,11 +324,17 @@ export default function MembersList() {
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      loadAbort.current?.abort();
+      const controller = new AbortController();
+      loadAbort.current = controller;
+      const abort = () => controller.abort();
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) controller.abort();
       setLoading(true);
       setError("");
       try {
         const response = await api.get("/members", {
-          signal,
+          signal: controller.signal,
           params: {
             page,
             limit,
@@ -365,14 +348,28 @@ export default function MembersList() {
             employmentCategory: employmentCategory || undefined,
           },
         });
+        if (controller.signal.aborted) return;
+        const pages = Math.max(1, response.data.pagination.totalPages);
+        if (page > pages) {
+          navigate(
+            {
+              pathname: "/members",
+              search: `?${new URLSearchParams({ ...Object.fromEntries(params), page: String(pages) })}`,
+              hash: location.hash,
+            },
+            { replace: true },
+          );
+          return;
+        }
         setRows(response.data.data);
         setTotal(response.data.pagination.total);
         setTotalPages(Math.max(1, response.data.pagination.totalPages));
       } catch {
-        if (!signal?.aborted)
+        if (!controller.signal.aborted)
           setError("Members could not be loaded. Check your connection and try again.");
       } finally {
-        if (!signal?.aborted) setLoading(false);
+        signal?.removeEventListener("abort", abort);
+        if (!controller.signal.aborted) setLoading(false);
       }
     },
     [
@@ -386,13 +383,19 @@ export default function MembersList() {
       school,
       search,
       status,
+      navigate,
+      params,
+      location.hash,
     ],
   );
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      loadAbort.current?.abort();
+    };
   }, [load]);
 
   useEffect(() => {
@@ -408,7 +411,9 @@ export default function MembersList() {
           missingFromReport20: missingFromReport20 || undefined,
         },
       })
-      .then((response) => setStats(response.data.data))
+      .then((response) => {
+        if (!controller.signal.aborted) setStats(response.data.data);
+      })
       .catch((err) => {
         if (!controller.signal.aborted) {
           console.error("Failed to load member stats", err);
@@ -420,6 +425,10 @@ export default function MembersList() {
       });
     return () => controller.abort();
   }, [regionId, districtId, school, missingFromReport20]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -496,7 +505,8 @@ export default function MembersList() {
           <input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search name, ID, or school"
+            placeholder="Name, ID, phone or school"
+            aria-describedby="member-search-help"
             aria-label="Search members"
           />
           <button type="submit">Search</button>
@@ -529,11 +539,30 @@ export default function MembersList() {
         </label>
       </section>
 
+      <p id="member-search-help" className="-mt-2 mb-4 text-xs text-text-muted">
+        Search by name, staff or Controller ID, Ghana Card, phone number or school.
+      </p>
+      {listReturn.missing && (
+        <div className="mb-4">
+          <Alert tone="info">
+            The last viewed member is no longer on this page or no longer matches these filters.
+            Your filters are unchanged.
+          </Alert>
+        </div>
+      )}
+
       {filtersOpen && (
         <section className="members-toolbar" aria-label="Member filters">
           <Dropdown
             className="w-47.5"
-            value={status || (registered === "true" ? "REGISTERED" : registered === "false" ? "NOT_REGISTERED" : "")}
+            value={
+              status ||
+              (registered === "true"
+                ? "REGISTERED"
+                : registered === "false"
+                  ? "NOT_REGISTERED"
+                  : "")
+            }
             onChange={onStatusChange}
             aria-label="Filter by status"
             options={[
@@ -677,7 +706,7 @@ export default function MembersList() {
       )}
       <section className="members-table-shell" aria-label="Member register">
         {loading && rows.length === 0 ? (
-          <div className="members-loading" aria-label="Loading members">
+          <div className="members-loading" role="status" aria-label="Loading members">
             {Array.from({ length: 7 }).map((_, index) => (
               <span key={index} />
             ))}
@@ -730,7 +759,7 @@ export default function MembersList() {
                         aria-label="Select all members on this page"
                       />
                     </th>
-                    <th className="members-number">#</th>
+                    <th className="members-number">No.</th>
                     <th>Member</th>
                     <th>Controller ID</th>
                     <th>School</th>
@@ -744,7 +773,9 @@ export default function MembersList() {
                   {rows.map((member, index) => (
                     <tr
                       key={member.id}
-                      className={selected.includes(member.id) ? "is-selected" : ""}
+                      data-member-row={member.id}
+                      tabIndex={listReturn.targetId === member.id ? -1 : undefined}
+                      className={`${selected.includes(member.id) ? "is-selected" : ""} ${listReturn.targetId === member.id ? "is-returned" : ""}`}
                     >
                       <td className="members-check">
                         <input
@@ -756,7 +787,10 @@ export default function MembersList() {
                       </td>
                       <td className="members-number">{(page - 1) * limit + index + 1}</td>
                       <td>
-                        <Link to={`/members/${member.id}`}>
+                        <Link
+                          to={memberProfileLink(member.id, listReturn.path)}
+                          onClick={() => listReturn.remember(member.id)}
+                        >
                           <span className="members-avatar">
                             {member.fullName
                               .split(/\s+/)
@@ -767,11 +801,15 @@ export default function MembersList() {
                           <span>
                             <strong>{member.fullName}</strong>
                             <small>Enrolled {formatEnrolled(member.createdAt)}</small>
+                            {listReturn.targetId === member.id && (
+                              <small className="members-last-viewed">Last viewed</small>
+                            )}
                           </span>
                         </Link>
                       </td>
                       <td>
                         <code>{member.controllerId}</code>
+                        {member.phone && <small className="members-phone">{member.phone}</small>}
                       </td>
                       <td title={member.school}>{member.school}</td>
                       <td>
@@ -818,7 +856,11 @@ export default function MembersList() {
                         )}
                       </td>
                       <td>
-                        <ActionMenu member={member} />
+                        <ActionMenu
+                          member={member}
+                          listPath={listReturn.path}
+                          onNavigate={listReturn.remember}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -829,7 +871,9 @@ export default function MembersList() {
               {rows.map((member, index) => (
                 <article
                   key={member.id}
-                  className={selected.includes(member.id) ? "is-selected" : ""}
+                  data-member-row={member.id}
+                  tabIndex={listReturn.targetId === member.id ? -1 : undefined}
+                  className={`${selected.includes(member.id) ? "is-selected" : ""} ${listReturn.targetId === member.id ? "is-returned" : ""}`}
                 >
                   <input
                     type="checkbox"
@@ -845,7 +889,10 @@ export default function MembersList() {
                       .join("")}
                   </span>
                   <div>
-                    <Link to={`/members/${member.id}`}>
+                    <Link
+                      to={memberProfileLink(member.id, listReturn.path)}
+                      onClick={() => listReturn.remember(member.id)}
+                    >
                       <strong>
                         {(page - 1) * limit + index + 1}. {member.fullName}
                       </strong>
@@ -853,6 +900,10 @@ export default function MembersList() {
                     <small>
                       {member.controllerId} · Enrolled {formatEnrolled(member.createdAt)}
                     </small>
+                    {member.phone && <small className="members-phone">{member.phone}</small>}
+                    {listReturn.targetId === member.id && (
+                      <small className="members-last-viewed">Last viewed</small>
+                    )}
                     <span>
                       {member.district
                         ? `${member.district.name}, ${member.district.region.name}`
@@ -889,6 +940,11 @@ export default function MembersList() {
                         Missing R20
                       </span>
                     )}
+                    <ActionMenu
+                      member={member}
+                      listPath={listReturn.path}
+                      onNavigate={listReturn.remember}
+                    />
                   </div>
                 </article>
               ))}

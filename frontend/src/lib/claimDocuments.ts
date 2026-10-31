@@ -49,7 +49,7 @@ export const CLAIM_DOCUMENT_MANIFEST: Record<ClaimType, ClaimDocumentSlot[]> = {
   ],
   HOSPITALIZATION: [
     {
-      key: " dischargeSummaryOrBill",
+      key: "dischargeSummaryOrBill",
       label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights",
       tag: "REQUIRED",
     },
@@ -104,8 +104,8 @@ export const MANKRADO_DOCUMENT_SLOTS: Record<ClaimType, string[]> = {
 export const deliveryLabel = (state?: string) =>
   ({
     NOT_SENT: "Not sent",
-    SENDING: "Sending to Claims System",
-    ACCEPTED: "Received by Claims System",
+    SENDING: "Sending to Claims Portal",
+    ACCEPTED: "Received by Claims Portal",
     FAILED: "Delivery failed",
     UNKNOWN: "Delivery unconfirmed",
   })[state ?? ""] ?? "Not sent";

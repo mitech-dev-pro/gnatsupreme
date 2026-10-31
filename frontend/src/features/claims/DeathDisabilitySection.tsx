@@ -1,4 +1,6 @@
 import { InputField } from "@/components/ui/FormField";
+import DateField from "@/components/ui/DateField";
+import { toISODate } from "@/lib/utils";
 import { SectionTitle } from "./ClaimFormLayout";
 type Props = {
   claimType: "DEATH" | "TOTAL_PERMANENT_DISABILITY";
@@ -42,13 +44,12 @@ export function DeathDisabilitySection({
         />
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <InputField
+        <DateField
           label={claimType === "DEATH" ? "Date of death" : "Date of incidence"}
-          type="date"
           required
-          max={new Date().toISOString().slice(0, 10)}
+          max={toISODate(new Date())}
           value={dateOfEvent}
-          onChange={(event) => setDateOfEvent(event.target.value)}
+          onChange={setDateOfEvent}
         />
         <InputField
           label={claimType === "DEATH" ? "Cause of death" : "Cause of disability"}

@@ -4,11 +4,13 @@ import { getApiError } from "@/lib/errorExtract";
 import { GHANA_CARD_ID_PREFIX, ghanaCardIdOrNull } from "@/lib/ghanaCardId";
 import { useDistricts } from "@/lib/useDistricts";
 import { isMinor } from "@/lib/utils";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { ELEVATED_ROLES, type MemberDetailData, type WorkflowEvent } from "./MemberDetail.model";
 export function useMemberDetail() {
   const { id } = useParams();
+  const activeId = useRef(id);
+  const loadAbort = useRef<AbortController | null>(null);
   const { user } = useAuth();
   const canReview = user ? ELEVATED_ROLES.includes(user.role) : false;
   const [member, setMember] = useState<MemberDetailData | null>(null);
@@ -75,25 +77,59 @@ export function useMemberDetail() {
   const [showRemoveForm, setShowRemoveForm] = useState(false);
   const [removeReason, setRemoveReason] = useState("DEATH");
   const [removeNote, setRemoveNote] = useState("");
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (activeId.current !== id) return;
+    loadAbort.current?.abort();
+    const controller = new AbortController();
+    loadAbort.current = controller;
+    setError("");
     setLoading(true);
     try {
       const [memberRes, eventsRes] = await Promise.all([
-        api.get(`/members/${id}`),
-        api.get(`/members/${id}/workflow`),
+        api.get(`/members/${id}`, { signal: controller.signal }),
+        api.get(`/members/${id}/workflow`, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted || activeId.current !== id) return;
       setMember(memberRes.data.data);
       setEvents(eventsRes.data.data);
     } catch {
-      setError("Unable to load this member.");
+      if (!controller.signal.aborted && activeId.current === id)
+        setError("Unable to load this member.");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && activeId.current === id) setLoading(false);
     }
-  };
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+  useEffect(() => {
+    activeId.current = id;
+    setBusy(false);
+    setPasswordBusy(false);
+    setAssignBusy(false);
+    setPasswordError("");
+    setAssignError("");
+    setAssignDistrictId("");
+    setBeneficiaryError("");
+    setEmploymentCategoryNote("");
+    setCheckResult("");
+    setReturnNote("");
+    setRemoveNote("");
+    setSpouseFieldErrors({});
+    setNewBeneficiary({ fullName: "", relationship: "CHILD", dateOfBirth: "", trusteeName: "" });
+    setEditing(false);
+    setEditingSpouse(false);
+    setAddingBeneficiary(false);
+    setConfirmation(null);
+    setShowReturnForm(false);
+    setShowRemoveForm(false);
+    setPasswordResult(null);
+    setConfirmingPasswordReset(false);
+    setAssigningDistrict(false);
+    setActionError("");
+    void load();
+    return () => {
+      activeId.current = undefined;
+      loadAbort.current?.abort();
+    };
+  }, [id, load]);
   const startEditing = () => {
     if (!member) return;
     setEditFullName(member.fullName);
@@ -111,6 +147,7 @@ export function useMemberDetail() {
     setEditing(true);
   };
   const saveEdit = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     setBusy(true);
     setActionError("");
@@ -136,6 +173,7 @@ export function useMemberDetail() {
             }
           : {}),
       });
+      if (activeId.current !== id) return;
       // The backend already clears a stale missingFromReport20At on this transition (see
       // member.routes.ts) -- this note is purely to surface a status that stays untouched
       // (member.status is read from before this save, i.e. the pre-transition value) so staff
@@ -150,25 +188,34 @@ export function useMemberDetail() {
       setEditing(false);
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to save changes.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const generatePassword = async () => {
+    if (activeId.current !== id) return;
     setPasswordBusy(true);
     setPasswordError("");
     try {
       const res = await api.post(`/members/${id}/password`);
+      if (activeId.current !== id) return;
       setPasswordResult(res.data.password);
       setConfirmingPasswordReset(false);
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setPasswordError(getApiError(err)?.message || "Unable to generate a password.");
     } finally {
-      setPasswordBusy(false);
+      if (activeId.current === id) {
+        setPasswordBusy(false);
+      }
     }
   };
   const submitAssignDistrict = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     if (!assignDistrictId) return;
     setAssignBusy(true);
@@ -177,13 +224,17 @@ export function useMemberDetail() {
       await api.patch(`/members/${id}`, {
         districtId: Number(assignDistrictId),
       });
+      if (activeId.current !== id) return;
       setAssigningDistrict(false);
       setAssignDistrictId("");
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setAssignError(getApiError(err)?.message || "Unable to assign a district.");
     } finally {
-      setAssignBusy(false);
+      if (activeId.current === id) {
+        setAssignBusy(false);
+      }
     }
   };
   const startEditingSpouse = () => {
@@ -202,6 +253,7 @@ export function useMemberDetail() {
     });
   };
   const saveSpouse = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     setBusy(true);
     setActionError("");
@@ -211,10 +263,12 @@ export function useMemberDetail() {
         fullName: spouseName.trim(),
         ghanaCardId: ghanaCardIdOrNull(spouseGhanaCard.trim()),
       });
+      if (activeId.current !== id) return;
       setSpouseFieldErrors({});
       setEditingSpouse(false);
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       const issues = getApiError(err)?.errors as
         Array<{ field?: string; message?: string }> | undefined;
       const fieldErrors: Partial<Record<"fullName" | "ghanaCardId", string>> = {};
@@ -233,23 +287,31 @@ export function useMemberDetail() {
         setActionError(getApiError(err)?.message || "Unable to save spouse.");
       }
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const removeSpouse = async () => {
+    if (activeId.current !== id) return;
     setBusy(true);
     setActionError("");
     try {
       await api.delete(`/members/${id}/spouse`);
+      if (activeId.current !== id) return;
       setConfirmation(null);
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to remove spouse.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const addBeneficiary = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     setBeneficiaryError("");
     if (isMinor(newBeneficiary.dateOfBirth) && !newBeneficiary.trusteeName.trim()) {
@@ -265,6 +327,7 @@ export function useMemberDetail() {
         dateOfBirth: newBeneficiary.dateOfBirth || null,
         trusteeName: newBeneficiary.trusteeName.trim() || null,
       });
+      if (activeId.current !== id) return;
       setAddingBeneficiary(false);
       setNewBeneficiary({
         fullName: "",
@@ -274,30 +337,40 @@ export function useMemberDetail() {
       });
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to add beneficiary.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const removeBeneficiary = async (beneficiaryId: number) => {
+    if (activeId.current !== id) return;
     setBusy(true);
     setActionError("");
     try {
       await api.delete(`/members/${id}/beneficiaries/${beneficiaryId}`);
+      if (activeId.current !== id) return;
       setConfirmation(null);
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to remove beneficiary.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const checkReport20 = async () => {
+    if (activeId.current !== id) return;
     setBusy(true);
     setActionError("");
     setCheckResult("");
     try {
       const res = await api.post(`/members/${id}/check-report20`);
+      if (activeId.current !== id) return;
       const data = res.data.data;
       if (data.matched) {
         setCheckResult(
@@ -314,42 +387,56 @@ export function useMemberDetail() {
         );
       }
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to check against Report 20.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const approve = async () => {
+    if (activeId.current !== id) return;
     if (!member) return;
     setBusy(true);
     setActionError("");
     try {
       await api.post(`/members/${id}/approve`);
+      if (activeId.current !== id) return;
       setConfirmation(null);
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to approve member.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const submitReturn = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     if (!returnNote.trim()) return;
     setBusy(true);
     setActionError("");
     try {
       await api.post(`/members/${id}/return`, { note: returnNote.trim() });
+      if (activeId.current !== id) return;
       setShowReturnForm(false);
       setReturnNote("");
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to return member.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const submitRemove = async (e: FormEvent) => {
+    if (activeId.current !== id) return;
     e.preventDefault();
     setBusy(true);
     setActionError("");
@@ -358,31 +445,40 @@ export function useMemberDetail() {
         reason: removeReason,
         note: removeNote.trim() || null,
       });
+      if (activeId.current !== id) return;
       setShowRemoveForm(false);
       setRemoveNote("");
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to remove member.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   const submitReactivate = async () => {
+    if (activeId.current !== id) return;
     setBusy(true);
     setActionError("");
     try {
       await api.post(`/members/${id}/reactivate`, {});
+      if (activeId.current !== id) return;
       await load();
     } catch (err: unknown) {
+      if (activeId.current !== id) return;
       setActionError(getApiError(err)?.message || "Unable to reactivate member.");
     } finally {
-      setBusy(false);
+      if (activeId.current === id) {
+        setBusy(false);
+      }
     }
   };
   return {
     id,
     canReview,
-    member,
+    member: member?.id === Number(id) ? member : null,
     events,
     loading,
     error,

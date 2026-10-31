@@ -41,7 +41,7 @@ export function parseSubmission(value: unknown): ClaimSubmissionResult {
     throw new ClaimsDeliveryError(
       "UNKNOWN",
       "INVALID_RESPONSE",
-      "Mankrado acceptance could not be confirmed. Check claim history before attempting another submission.",
+      "Claims Portal acceptance could not be confirmed. Check claim history before attempting another submission.",
     );
   return { externalClaimId: result.data.claimId, status: "SUBMITTED" };
 }

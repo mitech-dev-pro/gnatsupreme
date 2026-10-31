@@ -68,6 +68,8 @@ export default function ClaimDocumentChecklist({
           return (
             <div
               key={slot.key}
+              role="group"
+              aria-label={slot.label}
               className={`flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs ${index !== manifest.length - 1 ? "border-b border-border-default" : ""}`}
             >
               <span className="min-w-0 flex-1 font-semibold text-ink">{slot.label}</span>
@@ -91,7 +93,7 @@ export default function ClaimDocumentChecklist({
                 ))
               ) : (
                 <FileUploadField
-                  label="Upload"
+                  label="Attach document"
                   accept=".pdf,.doc,.docx,.jpg,.jpeg"
                   disabled={Boolean(uploadingSlot)}
                   busy={uploadingSlot === slot.key}

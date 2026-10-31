@@ -18,6 +18,7 @@ type NotifyMemberInput = {
   message: string;
   idempotencyKey: string;
   sendSms?: boolean;
+  actionUrl?: string;
 };
 
 export async function queueSmsNotification(input: QueueSmsInput) {
@@ -39,10 +40,13 @@ export async function queueSmsNotification(input: QueueSmsInput) {
 }
 
 export async function notifyMember(input: NotifyMemberInput) {
-  const member = await prisma.member.findUnique({
-    where: { id: input.memberId },
-    select: { phone: true, phoneVerifiedAt: true },
-  });
+  const member =
+    input.sendSms === false
+      ? null
+      : await prisma.member.findUnique({
+          where: { id: input.memberId },
+          select: { phone: true, phoneVerifiedAt: true },
+        });
   const inApp = await prisma.notification.upsert({
     where: { idempotencyKey: `${input.idempotencyKey}:in-app` },
     update: {},
@@ -52,6 +56,7 @@ export async function notifyMember(input: NotifyMemberInput) {
       type: input.type,
       title: input.title,
       message: input.message,
+      actionUrl: input.actionUrl,
       idempotencyKey: `${input.idempotencyKey}:in-app`,
       memberId: input.memberId,
       sentAt: new Date(),
@@ -77,6 +82,7 @@ export async function notifyStaffForMember(input: {
   title: string;
   message: string;
   idempotencyKey: string;
+  actionUrl?: string;
 }) {
   const member = await prisma.member.findUnique({
     where: { id: input.memberId },
@@ -113,6 +119,7 @@ export async function notifyStaffForMember(input: {
           type: input.type,
           title: input.title,
           message: input.message,
+          actionUrl: input.actionUrl,
           idempotencyKey: `${input.idempotencyKey}:user:${recipient.id}`,
           userId: recipient.id,
           sentAt: new Date(),

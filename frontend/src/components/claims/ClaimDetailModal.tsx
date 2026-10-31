@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ModalPortal from "@/components/ui/ModalPortal";
-import StatusBadge from "@/components/ui/StatusBadge";
-import Button from "@/components/ui/Button";
+import ClaimDeliveryControls from "./ClaimDeliveryControls";
+import ClaimStageSummary from "./ClaimStageSummary";
+import MankradoDetails from "./MankradoDetails";
+import MankradoHistory from "./MankradoHistory";
+import type { MankradoAssessment } from "@/features/claims/assessment.types";
 import { Alert } from "@/components/ui/Feedback";
 import { useClaimDocument } from "@/features/claims/useClaimDocument";
 import api from "@/lib/api";
-import { claimStatusLabel, claimStatusTone } from "@/lib/claimStatus";
 import {
   CLAIM_DOCUMENT_MANIFEST,
   claimDetailFields,
@@ -14,12 +16,13 @@ import {
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
+import { Link } from "react-router-dom";
 
 type ClaimDocument = {
   id: number;
   slotKey: string | null;
   originalName: string;
-  storedName: string;
+  storedName?: string;
 };
 
 type ClaimDetail = {
@@ -28,6 +31,7 @@ type ClaimDetail = {
   provider: string;
   status: string;
   externalStatus: string | null;
+  externalAssessment: MankradoAssessment | null;
   deliveryState: string;
   source: "STAFF" | "MEMBER_PORTAL";
   claimType: ClaimType | null;
@@ -58,23 +62,6 @@ type ClaimDetail = {
   submittedBy: { id: number; fullName: string } | null;
   submittedByMember: { id: number; controllerId: string; fullName: string } | null;
   reviewedBy: { id: number; fullName: string } | null;
-};
-
-type MankradoAssessment = {
-  claimNumber: string;
-  name: string | null;
-  claimDate: string | null;
-  amountPayable: string | null;
-  status: string;
-  rejectReason: string | null;
-};
-
-type HistoryRow = {
-  claimNumber: string;
-  name: string | null;
-  claimDate: string | null;
-  amountPayable: string | null;
-  status: string;
 };
 
 const labelize = (value: string | null | undefined) =>
@@ -111,7 +98,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[minmax(0,11rem)_1fr] border-b border-border-default text-sm last:border-0">
+    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,11rem)_1fr] border-b border-border-default text-sm last:border-0">
       <div className="bg-surface-subtle px-3 py-2 font-semibold text-text-muted">{label}</div>
       <div className="px-3 py-2 font-semibold text-ink wrap-break-word">
         {value || <span className="font-normal text-text-muted">—</span>}
@@ -124,69 +111,81 @@ export default function ClaimDetailModal({
   submissionId,
   onClose,
   onChanged,
+  audience = "staff",
 }: {
   submissionId: number;
+  audience?: "staff" | "member";
   onClose: () => void;
   // Notifies the caller (e.g. the table row this modal was opened from) that the claim's status
   // may have changed -- e.g. after a retried delivery -- so it can refresh its own data too.
   onChanged?: () => void | Promise<void>;
 }) {
   const [detail, setDetail] = useState<ClaimDetail | null>(null);
-  const [assessment, setAssessment] = useState<MankradoAssessment | null>(null);
-  const [history, setHistory] = useState<HistoryRow[] | null>(null);
-  const [historyError, setHistoryError] = useState("");
-  const [assessmentError, setAssessmentError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [retryBusy, setRetryBusy] = useState(false);
-  const [retryError, setRetryError] = useState("");
-  const { open: openDocument, error: docError } = useClaimDocument();
-
+  const { open: openDocument, error: docError } = useClaimDocument(
+    audience === "member" ? submissionId : undefined,
+  );
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    closeRef.current = onClose;
   }, [onClose]);
 
-  const load = (signal?: AbortSignal) => {
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeRef.current();
+      if (event.key !== "Tab") return;
+      const controls = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first || !last) return;
+      if (
+        !dialogRef.current?.contains(document.activeElement) ||
+        (!event.shiftKey && document.activeElement === last)
+      ) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
+
+  const requestRef = useRef<AbortController | null>(null);
+  const load = () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const signal = controller.signal;
     setLoading(true);
     setError("");
     setDetail(null);
-    setAssessment(null);
-    setHistory(null);
-    setHistoryError("");
-    setAssessmentError("");
 
     return api
-      .get(`/claims/submissions/${submissionId}`, { signal })
+      .get(
+        audience === "member"
+          ? `/member-portal/claims/${submissionId}`
+          : `/claims/submissions/${submissionId}`,
+        { signal },
+      )
       .then((response) => {
         const data = response.data.data as ClaimDetail;
-        setDetail(data);
-
-        // History and the live assessment are Mankrado-only endpoints; historical
-        // simulations have no counterpart there.
-        if (data.provider !== "Claims System") {
-          setHistory([]);
-          return;
-        }
-
-        void api
-          .get(`/claims/history/${encodeURIComponent(data.member.controllerId)}`, { signal })
-          .then((res) => setHistory(res.data.data))
-          .catch(() => {
-            if (!signal?.aborted) setHistoryError("Mankrado history is unavailable right now.");
-          });
-
-        if (data.externalClaimId) {
-          void api
-            .get(`/claims/claimdetails/${encodeURIComponent(data.externalClaimId)}`, { signal })
-            .then((res) => setAssessment(res.data.data))
-            .catch(() => {
-              if (!signal?.aborted)
-                setAssessmentError("Live Mankrado assessment is unavailable right now.");
-            });
+        if (!signal?.aborted) {
+          setDetail(data);
+          if (audience === "member") void onChanged?.();
         }
       })
       .catch((caught: unknown) => {
@@ -199,46 +198,10 @@ export default function ClaimDetailModal({
   };
 
   useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    void load();
+    return () => requestRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submissionId]);
-
-  const retrySubmission = async () => {
-    setRetryBusy(true);
-    setRetryError("");
-    try {
-      await api.post(`/claims/submissions/${submissionId}/send`);
-      await load();
-      await onChanged?.();
-    } catch (caught: unknown) {
-      setRetryError(getApiError(caught)?.message || "Delivery could not be started.");
-    } finally {
-      setRetryBusy(false);
-    }
-  };
-  const canRetry =
-    detail?.provider === "Claims System" &&
-    (detail.deliveryState === "NOT_SENT" ||
-      detail.deliveryState === "FAILED" ||
-      detail.deliveryState === "UNKNOWN") &&
-    detail.status === "PENDING" &&
-    (detail.source === "STAFF" || Boolean(detail.reviewedAt));
-
-  const claimNumber = detail?.externalClaimId ?? assessment?.claimNumber ?? null;
-  const claimStatus = assessment?.status ?? detail?.externalStatus ?? detail?.status ?? null;
-  // The Mankrado date carries no timezone; keep its wall-clock value.
-  const netPayableDate = assessment?.claimDate ? assessment.claimDate.replace(/\.\d+$/, "") : null;
-  const netPayable = assessmentError
-    ? assessmentError
-    : !assessment
-      ? detail?.externalClaimId
-        ? "Loading…"
-        : "—"
-      : assessment.amountPayable === null
-        ? "—"
-        : `${formatCurrency(assessment.amountPayable)}${netPayableDate ? ` · ${netPayableDate}` : ""}`;
+  }, [submissionId, audience]);
 
   const particulars = detail
     ? claimDetailFields(detail.claimType, detail.claimDetails).filter(([, value]) => value)
@@ -273,6 +236,7 @@ export default function ClaimDetailModal({
       <div
         className="fixed inset-0 z-1000 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
         role="dialog"
+        ref={dialogRef}
         aria-modal="true"
         aria-label="Claim details"
         onMouseDown={(event) => {
@@ -295,26 +259,35 @@ export default function ClaimDetailModal({
           </div>
 
           <div className="max-h-[calc(90vh-3.25rem)] overflow-y-auto p-5">
-            {loading ? (
+            {loading || (detail && detail.id !== submissionId) ? (
               <p className="text-sm text-text-muted">Loading claim details…</p>
             ) : error || !detail ? (
               <Alert tone="error">{error || "Claim not found."}</Alert>
             ) : (
               <>
-                {canRetry && (
-                  <div className="mb-4">
-                    <Button loading={retryBusy} onClick={() => void retrySubmission()}>
-                      {detail.deliveryState === "NOT_SENT"
-                        ? "Send saved claim"
-                        : "Retry submission"}
-                    </Button>
-                    {retryError && (
-                      <div className="mt-2">
-                        <Alert tone="error">{retryError}</Alert>
-                      </div>
-                    )}
-                  </div>
+                <ClaimStageSummary claim={detail} />
+                {audience === "staff" && (
+                  <ClaimDeliveryControls
+                    key={`delivery:${detail.id}`}
+                    claim={detail}
+                    staffId={detail.member.controllerId}
+                    onSent={async () => {
+                      await load();
+                      await onChanged?.();
+                    }}
+                  />
                 )}
+                {audience === "member" &&
+                  detail.status === "RETURNED" &&
+                  detail.deliveryState === "NOT_SENT" && (
+                    <Link
+                      to={`/member/claims/${detail.id}/resubmit`}
+                      onClick={onClose}
+                      className="mb-4 inline-block rounded-lg border border-action-primary px-3 py-2 text-sm font-bold text-action-primary hover:bg-info-soft"
+                    >
+                      Edit and resubmit
+                    </Link>
+                  )}
                 {detail.errorMessage && (
                   <div className="mb-4">
                     <Alert tone="error">{detail.errorMessage}</Alert>
@@ -326,80 +299,21 @@ export default function ClaimDetailModal({
                   </div>
                 )}
 
-                <Section title="Claim history">
-                  {historyError ? (
-                    <div className="p-3">
-                      <Alert tone="warning">{historyError}</Alert>
-                    </div>
-                  ) : !history ? (
-                    <p className="p-3 text-sm text-text-muted">Loading history…</p>
-                  ) : history.length === 0 ? (
-                    <p className="p-3 text-sm text-text-muted">
-                      No claims returned by Mankrado for this member.
-                    </p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="bg-surface-subtle text-text-muted">
-                            <th className="px-3 py-2 font-semibold">Claim date</th>
-                            <th className="px-3 py-2 font-semibold">Claim number</th>
-                            <th className="px-3 py-2 font-semibold">Claimant</th>
-                            <th className="px-3 py-2 text-right font-semibold">Claim amount</th>
-                            <th className="px-3 py-2 font-semibold">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {history.map((row, index) => (
-                            <tr
-                              key={`${row.claimNumber}:${index}`}
-                              className="border-t border-border-default"
-                            >
-                              <td className="whitespace-nowrap px-3 py-2">
-                                {row.claimDate ?? "—"}
-                              </td>
-                              <td className="px-3 py-2 font-mono">{row.claimNumber}</td>
-                              <td className="px-3 py-2">{row.name || "—"}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {row.amountPayable === null
-                                  ? "—"
-                                  : formatCurrency(row.amountPayable)}
-                              </td>
-                              <td className="px-3 py-2">
-                                <StatusBadge tone={claimStatusTone(row.status)}>
-                                  {claimStatusLabel(row.status)}
-                                </StatusBadge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Section>
-
-                <Section title="Claims details">
-                  <Row label="Application date" value={formatDate(detail.createdAt)} />
-                  <Row label="Claim number" value={claimNumber} />
+                <Section title="Submitted information">
+                  <Row label="Filed on" value={formatDate(detail.createdAt)} />
+                  <Row
+                    label="External lookup reference"
+                    value={
+                      detail.externalClaimId ?? "Available after Claims Portal confirms receipt"
+                    }
+                  />
                   <Row label="Policy holder" value={detail.member.fullName} />
                   <Row label="Staff ID" value={detail.member.controllerId} />
                   <Row label="Claim type" value={labelize(detail.claimType)} />
                   <Row
-                    label="Claim status"
-                    value={
-                      <StatusBadge tone={claimStatusTone(claimStatus)}>
-                        {claimStatusLabel(claimStatus)}
-                      </StatusBadge>
-                    }
-                  />
-                  <Row
-                    label="Claim amount"
+                    label="Estimated benefit — subject to insurer assessment"
                     value={detail.estimatedAmount ? formatCurrency(detail.estimatedAmount) : "—"}
                   />
-                  <Row label="Net claim payable" value={netPayable} />
-                  {assessment?.rejectReason?.trim() && (
-                    <Row label="Rejection reason" value={assessment.rejectReason} />
-                  )}
                 </Section>
 
                 <Section title="Filing & delivery">
@@ -408,10 +322,12 @@ export default function ClaimDetailModal({
                   <Row label="Branch" value={detail.member.district?.name ?? "—"} />
                   <Row label="Provider" value={detail.provider} />
                   <Row label="Delivery" value={deliveryText} />
-                  <Row label="Submitted to Mankrado" value={formatDate(detail.submittedAt)} />
-                  {detail.lastSyncedAt && (
-                    <Row label="Last synced" value={formatDate(detail.lastSyncedAt)} />
-                  )}
+                  <Row
+                    label="Sent to Claims Portal on"
+                    value={
+                      detail.submittedAt ? formatDate(detail.submittedAt) : "Not yet confirmed"
+                    }
+                  />
                 </Section>
 
                 {particulars.length > 0 && (
@@ -443,6 +359,11 @@ export default function ClaimDetailModal({
                 </Section>
 
                 <Section title="Documents">
+                  {audience === "member" && documentGroups.length > 0 && (
+                    <p className="px-3 pt-3 text-xs text-text-muted">
+                      Select a document below to download it.
+                    </p>
+                  )}
                   {docError && (
                     <div className="border-b border-border-default p-3">
                       <Alert tone="error">{docError}</Alert>
@@ -461,7 +382,7 @@ export default function ClaimDetailModal({
                                 key={doc.id}
                                 type="button"
                                 onClick={() => void openDocument(doc)}
-                                className="rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong hover:underline"
+                                className="max-w-full wrap-break-word rounded-full bg-info-soft px-2.5 py-0.5 text-left text-xs font-semibold text-text-strong hover:underline"
                               >
                                 {doc.originalName}
                               </button>
@@ -485,6 +406,40 @@ export default function ClaimDetailModal({
                   <Section title="Comment">
                     <p className="p-3 text-sm leading-relaxed text-ink">{detail.notes}</p>
                   </Section>
+                )}
+                {detail.provider === "Claims System" && (
+                  <>
+                    <MankradoDetails
+                      key={`assessment:${detail.id}`}
+                      externalId={detail.externalClaimId}
+                      endpoint={
+                        audience === "member"
+                          ? `/member-portal/claims/${detail.id}/assessment`
+                          : undefined
+                      }
+                      savedAssessment={detail.externalAssessment}
+                      lastSyncedAt={detail.lastSyncedAt}
+                      onUpdated={(result) => {
+                        setDetail((previous) =>
+                          previous?.id === detail.id
+                            ? {
+                                ...previous,
+                                externalAssessment: result,
+                                externalStatus: result.status,
+                                lastSyncedAt: result.lastSyncedAt,
+                              }
+                            : previous,
+                        );
+                        void onChanged?.();
+                      }}
+                    />
+                    {audience === "staff" && detail.deliveryState !== "UNKNOWN" && (
+                      <MankradoHistory
+                        key={`history:${detail.id}`}
+                        staffId={detail.member.controllerId}
+                      />
+                    )}
+                  </>
                 )}
               </>
             )}

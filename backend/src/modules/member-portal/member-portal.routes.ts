@@ -1,5 +1,14 @@
+import { memberChangeCorrectionRouter } from "./member-change-requests.routes.js";
+import { notifyChangeRequested } from "../workflows/change-request.notifications.js";
+import { createClaimDraftRouter, commitClaimDraft } from "../claims/claims.drafts.js";
 import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
-import { activeBenefit, linkedClaimConflict, resolveSpouseLinkedMemberId, uploadedSlotKeys } from "../claims/claims.service.js";
+import { refreshClaimAssessment } from "../claims/claims.assessment.js";
+import {
+  activeBenefit,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "../claims/claims.service.js";
 import path from "node:path";
 import {
   ClaimDocumentError,
@@ -54,6 +63,8 @@ function asJson(value: unknown) {
 }
 
 memberPortalRouter.use(authenticateMember);
+memberPortalRouter.use("/change-requests", memberChangeCorrectionRouter);
+memberPortalRouter.use("/claims/drafts", createClaimDraftRouter("member"));
 
 memberPortalRouter.get("/settings", async (_request, response) => {
   const settings = await getOrganizationSettings();
@@ -473,7 +484,7 @@ memberPortalRouter.get("/claims/history", async (_request, response) => {
   } catch (error) {
     response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
       success: false,
-      message: "Mankrado history is unavailable. Local claims remain saved.",
+      message: "Claims Portal history is unavailable. Local claims remain saved.",
     });
   }
 });
@@ -490,6 +501,19 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
     select: {
       ...claimSelect,
       claimantIdType: true,
+      claimantName: true,
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          district: { select: { name: true } },
+        },
+      },
+      submittedBy: { select: { id: true, fullName: true } },
+      submittedByMember: { select: { id: true, fullName: true, controllerId: true } },
+      reviewedBy: { select: { id: true, fullName: true } },
+      externalAssessment: true,
       claimantIdNumber: true,
       claimantContact: true,
       paymentMethod: true,
@@ -504,11 +528,93 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
   }
   const documents = claim.documentIds.length
     ? await prisma.storedFile.findMany({
-        where: { id: { in: claim.documentIds } },
+        where: {
+          id: { in: claim.documentIds },
+          memberId: currentMember.id,
+          category: "CLAIM_DOCUMENT",
+        },
         select: { id: true, slotKey: true, originalName: true },
       })
     : [];
   response.json({ success: true, data: { ...claim, documents } });
+});
+
+memberPortalRouter.get("/claims/:id/assessment", async (request, response) => {
+  const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim ID" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id, provider: "Claims System" },
+    select: { id: true, externalClaimId: true },
+  });
+  if (!claim?.externalClaimId) {
+    response.status(404).json({
+      success: false,
+      message: "No Claims Portal assessment is available for this claim yet",
+    });
+    return;
+  }
+  try {
+    const details = await refreshClaimAssessment(
+      claim.id,
+      claim.externalClaimId,
+      currentMember.controllerId,
+    );
+    response.json({ success: true, data: details });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message:
+        "Claims Portal assessment is unavailable. Your saved claim details remain available.",
+    });
+  }
+});
+
+memberPortalRouter.get("/claims/:id/documents/:documentId", async (request, response) => {
+  const params = z
+    .object({
+      id: z.coerce.number().int().positive(),
+      documentId: z.coerce.number().int().positive(),
+    })
+    .safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim document" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id },
+    select: { documentIds: true },
+  });
+  if (!claim?.documentIds.includes(params.data.documentId)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const file = await prisma.storedFile.findFirst({
+    where: { id: params.data.documentId, memberId: currentMember.id, category: "CLAIM_DOCUMENT" },
+    select: { storagePath: true, originalName: true, mimeType: true },
+  });
+  if (!file) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const absolute = path.resolve(uploadRoot, file.storagePath);
+  if (!absolute.startsWith(`${uploadRoot}${path.sep}`)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  response.setHeader("Cache-Control", "private, no-store");
+  response.type(file.mimeType);
+  response.attachment(file.originalName);
+  response.sendFile(absolute, (error) => {
+    if (error && !response.headersSent)
+      response
+        .status(404)
+        .json({ success: false, message: "Stored claim document is unavailable" });
+  });
 });
 
 memberPortalRouter.post("/claims", async (request, response) => {
@@ -548,7 +654,14 @@ memberPortalRouter.post("/claims", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -604,7 +717,8 @@ memberPortalRouter.post("/claims", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
+    null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {
@@ -616,33 +730,39 @@ memberPortalRouter.post("/claims", async (request, response) => {
         }
       : parsed.data.claimDetails;
 
-  const claim = await prisma.externalClaimSubmission.upsert({
-    where: { idempotencyKey },
-    update: {},
-    create: {
-      memberId: currentMember.id,
-      submittedByMemberId: currentMember.id,
-      source: "MEMBER_PORTAL",
-      status: "PENDING",
-      provider: "Claims System",
-      idempotencyKey,
-      claimType: parsed.data.claimType,
-      claimantType: parsed.data.claimantType,
-      claimantName:
-        parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
-      claimantIdType: parsed.data.claimantIdType,
-      claimantIdNumber: parsed.data.claimantIdNumber,
-      claimantContact: parsed.data.claimantContact,
-      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
-      claimDetails,
-      estimatedAmount: amount,
-      paymentMethod: parsed.data.paymentMethod,
-      paymentDetails: parsed.data.paymentDetails,
-      documentIds: uniqueDocumentIds,
-      notes: parsed.data.notes || null,
-    },
-    select: claimSelect,
-  });
+  const claim = await commitClaimDraft(
+    parsed.data,
+    { member: currentMember },
+    currentMember.id,
+    (transaction, draftKey) =>
+      transaction.externalClaimSubmission.upsert({
+        where: { idempotencyKey: draftKey ?? idempotencyKey },
+        update: {},
+        create: {
+          memberId: currentMember.id,
+          submittedByMemberId: currentMember.id,
+          source: "MEMBER_PORTAL",
+          status: "PENDING",
+          provider: "Claims System",
+          idempotencyKey: draftKey ?? idempotencyKey,
+          claimType: parsed.data.claimType,
+          claimantType: parsed.data.claimantType,
+          claimantName:
+            parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
+          claimantIdType: parsed.data.claimantIdType,
+          claimantIdNumber: parsed.data.claimantIdNumber,
+          claimantContact: parsed.data.claimantContact,
+          incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+          claimDetails,
+          estimatedAmount: amount,
+          paymentMethod: parsed.data.paymentMethod,
+          paymentDetails: parsed.data.paymentDetails,
+          documentIds: uniqueDocumentIds,
+          notes: parsed.data.notes || null,
+        },
+        select: claimSelect,
+      }),
+  );
   await recordAudit({
     request,
     action: "MEMBER_CLAIM_SUBMITTED",
@@ -657,6 +777,7 @@ memberPortalRouter.post("/claims", async (request, response) => {
     title: "New claim submitted",
     message: `${currentMember.fullName} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
     idempotencyKey: `claim-submitted:${claim.id}`,
+    actionUrl: `/claims/${claim.id}`,
   });
   response.status(201).json({ success: true, data: claim });
 });
@@ -706,7 +827,14 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, record, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -762,7 +890,8 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     return;
   }
   const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ?? null;
+    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
+    null;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {
@@ -812,6 +941,7 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     title: "Claim resubmitted",
     message: `${currentMember.fullName} resubmitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
     idempotencyKey: `claim-resubmitted:${existing.id}:${Date.now()}`,
+    actionUrl: `/claims/${existing.id}`,
   });
   response.json({ success: true, data: updated });
 });
@@ -934,6 +1064,19 @@ memberPortalRouter.delete("/claims/documents/:id", async (request, response) => 
     });
     return;
   }
+  if (
+    await prisma.claimDraft.findFirst({
+      where: { documentIds: { has: file.id }, submittedClaimId: null },
+      select: { id: true },
+    })
+  ) {
+    response.status(409).json({
+      success: false,
+      message:
+        "This attachment belongs to a saved draft. Remove it from the saved draft before deleting it.",
+    });
+    return;
+  }
   await prisma.storedFile.delete({ where: { id: file.id } });
   await unlink(path.resolve(uploadRoot, file.storagePath)).catch(() => undefined);
   await recordAudit({
@@ -959,8 +1102,9 @@ memberPortalRouter.get("/change-requests", async (_request, response) => {
       reviewNote: true,
       requestedAt: true,
       reviewedAt: true,
+      updatedAt: true,
     },
-    orderBy: { requestedAt: "desc" },
+    orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
   });
   response.json({ success: true, data: requests });
 });
@@ -1024,13 +1168,7 @@ memberPortalRouter.post("/change-requests", async (request, response) => {
     description: `Member ${currentMember.controllerId} requested a ${item.type} change`,
     afterData: { memberId: currentMember.id, type: item.type },
   });
-  await notifyStaffForMember({
-    memberId: currentMember.id,
-    type: "MEMBER_CHANGE_REQUESTED",
-    title: "Member change request",
-    message: `${currentMember.fullName} submitted a ${item.type.toLowerCase().replaceAll("_", " ")} request for review.`,
-    idempotencyKey: `change-request:${item.id}`,
-  });
+  await notifyChangeRequested(item);
   response.status(201).json({ success: true, data: item });
 });
 
@@ -1041,13 +1179,29 @@ memberPortalRouter.patch("/change-requests/:id/cancel", async (request, response
     return;
   }
 
+  const version = z
+    .object({ expectedUpdatedAt: z.iso.datetime().optional() })
+    .safeParse(request.body ?? {});
+  if (!version.success) {
+    response.status(400).json({ success: false, message: "Invalid request version" });
+    return;
+  }
   const currentMember = member(response);
   const item = await prisma.memberChangeRequest.findFirst({
     where: { id: params.data.id, memberId: currentMember.id },
-    select: { id: true, type: true, status: true },
+    select: { id: true, type: true, status: true, updatedAt: true },
   });
   if (!item) {
     response.status(404).json({ success: false, message: "Change request not found" });
+    return;
+  }
+  if (
+    version.data.expectedUpdatedAt &&
+    item.updatedAt.toISOString() !== version.data.expectedUpdatedAt
+  ) {
+    response
+      .status(409)
+      .json({ success: false, message: "This request changed. Refresh it before cancelling." });
     return;
   }
   if (item.status !== "PENDING") {
@@ -1058,7 +1212,12 @@ memberPortalRouter.patch("/change-requests/:id/cancel", async (request, response
   }
 
   const updated = await prisma.memberChangeRequest.updateMany({
-    where: { id: item.id, memberId: currentMember.id, status: "PENDING" },
+    where: {
+      id: item.id,
+      memberId: currentMember.id,
+      status: "PENDING",
+      updatedAt: item.updatedAt,
+    },
     data: { status: "CANCELLED", reviewedAt: new Date() },
   });
   if (updated.count === 0) {

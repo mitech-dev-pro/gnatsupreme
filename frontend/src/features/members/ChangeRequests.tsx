@@ -1,3 +1,5 @@
+import ActionMenu from "@/components/ui/ActionMenu";
+import ReviewDecisionDialog from "@/components/ui/ReviewDecisionDialog";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
@@ -6,11 +8,12 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { getApiError } from "@/lib/errorExtract";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import "./ChangeRequests.css";
 
 type RequestItem = {
+  updatedAt?: string;
   id: number;
   type: string;
   status: string;
@@ -87,9 +90,22 @@ const statusTone = (status: string): "neutral" | "success" | "warning" | "danger
 export default function ChangeRequests() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") ?? "PENDING";
+  const requestId = /^[1-9]\d*$/.test(params.get("request") ?? "")
+    ? Number(params.get("request"))
+    : undefined;
+  const status =
+    params.get("status") === "ALL" || requestId ? "" : (params.get("status") ?? "PENDING");
   const type = params.get("type") ?? "";
-  const page = Math.max(1, Number(params.get("page")) || 1);
+  const rawPage = Number(params.get("page"));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const limit = 10;
+  const request = useRef<AbortController | null>(null);
+  const selectedRef = useRef<number | null>(null);
+  const actionLock = useRef(false);
+  const [actionError, setActionError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [detailRetry, setDetailRetry] = useState(0);
   const [items, setItems] = useState<RequestItem[]>([]);
   const [selected, setSelected] = useState<RequestItem | null>(null);
   const [member, setMember] = useState<MemberData | null>(null);
@@ -115,12 +131,19 @@ export default function ChangeRequests() {
 
   const updateParams = (values: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
+    if ("status" in values || "type" in values) next.delete("request");
     Object.entries(values).forEach(([key, value]) =>
       value ? next.set(key, value) : next.delete(key),
     );
     setParams(next);
   };
   const load = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    const previousId = selectedRef.current;
+    setSelected(null);
+    setDecision(null);
     setLoading(true);
     setError("");
     setSelectedIds(new Set());
@@ -128,32 +151,53 @@ export default function ChangeRequests() {
     setBulkNote("");
     try {
       const response = await api.get("/change-requests", {
-        params: { page, limit: 20, status: status || undefined, type: type || undefined },
+        signal: controller.signal,
+        params: { requestId, page, limit, status: status || undefined, type: type || undefined },
       });
+      if (controller.signal.aborted) return;
+      const pages = Math.max(1, response.data.pagination.totalPages);
+      if (page > pages) {
+        setParams(
+          (previous) => {
+            const nextParams = new URLSearchParams(previous);
+            nextParams.set("page", String(pages));
+            return nextParams;
+          },
+          { replace: true },
+        );
+        return;
+      }
       const next = response.data.data as RequestItem[];
       setItems(next);
       setTotal(response.data.pagination.total);
       setTotalPages(Math.max(1, response.data.pagination.totalPages));
-      setSelected((current) => next.find((item) => item.id === current?.id) ?? next[0] ?? null);
+      setSelected(() => next.find((item) => item.id === previousId) ?? next[0] ?? null);
     } catch {
-      setError("Change requests could not be loaded.");
+      if (!controller.signal.aborted) {
+        setItems([]);
+        setError("Change requests could not be loaded.");
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [page, status, type]);
+  }, [page, status, type, requestId, setParams]);
 
   useEffect(() => {
     void load();
+    return () => request.current?.abort();
   }, [load]);
   useEffect(() => {
     setBulkResult(null);
-  }, [status, type, page]);
+    setSuccess("");
+  }, [status, type]);
   useEffect(() => {
     if (!selected) {
       setMember(null);
       return;
     }
     let cancelled = false;
+    setMember(null);
+    setMemberError("");
     setDetailLoading(true);
     api
       .get(`/members/${selected.member.id}`)
@@ -161,7 +205,12 @@ export default function ChangeRequests() {
         if (!cancelled) setMember(response.data.data);
       })
       .catch(() => {
-        if (!cancelled) setMember(null);
+        if (!cancelled) {
+          setMember(null);
+          setMemberError(
+            "The current member details could not be loaded. Please try again before reviewing this request.",
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
@@ -169,6 +218,10 @@ export default function ChangeRequests() {
     return () => {
       cancelled = true;
     };
+  }, [selected, detailRetry]);
+
+  useEffect(() => {
+    selectedRef.current = selected?.id ?? null;
   }, [selected]);
 
   const currentSource = () => {
@@ -186,24 +239,28 @@ export default function ChangeRequests() {
   ).filter((key) => !["id", "memberId", "createdAt", "updatedAt"].includes(key));
 
   const review = async () => {
-    if (!selected || !decision) return;
+    if (!selected || !decision || memberError || detailLoading || actionLock.current) return;
     if (decision !== "APPROVE" && !reviewNote.trim()) {
-      setError("A review note is required when returning or rejecting a request.");
+      setActionError("A review note is required when returning or rejecting a request.");
       return;
     }
+    actionLock.current = true;
     setBusy(true);
-    setError("");
+    setActionError("");
     try {
       await api.patch(`/change-requests/${selected.id}/review`, {
+        ...(selected.updatedAt ? { expectedUpdatedAt: selected.updatedAt } : {}),
         action: decision,
         note: reviewNote.trim() || null,
       });
       setDecision(null);
       setReviewNote("");
+      setSuccess(`Request for ${selected.member.fullName} reviewed successfully.`);
       await load();
     } catch (requestError: unknown) {
-      setError(getApiError(requestError)?.message || "The review could not be completed.");
+      setActionError(getApiError(requestError)?.message || "The review could not be completed.");
     } finally {
+      actionLock.current = false;
       setBusy(false);
     }
   };
@@ -224,17 +281,27 @@ export default function ChangeRequests() {
     });
 
   const bulkReview = async () => {
-    if (!bulkDecision || selectedIds.size === 0) return;
+    if (!bulkDecision || selectedIds.size === 0 || actionLock.current) return;
     if (bulkDecision !== "APPROVE" && !bulkNote.trim()) {
-      setError("A review note is required when returning or rejecting requests.");
+      setActionError("A review note is required when returning or rejecting requests.");
       return;
     }
+    actionLock.current = true;
     setBulkBusy(true);
-    setError("");
+    setActionError("");
     setBulkResult(null);
     try {
       const response = await api.post("/change-requests/bulk/review", {
         changeRequestIds: [...selectedIds],
+        ...(items.some((item) => selectedIds.has(item.id) && item.updatedAt)
+          ? {
+              versions: Object.fromEntries(
+                items
+                  .filter((item) => selectedIds.has(item.id) && item.updatedAt)
+                  .map((item) => [String(item.id), item.updatedAt]),
+              ),
+            }
+          : {}),
         action: bulkDecision,
         note: bulkNote.trim() || null,
       });
@@ -244,8 +311,11 @@ export default function ChangeRequests() {
       setSelectedIds(new Set());
       await load();
     } catch (requestError: unknown) {
-      setError(getApiError(requestError)?.message || "The bulk review could not be completed.");
+      setActionError(
+        getApiError(requestError)?.message || "The bulk review could not be completed.",
+      );
     } finally {
+      actionLock.current = false;
       setBulkBusy(false);
     }
   };
@@ -257,12 +327,75 @@ export default function ChangeRequests() {
         title="Change requests"
         description={`${total.toLocaleString()} ${status ? status.toLowerCase() : "matching"} request${total === 1 ? "" : "s"} in your access scope`}
       />
+      {success && (
+        <div className="mb-3">
+          <Alert tone="success">{success}</Alert>
+        </div>
+      )}
+      {decision && selected && (
+        <ReviewDecisionDialog
+          title={
+            decision === "APPROVE"
+              ? "Approve change request"
+              : decision === "RETURN"
+                ? "Return change request for correction"
+                : "Reject change request"
+          }
+          description={`${selected.member.fullName} · ${selected.member.controllerId} · Request #${selected.id}`}
+          help="Approval updates the member record immediately. Return and rejection notes are visible to the member."
+          decision={decision}
+          note={reviewNote}
+          onNote={setReviewNote}
+          busy={busy}
+          error={actionError}
+          onClose={() => {
+            setDecision(null);
+            setReviewNote("");
+          }}
+          onConfirm={() => void review()}
+        />
+      )}
+      {bulkDecision && (
+        <ReviewDecisionDialog
+          title={`Review ${selectedIds.size} selected requests`}
+          description={
+            <ul className="max-h-32 overflow-y-auto">
+              {items
+                .filter((item) => selectedIds.has(item.id))
+                .map((item) => (
+                  <li key={item.id}>
+                    {item.member.fullName} · Request #{item.id}
+                  </li>
+                ))}
+            </ul>
+          }
+          help={`${bulkDecision === "APPROVE" ? "Approval updates the selected member records immediately." : "The same review note will be sent for each selected request."} Each request is checked individually and any failures will be reported.`}
+          decision={bulkDecision}
+          note={bulkNote}
+          onNote={setBulkNote}
+          busy={bulkBusy}
+          error={actionError}
+          onClose={() => {
+            setBulkDecision(null);
+            setBulkNote("");
+          }}
+          onConfirm={() => void bulkReview()}
+        />
+      )}
+      {requestId && (
+        <Link
+          to="/change-requests?status=ALL"
+          className="mb-3 inline-block text-sm text-action-primary"
+        >
+          Show all requests
+        </Link>
+      )}
       <div className="change-filters" aria-label="Change request filters">
         <Dropdown
           aria-label="Filter by status"
           className="w-48"
           value={status}
-          onChange={(value) => updateParams({ status: value || null, page: null })}
+          onChange={(value) => updateParams({ status: value || "ALL", page: null })}
           options={[
             { value: "", label: "All statuses" },
             ...STATUSES.map((item) => ({
@@ -284,7 +417,12 @@ export default function ChangeRequests() {
       </div>
       {error && (
         <div className="mb-3">
-          <Alert tone="error">{error}</Alert>
+          <Alert tone="error">
+            {error}{" "}
+            <button type="button" className="underline" onClick={() => void load()}>
+              Try again
+            </button>
+          </Alert>
         </div>
       )}
       <div className="change-workspace">
@@ -306,63 +444,23 @@ export default function ChangeRequests() {
           {selectedIds.size > 0 && (
             <div className="change-bulkbar">
               <strong>{selectedIds.size} selected</strong>
-              <div className="change-decisions">
-                <button
-                  type="button"
-                  aria-pressed={bulkDecision === "APPROVE"}
-                  className={bulkDecision === "APPROVE" ? "approve active" : "approve"}
-                  onClick={() => setBulkDecision("APPROVE")}
-                >
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={bulkDecision === "RETURN"}
-                  className={bulkDecision === "RETURN" ? "return active" : "return"}
-                  onClick={() => setBulkDecision("RETURN")}
-                >
-                  Return
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={bulkDecision === "REJECT"}
-                  className={bulkDecision === "REJECT" ? "reject active" : "reject"}
-                  onClick={() => setBulkDecision("REJECT")}
-                >
-                  Reject
-                </button>
-              </div>
-              {bulkDecision && (
-                <div className="change-note">
-                  <label htmlFor="bulk-review-note">
-                    Review note{" "}
-                    {bulkDecision === "APPROVE" ? <small>Optional</small> : <small>Required</small>}
-                  </label>
-                  <textarea
-                    id="bulk-review-note"
-                    rows={2}
-                    maxLength={500}
-                    required={bulkDecision !== "APPROVE"}
-                    value={bulkNote}
-                    onChange={(event) => setBulkNote(event.target.value)}
-                    placeholder={
-                      bulkDecision === "APPROVE"
-                        ? "Add a note if needed"
-                        : "Explain the decision — every selected member will see it"
-                    }
-                  />
-                  <div>
-                    <span aria-live="polite">{bulkNote.length}/500</span>
-                    <button
-                      type="button"
-                      disabled={bulkBusy || (bulkDecision !== "APPROVE" && !bulkNote.trim())}
-                      onClick={() => void bulkReview()}
-                    >
-                      {bulkBusy ? "Saving…" : `Confirm ${bulkDecision.toLowerCase()} (${selectedIds.size})`}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <ActionMenu
+                label="Actions for selected requests"
+                items={(["APPROVE", "RETURN", "REJECT"] as const).map((value) => ({
+                  label:
+                    value === "APPROVE"
+                      ? "Approve"
+                      : value === "RETURN"
+                        ? "Return for correction"
+                        : "Reject",
+                  onSelect: () => {
+                    setDecision(null);
+                    setActionError("");
+                    setBulkNote("");
+                    setBulkDecision(value);
+                  },
+                }))}
+              />
             </div>
           )}
           {bulkResult && (
@@ -384,19 +482,19 @@ export default function ChangeRequests() {
             </div>
           )}
           {loading ? (
-            <div className="change-skeleton" aria-label="Loading requests">
+            <div className="change-skeleton" role="status" aria-label="Loading requests">
               {Array.from({ length: 5 }).map((_, index) => (
                 <span key={index} />
               ))}
             </div>
-          ) : items.length === 0 ? (
+          ) : error ? null : items.length === 0 ? (
             <EmptyState
               title="No requests found"
               description="Requests matching these filters will appear here."
             />
           ) : (
             <ul>
-              {items.map((item) => (
+              {items.map((item, index) => (
                 <li key={item.id} className={selectedIds.has(item.id) ? "is-selected" : ""}>
                   {canReview && item.status === "PENDING" && (
                     <input
@@ -417,7 +515,9 @@ export default function ChangeRequests() {
                       setReviewNote("");
                     }}
                   >
-                    <span className="change-type">{labels[item.type]}</span>
+                    <span className="change-type">
+                      No. {(page - 1) * limit + index + 1} · {labels[item.type]}
+                    </span>
                     <strong>{item.member.fullName}</strong>
                     <small>
                       {item.member.controllerId} · Requested {date(item.requestedAt)}
@@ -449,6 +549,17 @@ export default function ChangeRequests() {
               <strong>Select a request</strong>
               <p>Choose a request to inspect its proposed changes.</p>
             </div>
+          ) : memberError ? (
+            <Alert tone="error">
+              {memberError}{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setDetailRetry((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </Alert>
           ) : detailLoading ? (
             <div className="change-detail-skeleton" aria-label="Loading request details">
               <span />
@@ -470,6 +581,12 @@ export default function ChangeRequests() {
                 </div>
                 <Link to={`/members/${selected.member.id}`}>View member profile</Link>
               </header>
+              {selected.status === "PENDING" && selected.reviewNote && (
+                <div className="change-request-note">
+                  <span>Previous review note</span>
+                  <p>{selected.reviewNote}</p>
+                </div>
+              )}
               {selected.requestNote && (
                 <div className="change-request-note">
                   <span>Request note</span>
@@ -509,68 +626,27 @@ export default function ChangeRequests() {
               </div>
               {selected.status === "PENDING" && canReview ? (
                 <div className="change-review">
-                  <h3>Review decision</h3>
+                  <h3>Review request</h3>
                   <p className="change-review__help">
-                    Approval updates the member record immediately. Return and reject decisions
-                    require a note that the member can read.
+                    Review the proposed changes above, then choose an action.
                   </p>
-                  <div className="change-decisions">
-                    <button
-                      type="button"
-                      aria-pressed={decision === "APPROVE"}
-                      className={decision === "APPROVE" ? "approve active" : "approve"}
-                      onClick={() => setDecision("APPROVE")}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={decision === "RETURN"}
-                      className={decision === "RETURN" ? "return active" : "return"}
-                      onClick={() => setDecision("RETURN")}
-                    >
-                      Return for correction
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={decision === "REJECT"}
-                      className={decision === "REJECT" ? "reject active" : "reject"}
-                      onClick={() => setDecision("REJECT")}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                  {decision && (
-                    <div className="change-note">
-                      <label htmlFor="change-review-note">
-                        Review note{" "}
-                        {decision === "APPROVE" ? <small>Optional</small> : <small>Required</small>}
-                      </label>
-                      <textarea
-                        id="change-review-note"
-                        rows={3}
-                        maxLength={500}
-                        required={decision !== "APPROVE"}
-                        value={reviewNote}
-                        onChange={(event) => setReviewNote(event.target.value)}
-                        placeholder={
-                          decision === "APPROVE"
-                            ? "Add a note if needed"
-                            : "Explain the decision and what the member should do next"
-                        }
-                      />
-                      <div>
-                        <span aria-live="polite">{reviewNote.length}/500</span>
-                        <button
-                          type="button"
-                          disabled={busy || (decision !== "APPROVE" && !reviewNote.trim())}
-                          onClick={() => void review()}
-                        >
-                          {busy ? "Saving…" : `Confirm ${decision.toLowerCase()}`}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <ActionMenu
+                    label={`Actions for request ${selected.id}`}
+                    items={(["APPROVE", "RETURN", "REJECT"] as const).map((value) => ({
+                      label:
+                        value === "APPROVE"
+                          ? "Approve"
+                          : value === "RETURN"
+                            ? "Return for correction"
+                            : "Reject",
+                      onSelect: () => {
+                        setBulkDecision(null);
+                        setReviewNote("");
+                        setActionError("");
+                        setDecision(value);
+                      },
+                    }))}
+                  />
                 </div>
               ) : selected.status !== "PENDING" ? (
                 <div className="change-reviewed">

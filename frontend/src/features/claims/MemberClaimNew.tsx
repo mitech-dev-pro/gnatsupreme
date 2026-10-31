@@ -1,3 +1,6 @@
+import ClaimDraftControls from "./ClaimDraftControls";
+import { useClaimDraft } from "./useClaimDraft";
+import type { ClaimDraftPayload } from "./claimDrafts.model";
 import { DeathDisabilitySection } from "./DeathDisabilitySection";
 import { CriticalIllnessSection } from "./CriticalIllnessSection";
 import { HospitalizationSection } from "./HospitalizationSection";
@@ -7,6 +10,7 @@ import type { ContactDetails } from "./claimForm.types";
 import ClaimDocumentChecklist, {
   type UploadedClaimDocument,
 } from "@/components/claims/ClaimDocumentChecklist";
+import { claimantContactForSubmission } from "./claimForm.payload";
 import Button from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Feedback";
 import { InputField } from "@/components/ui/FormField";
@@ -42,7 +46,7 @@ const PAGE_LABELS = ["Claim details", "Payment and declaration"];
 
 export default function MemberClaimNew() {
   const navigate = useNavigate();
-  const submissionKey = useRef(crypto.randomUUID());
+  const submissionKey = useRef<string>(crypto.randomUUID());
   const submitting = useRef(false);
   const { id: resubmitId } = useParams();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -91,15 +95,81 @@ export default function MemberClaimNew() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const draftPayload: ClaimDraftPayload = {
+    claimType,
+    claimantType,
+    claimantIdNumber,
+    contact: claimantContactForSubmission(contact),
+    details: {
+      subjectName,
+      relationship,
+      dateOfEvent,
+      cause,
+      diagnosisDate,
+      diagnosingHospital,
+      diagnosingPhysician,
+      illness,
+      illnessOther,
+      hospitalName,
+      admissionDate,
+      dischargeDate,
+      reason,
+    },
+    paymentDetails,
+    notes,
+    page,
+  };
+  const draft = useClaimDraft({
+    audience: "member",
+    memberId: profile?.id,
+    payload: draftPayload,
+    documentIds: documents.map((file) => file.id),
+    ready: !loading && Boolean(profile),
+    enabled: !resubmitId,
+    getSubmissionKey: () => submissionKey.current,
+    setSubmissionKey: (value) => {
+      submissionKey.current = value;
+    },
+    pending: busy || Boolean(uploadingSlot),
+    apply: async (saved, signal) => {
+      if (signal.aborted) return;
+      const data = saved.payload;
+      setClaimType(data.claimType);
+      setClaimantType(data.claimantType);
+      setClaimantIdNumber(data.claimantIdNumber);
+      setContact({ ...data.contact, primaryPhone: "", additionalPhone: "" });
+      setPaymentDetails(data.paymentDetails);
+      setNotes(data.notes);
+      setDocuments(saved.documents);
+      setDeclaration(false);
+      setPage(0);
+      setSubjectName(data.details.subjectName);
+      setRelationship(data.details.relationship);
+      setDateOfEvent(data.details.dateOfEvent);
+      setCause(data.details.cause);
+      setDiagnosisDate(data.details.diagnosisDate);
+      setDiagnosingHospital(data.details.diagnosingHospital);
+      setDiagnosingPhysician(data.details.diagnosingPhysician);
+      setIllness(data.details.illness);
+      setIllnessOther(data.details.illnessOther);
+      setHospitalName(data.details.hospitalName);
+      setAdmissionDate(data.details.admissionDate);
+      setDischargeDate(data.details.dischargeDate);
+      setReason(data.details.reason);
+    },
+  });
+
   useEffect(() => {
     headingRef.current?.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [page]);
 
   useEffect(() => {
+    const controller = new AbortController();
     (async () => {
       try {
-        const response = await api.get("/member-portal/profile");
+        const response = await api.get("/member-portal/profile", { signal: controller.signal });
+        if (controller.signal.aborted) return;
         const found = response.data.data.member as Profile;
         setProfile(found);
         setBenefitPlan(response.data.data.benefitPlan);
@@ -114,13 +184,27 @@ export default function MemberClaimNew() {
         });
 
         if (resubmitId) {
-          const claimResponse = await api.get(`/member-portal/claims/${resubmitId}`);
+          const claimResponse = await api.get(`/member-portal/claims/${resubmitId}`, {
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
           const claim = claimResponse.data.data;
+          // Older return notifications remain useful after the member has resubmitted:
+          // show the current claim instead of opening a correction form that cannot save.
+          if (claim.status !== "RETURNED" || claim.deliveryState !== "NOT_SENT") {
+            navigate(`/member/claims#claim-${claim.id}`, { replace: true });
+            return;
+          }
           const details = claim.claimDetails ?? {};
           setClaimType(claim.claimType);
           setClaimantType(claim.claimantType ?? "MEMBER");
           setClaimantIdNumber(claim.claimantIdNumber ?? "");
-          if (claim.claimantContact) setContact(claim.claimantContact);
+          if (claim.claimantContact)
+            setContact((previous) => ({
+              ...previous,
+              ...claim.claimantContact,
+              primaryPhone: claim.claimantContact.primaryPhone ?? "",
+            }));
           setPaymentDetails(claim.paymentDetails ?? {});
           setNotes(claim.notes ?? "");
           setDocuments(
@@ -147,12 +231,14 @@ export default function MemberClaimNew() {
           }
         }
       } catch (caught: unknown) {
-        setError(getApiError(caught)?.message || "Your details could not be loaded.");
+        if (!controller.signal.aborted)
+          setError(getApiError(caught)?.message || "Your details could not be loaded.");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
-  }, [resubmitId]);
+    return () => controller.abort();
+  }, [resubmitId, navigate]);
 
   useEffect(() => {
     if (claimType !== "DEATH" && claimType !== "TOTAL_PERMANENT_DISABILITY") return;
@@ -176,8 +262,6 @@ export default function MemberClaimNew() {
     documents.map((doc) => doc.slotKey).filter((key): key is string => Boolean(key)),
   );
   const documentsComplete = claimType ? hasRequiredDocuments(claimType, uploadedSlotKeys) : false;
-  const updateContact = (field: keyof ContactDetails, value: string) =>
-    setContact((current) => ({ ...current, [field]: value }));
   const updatePayment = (field: string, value: string) =>
     setPaymentDetails((current) => ({ ...current, [field]: value }));
 
@@ -231,6 +315,10 @@ export default function MemberClaimNew() {
     }
   };
   const removeDocument = async (file: UploadedClaimDocument) => {
+    if (!resubmitId) {
+      setDocuments((current) => current.filter((item) => item.id !== file.id));
+      return;
+    }
     try {
       await api.delete(`/member-portal/claims/documents/${file.id}`);
       setDocuments((current) => current.filter((item) => item.id !== file.id));
@@ -255,7 +343,7 @@ export default function MemberClaimNew() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!declaration || !claimType || submitting.current) return;
+    if (!declaration || !claimType || submitting.current || draft.saving || uploadingSlot) return;
     submitting.current = true;
     setBusy(true);
     setError("");
@@ -265,18 +353,24 @@ export default function MemberClaimNew() {
       claimantType,
       claimantIdType,
       claimantIdNumber,
-      claimantContact: contact,
+      claimantContact: claimantContactForSubmission(contact),
       paymentMethod,
       paymentDetails,
       documentIds: documents.map((file) => file.id),
       notes,
     };
     try {
+      const savedDraft = !resubmitId ? await draft.persist() : null;
       if (resubmitId) await api.patch(`/member-portal/claims/${resubmitId}/resubmit`, payload);
       else
-        await api.post("/member-portal/claims", payload, {
-          headers: { "Idempotency-Key": submissionKey.current },
-        });
+        await api.post(
+          "/member-portal/claims",
+          { ...payload, draftId: savedDraft?.id, draftRevision: savedDraft?.revision },
+          {
+            headers: { "Idempotency-Key": submissionKey.current },
+          },
+        );
+      draft.markSubmitted();
       navigate("/member/claims", {
         replace: true,
         state: { success: "Your claim was submitted and is awaiting staff review." },
@@ -297,10 +391,7 @@ export default function MemberClaimNew() {
     }
   };
 
-  const leave = () => {
-    if (window.confirm("Leave this claim? Information entered here will be lost."))
-      navigate("/member/claims");
-  };
+  const leave = () => navigate("/member/claims");
   const page0Complete =
     Boolean(claimType) &&
     nightsEligible &&
@@ -312,6 +403,20 @@ export default function MemberClaimNew() {
   // member can't see, hide those sections entirely and leave only the claim-type cards and the
   // explanation visible.
   const blockedNoSpouse = Boolean(claimType && claimSupportsSpouse(claimType) && !profile?.spouse);
+
+  if (draft.loading || draft.loadError)
+    return (
+      <div className="space-y-4">
+        {draft.loading ? (
+          <p role="status">Loading saved draft…</p>
+        ) : (
+          <Alert tone="error">{draft.loadError}</Alert>
+        )}
+        <Button variant="secondary" onClick={leave}>
+          Back to claims
+        </Button>
+      </div>
+    );
 
   if (loading)
     return (
@@ -341,6 +446,12 @@ export default function MemberClaimNew() {
             <p className="mt-1 text-xs text-text-muted">{PAGE_LABELS[page]}</p>
           </header>
           <div className="p-5 sm:p-7">
+            <ClaimDraftControls
+              draft={draft}
+              payload={draftPayload}
+              documents={documents}
+              busy={busy || Boolean(uploadingSlot)}
+            />
             <p className="mb-5 text-xs font-semibold text-text-muted">
               Fields marked <span className="text-danger">*</span> are required. Submitted claims
               are reviewed by staff before they're sent for processing.
@@ -527,11 +638,9 @@ export default function MemberClaimNew() {
                 <ClaimPaymentSection
                   source="MEMBER_PORTAL"
                   paymentDetails={paymentDetails}
-                  contact={contact}
                   declaration={declaration}
                   notes={notes}
                   updatePayment={updatePayment}
-                  updateContact={updateContact}
                   setDeclaration={setDeclaration}
                   setNotes={setNotes}
                 />
@@ -543,7 +652,7 @@ export default function MemberClaimNew() {
                     type="submit"
                     loading={busy}
                     loadingLabel="Submitting claim..."
-                    disabled={!declaration}
+                    disabled={!declaration || draft.saving || Boolean(uploadingSlot)}
                   >
                     {resubmitId ? "Resubmit claim" : "Submit claim"}
                   </Button>

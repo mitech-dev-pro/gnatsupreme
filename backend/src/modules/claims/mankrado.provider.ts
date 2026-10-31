@@ -53,7 +53,7 @@ export class MankradoClaimsProvider implements ClaimsProvider {
   private async request(relativePath: string, body?: FormData) {
     if (!this.isConfigured())
       throw new ClaimsProviderUnavailableError(
-        "Mankrado is unavailable. Configure the backend API key and enable API mode.",
+        "Claims Portal is unavailable. Configure the backend API key and enable API mode.",
       );
     const url = new URL(relativePath, `${this.config.baseUrl!.replace(/\/+$/, "")}/`);
     if (body) {
@@ -83,8 +83,8 @@ export class MankradoClaimsProvider implements ClaimsProvider {
           uncertain ? "UNKNOWN" : "FAILED",
           `HTTP_${response.status}`,
           uncertain
-            ? "Mankrado delivery is unconfirmed. Check claim history before submitting again."
-            : `Mankrado rejected the request (HTTP ${response.status}). Check credentials and claim fields.`,
+            ? "Claims Portal delivery is unconfirmed. Check claim history before submitting again."
+            : `Claims Portal rejected the request (HTTP ${response.status}). Check credentials and claim fields.`,
         );
       }
       return (await response.json()) as unknown;
@@ -94,7 +94,7 @@ export class MankradoClaimsProvider implements ClaimsProvider {
       throw new ClaimsDeliveryError(
         "UNKNOWN",
         "UNCONFIRMED_RESPONSE",
-        "Mankrado delivery is unconfirmed. Check claim history before submitting again.",
+        "Claims Portal delivery is unconfirmed. Check claim history before submitting again.",
       );
     }
   }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 export const claimSubmissionFields = {
+  draftId: z.number().int().positive().optional(),
+  draftRevision: z.number().int().positive().optional(),
   claimantType: z.enum(["MEMBER", "SPOUSE"]),
   claimantIdType: z.literal("GHANA_CARD"),
   claimantIdNumber: z.string().trim().min(3, "Enter the claimant ID number").max(80),

@@ -207,23 +207,27 @@ export default function DatePicker({
     if (!rect) return;
 
     const margin = 8;
-    const width = 292;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const scale = rect.width / (triggerRef.current?.offsetWidth || rect.width) || 1;
+    const viewportWidth = window.innerWidth / scale;
+    const viewportHeight = window.innerHeight / scale;
+    const width = Math.min(292, Math.max(0, viewportWidth - margin * 2));
 
     const left = Math.min(
-      Math.max(rect.left, margin),
+      Math.max(rect.left / scale, margin),
       Math.max(margin, viewportWidth - width - margin),
     );
 
     const popoverHeight = popoverRef.current?.offsetHeight ?? 360;
-    const spaceBelow = viewportHeight - rect.bottom;
-    const spaceAbove = rect.top;
+    const spaceBelow = viewportHeight - rect.bottom / scale;
+    const spaceAbove = rect.top / scale;
     const openUpward = spaceBelow < popoverHeight + margin && spaceAbove > spaceBelow;
 
     const top = openUpward
-      ? Math.max(margin, rect.top - popoverHeight - 4)
-      : Math.min(rect.bottom + 4, Math.max(margin, viewportHeight - popoverHeight - margin));
+      ? Math.max(margin, rect.top / scale - popoverHeight - 4)
+      : Math.min(
+          rect.bottom / scale + 4,
+          Math.max(margin, viewportHeight - popoverHeight - margin),
+        );
 
     setFloatingStyle({ left, top, width });
   }, []);
@@ -253,9 +257,13 @@ export default function DatePicker({
     const raf = requestAnimationFrame(updateFloatingPosition);
     window.addEventListener("resize", updateFloatingPosition);
     window.addEventListener("scroll", updateFloatingPosition, true);
+    const observer =
+      typeof ResizeObserver === "function" ? new ResizeObserver(updateFloatingPosition) : null;
+    if (triggerRef.current) observer?.observe(triggerRef.current);
 
     return () => {
       cancelAnimationFrame(raf);
+      observer?.disconnect();
       window.removeEventListener("resize", updateFloatingPosition);
       window.removeEventListener("scroll", updateFloatingPosition, true);
     };
@@ -385,7 +393,15 @@ export default function DatePicker({
   const yearRange = generateYearRange(cursor.year);
 
   return (
-    <div ref={containerRef} className={cn("relative flex w-full flex-col gap-1", className)}>
+    <div
+      ref={containerRef}
+      className={cn("relative flex w-full flex-col gap-1", className)}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!next || (!containerRef.current?.contains(next) && !popoverRef.current?.contains(next)))
+          setOpen(false);
+      }}
+    >
       {label && (
         <label htmlFor={id} className="mb-0.5 block text-xs font-bold text-text-strong">
           {label}
@@ -405,6 +421,9 @@ export default function DatePicker({
           placeholder={placeholder}
           disabled={disabled}
           required={required}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-calendar` : undefined}
           onChange={handleInputChange}
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
@@ -425,7 +444,12 @@ export default function DatePicker({
               aria-label="Clear date"
               onClick={clearDate}
               onMouseDown={(e) => e.preventDefault()}
-              onKeyDown={(e) => e.key === "Enter" && clearDate(e)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  clearDate(e);
+                }
+              }}
               className="rounded p-0.5 text-text-muted transition-colors hover:bg-surface-subtle hover:text-text-strong focus:outline-none focus:ring-2 focus:ring-focus-ring"
             >
               <XIcon className="size-3.5" />
@@ -455,6 +479,16 @@ export default function DatePicker({
         <ModalPortal>
           <div
             ref={popoverRef}
+            id={`${id}-calendar`}
+            role="dialog"
+            aria-label={`${label ?? "Date"} calendar`}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                triggerRef.current?.querySelector("input")?.focus();
+                setOpen(false);
+              }
+            }}
             style={floatingStyle}
             className="fixed z-1000 rounded-xl border border-border-default bg-(--surface-raised) p-3 shadow-dropdown"
           >
@@ -556,7 +590,8 @@ export default function DatePicker({
                       onChange?.(t);
                       setOpen(false);
                     }}
-                    className="text-xs font-bold text-action-primary transition-colors hover:text-(--action-primary-hover) focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                    disabled={isOutOfRange(new Date())}
+                    className="text-xs font-bold text-action-primary transition-colors hover:text-(--action-primary-hover) focus:outline-none focus:ring-2 focus:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Today
                   </button>

@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 
 export type ClaimDecision = "APPROVE" | "RETURN" | "REJECT";
 const decisions = [
-  { value: "APPROVE", label: "Approve", selected: "border-success bg-success-soft text-success" },
+  {
+    value: "APPROVE",
+    label: "Approve and forward",
+    selected: "border-success bg-success-soft text-success",
+  },
   {
     value: "RETURN",
     label: "Return for correction",
@@ -34,11 +38,16 @@ export function ClaimReviewControls({
 }: Props) {
   return (
     <>
+      <p className="mb-2 text-xs text-text-muted">
+        Approval forwards this claim to Claims Portal for insurer assessment; it does not approve
+        payment.
+      </p>
       <div className="flex flex-wrap gap-2">
         {decisions.map((item) => (
           <button
             key={item.value}
             type="button"
+            disabled={busy}
             aria-pressed={decision === item.value}
             onClick={() => onDecision(item.value)}
             className={cn(
@@ -59,6 +68,7 @@ export function ClaimReviewControls({
             rows={2}
             maxLength={500}
             value={note}
+            disabled={busy}
             onChange={(event) => onNote(event.target.value)}
             placeholder={
               decision === "APPROVE"
@@ -67,7 +77,7 @@ export function ClaimReviewControls({
             }
           />
           <div className="mt-2 flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={onCancel}>
+            <Button variant="secondary" size="sm" disabled={busy} onClick={onCancel}>
               Cancel
             </Button>
             <Button
@@ -77,7 +87,9 @@ export function ClaimReviewControls({
               disabled={decision !== "APPROVE" && !note.trim()}
               onClick={onConfirm}
             >
-              Confirm {decision.toLowerCase()}
+              {decision === "APPROVE"
+                ? "Confirm approve and forward"
+                : `Confirm ${decision.toLowerCase()}`}
             </Button>
           </div>
         </div>

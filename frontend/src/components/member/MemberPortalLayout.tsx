@@ -76,6 +76,11 @@ const SECONDARY_LINKS: NavItem[] = [
     ),
   },
 ];
+const HISTORY_LINK: NavItem = {
+  label: "Claim History",
+  to: "/member/claims/history",
+  icon: icon(<path d="M3 12a9 9 0 1 0 3-6.7M3 3v5h5M12 7v5l3 2" />),
+};
 
 // Standalone so the header notification bell doesn't depend on NAV_ITEMS still having a
 // "Notifications" entry at a fixed index -- Notifications dropped out of the primary nav but
@@ -86,6 +91,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/member": "Member Details",
   "/member/coverage": "My Scheme Benefits",
   "/member/claims": "My Claims",
+  "/member/claims/history": "Claim History",
   "/member/requests": "Request Changes",
   "/member/notifications": "Notifications",
   "/member/help": "Help and support",
@@ -100,10 +106,22 @@ export default function MemberPortalLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    api
-      .get("/member-portal/notifications")
-      .then((response) => setUnreadCount(response.data.unreadCount ?? 0))
-      .catch(() => undefined);
+    const controller = new AbortController();
+    const refresh = () =>
+      api
+        .get("/member-portal/notifications", { signal: controller.signal })
+        .then((response) => {
+          if (!controller.signal.aborted) setUnreadCount(response.data.unreadCount ?? 0);
+        })
+        .catch(() => undefined);
+    void refresh();
+    const interval = setInterval(() => void refresh(), 30_000);
+    window.addEventListener("member-notifications-changed", refresh);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener("member-notifications-changed", refresh);
+    };
   }, [location.pathname]);
 
   useEffect(() => {
@@ -153,10 +171,29 @@ export default function MemberPortalLayout() {
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4" aria-label="Member portal">
           {NAV_ITEMS.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={desktopLink}>
-              {item.icon}
-              <span>{item.label}</span>
-            </NavLink>
+            <div key={item.to}>
+              <NavLink
+                to={item.to}
+                end={
+                  item.end ||
+                  (item.to === "/member/claims" && location.pathname === HISTORY_LINK.to)
+                }
+                className={desktopLink}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </NavLink>
+              {item.to === "/member/claims" && (
+                <NavLink
+                  to={HISTORY_LINK.to}
+                  className={({ isActive }) =>
+                    `ml-8 flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold no-underline ${isActive ? "bg-white/15 text-white" : "text-white/65 hover:bg-white/8 hover:text-white"}`
+                  }
+                >
+                  {HISTORY_LINK.label}
+                </NavLink>
+              )}
+            </div>
           ))}
         </nav>
         <div className="m-3 space-y-1.5">
@@ -277,7 +314,7 @@ export default function MemberPortalLayout() {
               </span>
             </div>
             <nav className="grid grid-cols-2 gap-2">
-              {SECONDARY_LINKS.map((item) => (
+              {[HISTORY_LINK, ...SECONDARY_LINKS].map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

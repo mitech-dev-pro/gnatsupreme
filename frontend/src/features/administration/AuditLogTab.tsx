@@ -1,8 +1,10 @@
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import Dialog from "@/components/ui/Dialog";
+import Button from "@/components/ui/Button";
 import Pagination from "@/components/ui/Pagination";
 import TableFrame from "@/components/ui/TableFrame";
 import api from "@/lib/api";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { formatDateTime, inputClasses, useDebouncedValue, type AuditLog } from "./System.model";
 export function AuditLogTab() {
   const [rows, setRows] = useState<AuditLog[]>([]);
@@ -15,7 +17,7 @@ export function AuditLogTab() {
   const debouncedAction = useDebouncedValue(action);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -31,6 +33,7 @@ export function AuditLogTab() {
             action: debouncedAction || undefined,
           },
         });
+        if (signal?.aborted) return;
         setRows(res.data.data);
         setTotal(res.data.pagination.total);
         setTotalPages(Math.max(1, res.data.pagination.totalPages));
@@ -81,14 +84,15 @@ export function AuditLogTab() {
             <th className="px-4 py-2.5">Actor</th>
             <th className="px-4 py-2.5">Action</th>
             <th className="px-4 py-2.5">Description</th>
+            <th className="px-4 py-2.5">Actions</th>
           </tr>
         </thead>
         <tbody>
           {loading && rows.length === 0 ? (
-            <TableSkeleton columns={4} />
+            <TableSkeleton columns={5} />
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={4}>
+              <td colSpan={5}>
                 <EmptyState
                   title="No audit entries found"
                   description="No recorded activity matches the current description and action filters."
@@ -96,64 +100,87 @@ export function AuditLogTab() {
               </td>
             </tr>
           ) : (
-            rows.map((row) => {
-              const hasDiff = row.beforeData !== null || row.afterData !== null;
-              const expanded = expandedId === row.id;
-              return (
-                <Fragment key={row.id}>
-                  <tr
-                    onClick={() => hasDiff && setExpandedId(expanded ? null : row.id)}
-                    className={`border-b border-border-default last:border-0 ${hasDiff ? "cursor-pointer hover:bg-surface-hover" : ""}`}
+            rows.map((row) => (
+              <tr key={row.id} className="border-b border-border-default last:border-0">
+                <td className="px-4 py-2.5 text-text-muted">{formatDateTime(row.createdAt)}</td>
+                <td className="px-4 py-2.5">{row.actor?.fullName ?? row.actorEmail ?? "System"}</td>
+                <td className="px-4 py-2.5">
+                  <code className="rounded bg-info-soft px-1.5 py-0.5 text-xs text-text-strong">
+                    {row.action}
+                  </code>
+                </td>
+                <td className="px-4 py-2.5 text-ink">{row.description}</td>
+                <td className="px-4 py-2.5">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSelected(row)}
+                    aria-label={"View audit entry " + row.id}
                   >
-                    <td className="px-4 py-2.5 text-text-muted">{formatDateTime(row.createdAt)}</td>
-                    <td className="px-4 py-2.5">
-                      {row.actor?.fullName ?? row.actorEmail ?? "System"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <code className="rounded bg-info-soft px-1.5 py-0.5 text-xs text-text-strong">
-                        {row.action}
-                      </code>
-                    </td>
-                    <td className="px-4 py-2.5 text-ink">
-                      {row.description}
-                      {hasDiff && (
-                        <span className="ml-2 text-xs font-semibold text-action-primary">
-                          {expanded ? "Hide details" : "View details"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                  {expanded && hasDiff && (
-                    <tr className="border-b border-border-default bg-text-on-action last:border-0">
-                      <td colSpan={4} className="px-4 py-3">
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <div>
-                            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-text-muted">
-                              Before
-                            </div>
-                            <pre className="max-h-64 overflow-auto rounded-lg border border-border-default bg-white p-2.5 text-xs text-ink">
-                              {row.beforeData ? JSON.stringify(row.beforeData, null, 2) : "—"}
-                            </pre>
-                          </div>
-                          <div>
-                            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-text-muted">
-                              After
-                            </div>
-                            <pre className="max-h-64 overflow-auto rounded-lg border border-border-default bg-white p-2.5 text-xs text-ink">
-                              {row.afterData ? JSON.stringify(row.afterData, null, 2) : "—"}
-                            </pre>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })
+                    View details
+                  </Button>
+                </td>
+              </tr>
+            ))
           )}
         </tbody>
       </TableFrame>
 
+      {selected && (
+        <Dialog
+          title="Audit entry details"
+          description={"Entry #" + selected.id + " · " + formatDateTime(selected.createdAt)}
+          onClose={() => setSelected(null)}
+        >
+          <dl className="mb-4 grid min-w-0 gap-3 text-sm">
+            <div>
+              <dt className="font-bold">Actor</dt>
+              <dd className="wrap-anywhere">
+                {selected.actor?.fullName ?? selected.actorEmail ?? "System"}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-bold">Action</dt>
+              <dd className="wrap-anywhere">{selected.action}</dd>
+            </div>
+            <div>
+              <dt className="font-bold">Record</dt>
+              <dd className="wrap-anywhere">
+                {selected.entityType ?? "Not recorded"}
+                {selected.entityId ? " #" + selected.entityId : ""}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-bold">Description</dt>
+              <dd className="wrap-anywhere">{selected.description}</dd>
+            </div>
+          </dl>
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            {(
+              [
+                ["Before", selected.beforeData],
+                ["After", selected.afterData],
+              ] as const
+            ).map(([label, data]) => (
+              <section key={label} className="min-w-0" aria-label={label}>
+                <h3 className="mb-2 text-sm font-bold">{label}</h3>
+                {data == null ? (
+                  <p className="text-sm text-text-muted">No snapshot recorded.</p>
+                ) : (
+                  <pre className="max-h-64 overflow-auto rounded-lg border border-border-default bg-surface-subtle p-3 text-xs">
+                    {JSON.stringify(data, null, 2)}
+                  </pre>
+                )}
+              </section>
+            ))}
+          </div>
+          <div className="mt-4">
+            <Button variant="secondary" onClick={() => setSelected(null)}>
+              Close
+            </Button>
+          </div>
+        </Dialog>
+      )}
       <Pagination
         page={page}
         totalPages={totalPages}

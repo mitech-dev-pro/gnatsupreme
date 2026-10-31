@@ -16,7 +16,9 @@ export default function PageHeader({ title, description, eyebrow, actions }: Pag
             {eyebrow}
           </p>
         )}
-        <h1 className="text-2xl font-extrabold leading-tight text-text-strong">{title}</h1>
+        <h1 className="wrap-anywhere text-2xl font-extrabold leading-tight text-text-strong">
+          {title}
+        </h1>
         {description && (
           <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-text-muted">{description}</p>
         )}

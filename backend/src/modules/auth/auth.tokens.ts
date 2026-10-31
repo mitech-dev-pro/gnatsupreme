@@ -1,10 +1,22 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import argon2 from "argon2";
 import { jwtVerify, SignJWT } from "jose";
 
 import { env } from "../../config/env.js";
 
 const accessTokenSecret = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
+
+// Same argon2id parameters used elsewhere for staff passwords (user.routes.ts) -- kept
+// identical so there's one password-hashing policy to reason about, not two.
+export async function hashPassword(password: string) {
+  return argon2.hash(password, {
+    type: argon2.argon2id,
+    memoryCost: 19_456,
+    timeCost: 2,
+    parallelism: 1,
+  });
+}
 
 export async function createAccessToken(userId: number) {
   return new SignJWT({})
@@ -41,4 +53,16 @@ export function refreshTokenExpiresAt() {
   const expiresAt = new Date();
   expiresAt.setUTCDate(expiresAt.getUTCDate() + env.REFRESH_TOKEN_TTL_DAYS);
   return expiresAt;
+}
+
+export function createPasswordResetToken() {
+  return randomBytes(32).toString("hex");
+}
+
+export function hashPasswordResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function passwordResetTokenExpiresAt() {
+  return new Date(Date.now() + env.STAFF_PASSWORD_RESET_TTL_MINUTES * 60_000);
 }

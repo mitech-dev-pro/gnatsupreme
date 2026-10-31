@@ -23,6 +23,8 @@ type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
+  forgotPassword: (email: string) => Promise<{ message: string }>;
+  resetPassword: (token: string, password: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
 };
 
@@ -102,6 +104,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [scheduleRefresh],
   );
 
+  const forgotPassword = useCallback(async (email: string) => {
+    const res = await api.post("/auth/forgot-password", { email });
+    return res.data as { message: string };
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, password: string) => {
+    const res = await api.post("/auth/reset-password", { token, password });
+    return res.data as { message: string };
+  }, []);
+
   const logout = useCallback(async () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     try {
@@ -113,7 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, login, forgotPassword, resetPassword, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

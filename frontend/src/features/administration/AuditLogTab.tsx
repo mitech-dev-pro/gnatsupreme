@@ -1,4 +1,5 @@
 import { Alert, EmptyState, TableSkeleton } from "@/components/ui/Feedback";
+import DateField from "@/components/ui/DateField";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Pagination from "@/components/ui/Pagination";
@@ -13,8 +14,14 @@ export function AuditLogTab() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
+  const [entityType, setEntityType] = useState("");
+  const [entityId, setEntityId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const debouncedAction = useDebouncedValue(action);
+  const debouncedEntityType = useDebouncedValue(entityType);
+  const debouncedEntityId = useDebouncedValue(entityId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<AuditLog | null>(null);
@@ -31,6 +38,10 @@ export function AuditLogTab() {
             limit: 30,
             search: debouncedSearch || undefined,
             action: debouncedAction || undefined,
+            entityType: debouncedEntityType || undefined,
+            entityId: debouncedEntityId || undefined,
+            from: from || undefined,
+            to: to || undefined,
           },
         });
         if (signal?.aborted) return;
@@ -43,7 +54,7 @@ export function AuditLogTab() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [debouncedAction, debouncedSearch, page],
+    [debouncedAction, debouncedSearch, debouncedEntityType, debouncedEntityId, from, to, page],
   );
 
   useEffect(() => {
@@ -54,7 +65,7 @@ export function AuditLogTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <input
           value={search}
           onChange={(e) => {
@@ -73,6 +84,61 @@ export function AuditLogTab() {
           placeholder="Filter by action (e.g. USER_CREATED)"
           className={`max-w-72 ${inputClasses}`}
         />
+        <input
+          value={entityType}
+          onChange={(e) => {
+            setEntityType(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Record type (e.g. EXTERNAL_CLAIM_SUBMISSION)"
+          className={`max-w-72 ${inputClasses}`}
+        />
+        <input
+          value={entityId}
+          onChange={(e) => {
+            setEntityId(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Record ID"
+          className={`max-w-32 ${inputClasses}`}
+        />
+        <div className="max-w-40">
+          <DateField
+            aria-label="From date"
+            value={from}
+            onChange={(value) => {
+              setFrom(value);
+              setPage(1);
+            }}
+            max={to || undefined}
+          />
+        </div>
+        <div className="max-w-40">
+          <DateField
+            aria-label="To date"
+            value={to}
+            onChange={(value) => {
+              setTo(value);
+              setPage(1);
+            }}
+            min={from || undefined}
+          />
+        </div>
+        {(entityType || entityId || from || to) && (
+          <button
+            type="button"
+            className="text-xs font-bold text-action-primary underline"
+            onClick={() => {
+              setEntityType("");
+              setEntityId("");
+              setFrom("");
+              setTo("");
+              setPage(1);
+            }}
+          >
+            Clear record/date filters
+          </button>
+        )}
       </div>
 
       {error && <Alert tone="error">{error}</Alert>}
@@ -95,7 +161,7 @@ export function AuditLogTab() {
               <td colSpan={5}>
                 <EmptyState
                   title="No audit entries found"
-                  description="No recorded activity matches the current description and action filters."
+                  description="No recorded activity matches the current filters."
                 />
               </td>
             </tr>
@@ -148,6 +214,20 @@ export function AuditLogTab() {
               <dd className="wrap-anywhere">
                 {selected.entityType ?? "Not recorded"}
                 {selected.entityId ? " #" + selected.entityId : ""}
+                {selected.entityType && (
+                  <button
+                    type="button"
+                    className="ml-2 text-xs font-bold text-action-primary underline"
+                    onClick={() => {
+                      setEntityType(selected.entityType ?? "");
+                      setEntityId(selected.entityId ?? "");
+                      setPage(1);
+                      setSelected(null);
+                    }}
+                  >
+                    View all entries for this record
+                  </button>
+                )}
               </dd>
             </div>
             <div>

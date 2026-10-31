@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { publicMember, sendPasswordResetEmail } from "./member-auth.profile.js";
 
 import { env } from "../../config/env.js";
+import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
 import {
@@ -322,6 +323,7 @@ memberAuthRouter.post(
   "/forgot-password",
   memberForgotPasswordRateLimiter,
   async (request, response) => {
+    const startedAt = Date.now();
     const parsed = forgotPasswordSchema.safeParse(request.body);
     if (!parsed.success) {
       response.status(400).json({ success: false, message: "Enter a valid Controller ID" });
@@ -333,7 +335,10 @@ memberAuthRouter.post(
     });
     // Always the same response regardless of whether the membership exists, is active, or has an
     // email on file — otherwise this endpoint could be used to enumerate valid Controller IDs or
-    // find out who has an email registered.
+    // find out who has an email registered. The padded floor below closes the gap between this
+    // branch's extra DB write and the no-op miss branch; the email send is deliberately not
+    // awaited (see below) since an SMTP round trip is both much slower than that floor and would
+    // turn a provider rejection into a request failure here.
     if (member?.email) {
       const token = createPasswordResetToken();
       await prisma.memberPasswordResetToken.create({
@@ -345,8 +350,12 @@ memberAuthRouter.post(
         },
       });
       const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}`;
-      await sendPasswordResetEmail(member.email, resetUrl);
+      sendPasswordResetEmail(member.email, resetUrl).catch((error: unknown) => {
+        logger.error({ err: error, memberId: member.id }, "Failed to send password reset email");
+      });
     }
+    const remaining = 200 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
     response.json({
       success: true,
       message:

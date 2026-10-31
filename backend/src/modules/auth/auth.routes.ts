@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import argon2 from "argon2";
 import { Router, type Request, type Response } from "express";
 
@@ -56,7 +58,18 @@ function clientMetadata(request: Request) {
   };
 }
 
+// A placeholder hash, verified against on every lookup miss so a nonexistent email still pays
+// argon2's cost — without this, response latency alone reveals which staff emails exist (the
+// lookup-miss branch below would otherwise skip argon2.verify entirely).
+const DECOY_PASSWORD_HASH = await argon2.hash(randomBytes(32).toString("hex"), {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+});
+
 authRouter.post("/login", loginRateLimiter, async (request, response) => {
+  const startedAt = Date.now();
   const parsed = loginSchema.safeParse(request.body);
 
   if (!parsed.success) {
@@ -71,14 +84,23 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
     return;
   }
 
+  // Floors every response (success or failure) to the same minimum latency, so timing alone
+  // can't distinguish "no such email" from "wrong password" from "signed in" — see
+  // DECOY_PASSWORD_HASH above for the matching argon2-cost equalization.
+  const pad = async () => {
+    const remaining = 300 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  };
+
   try {
     const user = await prisma.user.findUnique({
       where: { email: parsed.data.email },
       omit: { passwordHash: false },
     });
-    const passwordMatches = user
-      ? await argon2.verify(user.passwordHash, parsed.data.password)
-      : false;
+    const passwordMatches = await argon2.verify(
+      user?.passwordHash ?? DECOY_PASSWORD_HASH,
+      parsed.data.password,
+    );
 
     if (!user || !user.isActive || !passwordMatches) {
       await recordAudit({
@@ -88,6 +110,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
         entityType: "AUTH",
         description: `Failed login attempt for ${parsed.data.email}`,
       });
+      await pad();
       response.status(401).json({ success: false, message: "Invalid email or password" });
       return;
     }
@@ -111,6 +134,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
       entityId: user.id,
       description: `${user.fullName} signed in`,
     });
+    await pad();
     response.status(200).json({
       success: true,
       accessToken: await createAccessToken(user.id),

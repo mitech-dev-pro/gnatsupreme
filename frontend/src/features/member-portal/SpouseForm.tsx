@@ -1,7 +1,7 @@
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
 import { applyGhanaCardIdChange, GHANA_CARD_ID_PREFIX, ghanaCardIdOrNull } from "@/lib/ghanaCardId";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type ChangeEvent, type FormEvent } from "react";
 import { inputClasses, labelClasses, type Spouse } from "./MemberHome.shared";
 
 export function SpouseForm({
@@ -19,6 +19,29 @@ export function SpouseForm({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [certificateBusy, setCertificateBusy] = useState(false);
+  const [certificateError, setCertificateError] = useState("");
+  const [certificateUploaded, setCertificateUploaded] = useState(false);
+
+  const uploadCertificate = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setCertificateBusy(true);
+    setCertificateError("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await api.post("/member-portal/spouse/marriage-certificate", body);
+      setCertificateUploaded(true);
+    } catch (err: unknown) {
+      setCertificateError(
+        getApiError(err)?.message || "Unable to upload the marriage certificate.",
+      );
+    } finally {
+      setCertificateBusy(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -86,6 +109,36 @@ export function SpouseForm({
           className={inputClasses}
         />
       </div>
+      {spouse ? (
+        <div className="rounded-lg border border-border-default p-3">
+          <label className={labelClasses}>Marriage certificate</label>
+          <p className="mb-2 text-xs text-text-muted">
+            Upload a copy for your district office to verify. Accepted: PDF, JPEG, PNG, WebP.
+          </p>
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp"
+            onChange={(e) => void uploadCertificate(e)}
+            disabled={certificateBusy}
+            className="block w-full text-xs"
+          />
+          {certificateBusy && <p className="mt-1 text-xs text-text-muted">Uploading…</p>}
+          {certificateUploaded && !certificateBusy && (
+            <p className="mt-1 text-xs font-semibold text-success">
+              Certificate uploaded. You can upload another file to replace it.
+            </p>
+          )}
+          {certificateError && (
+            <p role="alert" className="mt-1 text-xs font-semibold text-danger">
+              {certificateError}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="rounded-lg bg-info-soft px-3 py-2 text-xs text-text-muted">
+          You'll be able to upload a marriage certificate once this spouse request is approved.
+        </p>
+      )}
       {error && (
         <div
           role="alert"

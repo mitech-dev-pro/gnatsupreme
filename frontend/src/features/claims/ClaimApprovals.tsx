@@ -1,3 +1,4 @@
+import ClaimsPortalStatus from "@/components/claims/ClaimsPortalStatus";
 import ClaimsTable, { type ClaimSubmission } from "@/components/claims/ClaimsTable";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
@@ -64,6 +65,7 @@ export default function ClaimApprovals() {
       <PageHeader
         title="Claim Approvals"
         description="Member-filed claims waiting for your review before they're sent to Claims Portal."
+        actions={<ClaimsPortalStatus />}
       />
       {error && (
         <div className="mb-4">

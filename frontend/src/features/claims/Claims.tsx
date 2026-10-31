@@ -1,4 +1,5 @@
 import ClaimDraftList from "@/features/claims/ClaimDraftList";
+import ClaimsPortalStatus from "@/components/claims/ClaimsPortalStatus";
 import ClaimsTable, { type ClaimSubmission } from "@/components/claims/ClaimsTable";
 import Button from "@/components/ui/Button";
 import Dropdown from "@/components/ui/Dropdown";
@@ -95,7 +96,12 @@ export default function Claims() {
       <PageHeader
         title="Claims"
         description="Create and track member claim submissions."
-        actions={<Button onClick={() => navigate("/claims/new")}>File a claim</Button>}
+        actions={
+          <>
+            <ClaimsPortalStatus />
+            <Button onClick={() => navigate("/claims/new")}>File a claim</Button>
+          </>
+        }
       />
       <ClaimDraftList audience="staff" />
       <h2 className="mb-4 text-lg font-bold text-text-strong">Submitted claims</h2>

@@ -72,6 +72,14 @@ export function useMemberDetail() {
     trusteeName: "",
   });
   const [beneficiaryError, setBeneficiaryError] = useState("");
+  const [editingBeneficiaryId, setEditingBeneficiaryId] = useState<number | null>(null);
+  const [editBeneficiary, setEditBeneficiary] = useState({
+    fullName: "",
+    relationship: "CHILD",
+    dateOfBirth: "",
+    trusteeName: "",
+  });
+  const [editBeneficiaryError, setEditBeneficiaryError] = useState("");
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [returnNote, setReturnNote] = useState("");
   const [showRemoveForm, setShowRemoveForm] = useState(false);
@@ -345,6 +353,52 @@ export function useMemberDetail() {
       }
     }
   };
+  const startEditBeneficiary = (beneficiary: {
+    id: number;
+    fullName: string;
+    relationship: string;
+    dateOfBirth: string | null;
+    trusteeName: string | null;
+  }) => {
+    setAddingBeneficiary(false);
+    setEditBeneficiaryError("");
+    setEditBeneficiary({
+      fullName: beneficiary.fullName,
+      relationship: beneficiary.relationship,
+      dateOfBirth: beneficiary.dateOfBirth ?? "",
+      trusteeName: beneficiary.trusteeName ?? "",
+    });
+    setEditingBeneficiaryId(beneficiary.id);
+  };
+  const updateBeneficiary = async (e: FormEvent) => {
+    if (activeId.current !== id || editingBeneficiaryId == null) return;
+    e.preventDefault();
+    setEditBeneficiaryError("");
+    if (isMinor(editBeneficiary.dateOfBirth) && !editBeneficiary.trusteeName.trim()) {
+      setEditBeneficiaryError("A trustee name is required for a beneficiary under 18.");
+      return;
+    }
+    setBusy(true);
+    setActionError("");
+    try {
+      await api.patch(`/members/${id}/beneficiaries/${editingBeneficiaryId}`, {
+        fullName: editBeneficiary.fullName.trim(),
+        relationship: editBeneficiary.relationship,
+        dateOfBirth: editBeneficiary.dateOfBirth || null,
+        trusteeName: editBeneficiary.trusteeName.trim() || null,
+      });
+      if (activeId.current !== id) return;
+      setEditingBeneficiaryId(null);
+      await load();
+    } catch (err: unknown) {
+      if (activeId.current !== id) return;
+      setEditBeneficiaryError(getApiError(err)?.message || "Unable to update beneficiary.");
+    } finally {
+      if (activeId.current === id) {
+        setBusy(false);
+      }
+    }
+  };
   const removeBeneficiary = async (beneficiaryId: number) => {
     if (activeId.current !== id) return;
     setBusy(true);
@@ -538,6 +592,13 @@ export function useMemberDetail() {
     newBeneficiary,
     setNewBeneficiary,
     beneficiaryError,
+    editingBeneficiaryId,
+    setEditingBeneficiaryId,
+    editBeneficiary,
+    setEditBeneficiary,
+    editBeneficiaryError,
+    startEditBeneficiary,
+    updateBeneficiary,
     showReturnForm,
     setShowReturnForm,
     returnNote,

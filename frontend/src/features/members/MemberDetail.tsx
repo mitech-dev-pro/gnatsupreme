@@ -93,6 +93,13 @@ export default function MemberDetail() {
     newBeneficiary,
     setNewBeneficiary,
     beneficiaryError,
+    editingBeneficiaryId,
+    setEditingBeneficiaryId,
+    editBeneficiary,
+    setEditBeneficiary,
+    editBeneficiaryError,
+    startEditBeneficiary,
+    updateBeneficiary,
     showReturnForm,
     setShowReturnForm,
     returnNote,
@@ -755,7 +762,10 @@ export default function MemberDetail() {
                 {!addingBeneficiary && member.beneficiaries.length < 10 && (
                   <button
                     type="button"
-                    onClick={() => setAddingBeneficiary(true)}
+                    onClick={() => {
+                      setEditingBeneficiaryId(null);
+                      setAddingBeneficiary(true);
+                    }}
                     className="text-xs font-semibold text-action-primary hover:underline"
                   >
                     + Add
@@ -849,6 +859,92 @@ export default function MemberDetail() {
                 </form>
               )}
 
+              {editingBeneficiaryId != null && (
+                <form
+                  onSubmit={updateBeneficiary}
+                  className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border-default p-4 sm:grid-cols-4"
+                >
+                  <div>
+                    <label className={labelClasses}>Full Name</label>
+                    <input
+                      value={editBeneficiary.fullName}
+                      onChange={(e) =>
+                        setEditBeneficiary((p) => ({
+                          ...p,
+                          fullName: e.target.value,
+                        }))
+                      }
+                      className={inputClasses}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClasses}>Relationship</label>
+                    <Dropdown
+                      value={editBeneficiary.relationship}
+                      onChange={(value) =>
+                        setEditBeneficiary((p) => ({
+                          ...p,
+                          relationship: value,
+                        }))
+                      }
+                      options={RELATIONSHIPS.map((r) => ({
+                        value: r,
+                        label: r,
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <DatePicker
+                      label="Date of Birth"
+                      maxDate={new Date()}
+                      value={parseISODate(editBeneficiary.dateOfBirth)}
+                      onChange={(date) =>
+                        setEditBeneficiary((p) => ({
+                          ...p,
+                          dateOfBirth: date ? toISODate(date) : "",
+                        }))
+                      }
+                    />
+                  </div>
+                  {isMinor(editBeneficiary.dateOfBirth) && (
+                    <div>
+                      <label className={labelClasses}>Trustee Name</label>
+                      <input
+                        value={editBeneficiary.trusteeName}
+                        onChange={(e) =>
+                          setEditBeneficiary((p) => ({
+                            ...p,
+                            trusteeName: e.target.value,
+                          }))
+                        }
+                        className={inputClasses}
+                      />
+                    </div>
+                  )}
+                  {editBeneficiaryError && (
+                    <div className="sm:col-span-4 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+                      {editBeneficiaryError}
+                    </div>
+                  )}
+                  <div className="flex items-end gap-2">
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="rounded-lg bg-action-primary px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingBeneficiaryId(null)}
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
               {member.beneficiaries.length === 0 ? (
                 <div className="text-sm text-text-muted">No beneficiaries on record.</div>
               ) : (
@@ -870,22 +966,32 @@ export default function MemberDetail() {
                             <span>No trustee required</span>
                           )}
                         </div>
-                        {member.beneficiaries.length > 1 && (
+                        <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() =>
-                              setConfirmation({
-                                type: "beneficiary",
-                                id: b.id,
-                                name: b.fullName,
-                              })
-                            }
+                            onClick={() => startEditBeneficiary(b)}
                             disabled={busy}
-                            className="text-xs font-semibold text-danger hover:underline"
+                            className="text-xs font-semibold text-action-primary hover:underline"
                           >
-                            Remove
+                            Edit
                           </button>
-                        )}
+                          {member.beneficiaries.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setConfirmation({
+                                  type: "beneficiary",
+                                  id: b.id,
+                                  name: b.fullName,
+                                })
+                              }
+                              disabled={busy}
+                              className="text-xs font-semibold text-danger hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -918,6 +1024,14 @@ export default function MemberDetail() {
                             )}
                           </td>
                           <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => startEditBeneficiary(b)}
+                              disabled={busy}
+                              className="mr-3 text-xs font-semibold text-action-primary hover:underline"
+                            >
+                              Edit
+                            </button>
                             {member.beneficiaries.length > 1 && (
                               <button
                                 type="button"

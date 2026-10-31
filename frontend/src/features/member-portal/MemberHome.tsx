@@ -9,7 +9,7 @@ import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useOrganizationSettings } from "@/lib/OrganizationSettingsContext";
 import { isMinor } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BeneficiaryForm } from "./BeneficiaryForm";
 import { MemberDetailsForm } from "./MemberDetailsForm";
 import {
@@ -47,7 +47,12 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   >(null);
   // Endorsements consolidates the old separate "My Covered lives" page as a sub-tab here,
   // rather than a 5th sidebar item.
-  const [endorsementsTab, setEndorsementsTab] = useState<"requests" | "household">("requests");
+  // Lets "My Household" (MemberPortalLayout's secondary nav) deep-link straight into this
+  // sub-tab -- otherwise a user only discovers it exists by already being on this page.
+  const [searchParams] = useSearchParams();
+  const [endorsementsTab, setEndorsementsTab] = useState<"requests" | "household">(
+    searchParams.get("tab") === "household" ? "household" : "requests",
+  );
   const [completionBusy, setCompletionBusy] = useState(false);
   const [completionError, setCompletionError] = useState("");
 

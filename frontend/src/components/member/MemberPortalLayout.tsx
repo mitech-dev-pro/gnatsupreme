@@ -66,6 +66,19 @@ const NAV_ITEMS: NavItem[] = [
 // Endorsements) -- rendered separately in the desktop footer and the mobile "More" sheet.
 const SECONDARY_LINKS: NavItem[] = [
   {
+    // "Request Changes" (/member/requests) renders two sub-tabs -- request history and
+    // spouse/beneficiary management -- behind an in-page toggle that isn't hinted at from
+    // anywhere in the nav. This deep-links straight into the household tab so it has an
+    // actual discovery path, without promoting it to its own primary nav slot.
+    label: "My Household",
+    to: "/member/requests?tab=household",
+    icon: icon(
+      <>
+        <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />
+      </>,
+    ),
+  },
+  {
     label: "Help & support",
     to: "/member/help",
     icon: icon(

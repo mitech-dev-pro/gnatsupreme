@@ -57,9 +57,13 @@ async function main() {
     return;
   }
 
-  console.log(`${matches.length} spouse record(s) match an independently-enrolled member by Ghana Card ID:\n`);
+  console.log(
+    `${matches.length} spouse record(s) match an independently-enrolled member by Ghana Card ID:\n`,
+  );
   for (const match of matches) {
-    console.log(`  Spouse "${match.spouseName}" (recorded under ${match.ownerLabel}) -> links to member ${match.memberLabel}`);
+    console.log(
+      `  Spouse "${match.spouseName}" (recorded under ${match.ownerLabel}) -> links to member ${match.memberLabel}`,
+    );
   }
 
   const proceed = await confirm({
@@ -73,11 +77,16 @@ async function main() {
 
   let updated = 0;
   for (const match of matches) {
-    await prisma.spouse.update({ where: { id: match.spouseId }, data: { linkedMemberId: match.memberId } });
+    await prisma.spouse.update({
+      where: { id: match.spouseId },
+      data: { linkedMemberId: match.memberId },
+    });
     updated += 1;
   }
 
-  console.log(`\nLinked ${updated} spouse record(s). Re-run this script any time; it only touches rows still unlinked.`);
+  console.log(
+    `\nLinked ${updated} spouse record(s). Re-run this script any time; it only touches rows still unlinked.`,
+  );
 }
 
 main()

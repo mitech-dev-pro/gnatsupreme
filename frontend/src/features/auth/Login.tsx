@@ -528,8 +528,8 @@ export default function Login() {
                 Reset your password
               </h2>
               <div className="mb-5 text-sm leading-relaxed text-text-muted">
-                Enter your account email — if it matches an active staff account, we'll send
-                reset instructions to it.
+                Enter your account email — if it matches an active staff account, we'll send reset
+                instructions to it.
               </div>
 
               {error && <ErrorBanner message={error} />}

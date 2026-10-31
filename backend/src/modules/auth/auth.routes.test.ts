@@ -40,10 +40,15 @@ test("forgot-password gives the same response whether or not the email exists", 
 
 test("forgot-password creates a token for a known, active email with the same response shape", async (t) => {
   stub(t, prisma.user, "findFirst", async () => ({ id: 3, email: "admin@example.test" }));
-  const create = stub(t, prisma.userPasswordResetToken, "create", async (args: { data: { userId: number } }) => {
-    assert.equal(args.data.userId, 3);
-    return {};
-  });
+  const create = stub(
+    t,
+    prisma.userPasswordResetToken,
+    "create",
+    async (args: { data: { userId: number } }) => {
+      assert.equal(args.data.userId, 3);
+      return {};
+    },
+  );
   const res = response();
   await routeHandler(
     authRouter,
@@ -74,16 +79,21 @@ test("reset-password rejects a consumed, expired, or inactive-user token", async
 
 test("reset-password updates the hash, revokes sessions, and consumes the token exactly once", async (t) => {
   const tokenHash = hashPasswordResetToken("b".repeat(64));
-  stub(t, prisma.userPasswordResetToken, "findUnique", async (args: { where: { tokenHash: string } }) => {
-    assert.equal(args.where.tokenHash, tokenHash);
-    return {
-      id: 1,
-      userId: 3,
-      consumedAt: null,
-      expiresAt: new Date(Date.now() + 60_000),
-      user: { id: 3, fullName: "Test Admin", isActive: true },
-    };
-  });
+  stub(
+    t,
+    prisma.userPasswordResetToken,
+    "findUnique",
+    async (args: { where: { tokenHash: string } }) => {
+      assert.equal(args.where.tokenHash, tokenHash);
+      return {
+        id: 1,
+        userId: 3,
+        consumedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+        user: { id: 3, fullName: "Test Admin", isActive: true },
+      };
+    },
+  );
   stub(t, prisma, "$transaction", async (callback: (tx: typeof prisma) => Promise<unknown>) =>
     callback(prisma),
   );

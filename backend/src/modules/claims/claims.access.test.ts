@@ -235,7 +235,13 @@ test("unconfirmed retry is blocked when history shows an active claim for the sa
   }));
   t.mock.method(claimsProvider, "isConfigured", () => true);
   t.mock.method(claimsProvider, "history", async () => [
-    { id: "other", claimNumber: "MC-OTHER", staffId: "123456", name: "KWAME  mensah", status: "Pending" },
+    {
+      id: "other",
+      claimNumber: "MC-OTHER",
+      staffId: "123456",
+      name: "KWAME  mensah",
+      status: "Pending",
+    },
   ]);
   const audit = stub(t, prisma.auditLog, "create", async () => ({}));
   const send = t.mock.method(claimsProvider, "createSubmission", async () => {
@@ -260,7 +266,13 @@ test("unconfirmed retry proceeds when the only name match in history was rejecte
   }));
   t.mock.method(claimsProvider, "isConfigured", () => true);
   t.mock.method(claimsProvider, "history", async () => [
-    { id: "other", claimNumber: "MC-OTHER", staffId: "123456", name: "Kwame Mensah", status: "Rejected" },
+    {
+      id: "other",
+      claimNumber: "MC-OTHER",
+      staffId: "123456",
+      name: "Kwame Mensah",
+      status: "Rejected",
+    },
   ]);
   stub(
     t,

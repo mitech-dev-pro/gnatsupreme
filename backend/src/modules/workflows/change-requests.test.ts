@@ -283,23 +283,21 @@ test("bulk review skips stale versions while committing the other decision", asy
   stub(t, prisma.notification, "upsert", async () => ({}));
   const layer = changeRequestRouter.stack.find((entry) => entry.route?.path === "/bulk/review");
   const res = { ...response(), locals: { user: { id: 1, role: "SUPER_ADMIN" } } };
-  await layer!
-    .route!.stack.at(-1)!
-    .handle(
-      {
-        body: {
-          changeRequestIds: [42, 43],
-          versions: {
-            "42": timestamp.toISOString(),
-            "43": new Date(timestamp.getTime() - 1).toISOString(),
-          },
-          action: "REJECT",
-          note: "Not supported",
+  await layer!.route!.stack.at(-1)!.handle(
+    {
+      body: {
+        changeRequestIds: [42, 43],
+        versions: {
+          "42": timestamp.toISOString(),
+          "43": new Date(timestamp.getTime() - 1).toISOString(),
         },
-      } as unknown as Request,
-      res as unknown as Response,
-      () => {},
-    );
+        action: "REJECT",
+        note: "Not supported",
+      },
+    } as unknown as Request,
+    res as unknown as Response,
+    () => {},
+  );
   const result = (
     res.body as {
       data: { succeeded: number; failed: number; results: Array<{ message?: string }> };

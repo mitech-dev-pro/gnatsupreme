@@ -780,7 +780,9 @@ export default function MembersList() {
           description={
             <ul className="max-h-32 overflow-y-auto">
               {approvalIds.map((id) => (
-                <li key={id}>{rows.find((member) => member.id === id)?.fullName || `Member ${id}`}</li>
+                <li key={id}>
+                  {rows.find((member) => member.id === id)?.fullName || `Member ${id}`}
+                </li>
               ))}
             </ul>
           }
@@ -809,7 +811,9 @@ export default function MembersList() {
           description={
             <ul className="max-h-32 overflow-y-auto">
               {selected.map((id) => (
-                <li key={id}>{rows.find((member) => member.id === id)?.fullName || `Member ${id}`}</li>
+                <li key={id}>
+                  {rows.find((member) => member.id === id)?.fullName || `Member ${id}`}
+                </li>
               ))}
             </ul>
           }

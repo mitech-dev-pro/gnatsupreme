@@ -140,7 +140,9 @@ export async function reconcileSpouseLink(
 
   if (spouse.linkedMemberId && ghanaCardId && ghanaCardId === previousGhanaCardId) return null;
 
-  const match = ghanaCardId ? await findMemberByGhanaCard(ghanaCardId, { memberId: owningMemberId }, db) : null;
+  const match = ghanaCardId
+    ? await findMemberByGhanaCard(ghanaCardId, { memberId: owningMemberId }, db)
+    : null;
   const after = match?.id ?? null;
   if (spouse.linkedMemberId === after) return null;
   await db.spouse.update({ where: { id: spouseId }, data: { linkedMemberId: after } });
@@ -177,7 +179,9 @@ export async function relinkSpousesForMember(
   const stale = await db.spouse.findMany({
     where: {
       linkedMemberId: memberId,
-      ...(newGhanaCardId ? { OR: [{ ghanaCardId: null }, { ghanaCardId: { not: newGhanaCardId } }] } : {}),
+      ...(newGhanaCardId
+        ? { OR: [{ ghanaCardId: null }, { ghanaCardId: { not: newGhanaCardId } }] }
+        : {}),
     },
     select: { id: true, fullName: true, linkedMemberId: true, memberId: true },
   });

@@ -28,7 +28,11 @@ async function main() {
 
   for (const item of pending) {
     byType.set(item.type, (byType.get(item.type) ?? 0) + 1);
-    if (item.type === "MEMBER_DETAILS" && item.proposedData && typeof item.proposedData === "object") {
+    if (
+      item.type === "MEMBER_DETAILS" &&
+      item.proposedData &&
+      typeof item.proposedData === "object"
+    ) {
       for (const key of Object.keys(item.proposedData as Record<string, unknown>)) {
         const label = FIELD_LABELS[key] ?? key;
         byField.set(label, (byField.get(label) ?? 0) + 1);
@@ -36,8 +40,10 @@ async function main() {
     }
   }
 
-  const oldest = pending.reduce((min, item) =>
-    item.requestedAt < min ? item.requestedAt : min, pending[0].requestedAt);
+  const oldest = pending.reduce(
+    (min, item) => (item.requestedAt < min ? item.requestedAt : min),
+    pending[0].requestedAt,
+  );
 
   console.log(`Pending change requests: ${pending.length}`);
   console.log(`Oldest pending since: ${oldest.toISOString()}`);

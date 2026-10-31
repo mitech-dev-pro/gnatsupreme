@@ -97,7 +97,10 @@ export function ChangePasswordForm({ onClose }: { onClose: () => void }) {
         />
       </div>
       {error && (
-        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+        <p
+          role="alert"
+          className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+        >
           {error}
         </p>
       )}

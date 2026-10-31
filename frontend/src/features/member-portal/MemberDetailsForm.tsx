@@ -1,10 +1,6 @@
 import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
-import {
-  applyGhanaCardIdChange,
-  GHANA_CARD_ID_PREFIX,
-  ghanaCardIdOrNull,
-} from "@/lib/ghanaCardId";
+import { applyGhanaCardIdChange, GHANA_CARD_ID_PREFIX, ghanaCardIdOrNull } from "@/lib/ghanaCardId";
 import { useState, type FormEvent } from "react";
 import { inputClasses, labelClasses, type MemberProfile } from "./MemberHome.shared";
 

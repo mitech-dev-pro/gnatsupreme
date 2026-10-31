@@ -58,7 +58,12 @@ export async function linkedClaimConflict(
   if (claimantType === "SPOUSE") {
     if (linkedMemberId === null) return false;
     const existing = await prisma.externalClaimSubmission.findFirst({
-      where: { claimType, claimantType: "MEMBER", memberId: linkedMemberId, status: { not: "FAILED" } },
+      where: {
+        claimType,
+        claimantType: "MEMBER",
+        memberId: linkedMemberId,
+        status: { not: "FAILED" },
+      },
       select: { id: true },
     });
     return Boolean(existing);
@@ -73,7 +78,10 @@ export async function linkedClaimConflict(
       status: { not: "FAILED" },
       member: {
         spouse: {
-          OR: [{ linkedMemberId: member.id }, ...(member.ghanaCardId ? [{ ghanaCardId: member.ghanaCardId }] : [])],
+          OR: [
+            { linkedMemberId: member.id },
+            ...(member.ghanaCardId ? [{ ghanaCardId: member.ghanaCardId }] : []),
+          ],
         },
       },
     },

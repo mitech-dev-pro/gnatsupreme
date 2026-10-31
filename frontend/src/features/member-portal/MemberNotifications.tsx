@@ -68,14 +68,10 @@ export default function MemberNotifications() {
       setSaving(false);
     }
   };
-  const filteredItems =
-    filter === "UNREAD" ? items.filter((item) => !item.readAt) : items;
+  const filteredItems = filter === "UNREAD" ? items.filter((item) => !item.readAt) : items;
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const visibleItems = filteredItems.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
+  const visibleItems = filteredItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <section

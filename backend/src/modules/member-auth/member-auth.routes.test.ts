@@ -37,10 +37,7 @@ test("change-password rejects an incorrect current password without touching the
     memberAuthRouter,
     "/change-password",
     "post",
-  )(
-    { body: { currentPassword: "wrong-password", password: "a-new-strong-password" } },
-    res,
-  );
+  )({ body: { currentPassword: "wrong-password", password: "a-new-strong-password" } }, res);
   assert.equal(res.code, 401);
   assert.equal(update.mock.callCount(), 0);
 });

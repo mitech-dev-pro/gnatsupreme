@@ -2,11 +2,7 @@ import api from "@/lib/api";
 import { getApiError } from "@/lib/errorExtract";
 import { useAuth } from "@/lib/AuthContext";
 import { useDistricts } from "@/lib/useDistricts";
-import {
-  GHANA_CARD_ID_PREFIX,
-  ghanaCardIdOrNull,
-  hasGhanaCardIdDigits,
-} from "@/lib/ghanaCardId";
+import { GHANA_CARD_ID_PREFIX, ghanaCardIdOrNull, hasGhanaCardIdDigits } from "@/lib/ghanaCardId";
 import { isMinor } from "@/lib/utils";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -133,8 +129,7 @@ export function useAddMember() {
       next.ghanaCardId = "Use the format GHA-000000000-0.";
     if (phone && phone.trim().length < 7) next.phone = "Enter a valid phone number.";
     if (isNonTeaching && !districtId) {
-      if (placeOfWork.trim().length < 2)
-        next.placeOfWork = "Enter the member's place of work.";
+      if (placeOfWork.trim().length < 2) next.placeOfWork = "Enter the member's place of work.";
       if (needsRegionPicker && !regionId) next.regionId = "Select a region.";
     } else if (!isNonTeaching) {
       if (school.trim().length < 2) next.school = "Enter the member's school.";

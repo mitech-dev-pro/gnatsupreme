@@ -139,13 +139,11 @@ export function createClaimDraftRouter(audience: "staff" | "member") {
     });
     if (!draft) throw new AppError(404, "Draft not found");
     if (draft.submittedClaimId) {
-      response
-        .status(409)
-        .json({
-          success: false,
-          message: "This draft has already been submitted.",
-          submissionId: draft.submittedClaimId,
-        });
+      response.status(409).json({
+        success: false,
+        message: "This draft has already been submitted.",
+        submissionId: draft.submittedClaimId,
+      });
       return;
     }
     const documents = await documentMetadata([draft], actor);

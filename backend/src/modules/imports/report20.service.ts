@@ -413,7 +413,9 @@ export async function reconcileReport20(
         // matches. The member's own card is unchanged here, only status is, so this re-derives
         // purely from the now-eligible status (see relinkSpousesForMember's eligibility check).
         for (const id of reappearedMemberIds) {
-          linkChanges.push(...(await relinkSpousesForMember(tx, id, activeMembersById.get(id)!.ghanaCardId)));
+          linkChanges.push(
+            ...(await relinkSpousesForMember(tx, id, activeMembersById.get(id)!.ghanaCardId)),
+          );
         }
         await tx.memberWorkflowEvent.createMany({
           data: reappearedMemberIds.map((id) => ({

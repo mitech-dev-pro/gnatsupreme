@@ -236,14 +236,14 @@ export default function AddMember() {
                 {beneficiaries
                   .filter((item) => item.fullName.trim())
                   .map((item, index) => (
-                  <li key={index}>
-                    <strong>{item.fullName}</strong>
-                    <span>
-                      {item.relationship.toLowerCase()}
-                      {isMinor(item.dateOfBirth) ? ", minor" : ""}
-                    </span>
-                  </li>
-                ))}
+                    <li key={index}>
+                      <strong>{item.fullName}</strong>
+                      <span>
+                        {item.relationship.toLowerCase()}
+                        {isMinor(item.dateOfBirth) ? ", minor" : ""}
+                      </span>
+                    </li>
+                  ))}
               </ol>
             </section>
           </div>
@@ -499,7 +499,10 @@ export default function AddMember() {
                     type="button"
                     className={!includeSpouse ? "active" : ""}
                     onClick={() => {
-                      if (!includeSpouse || (!spouseName && !hasGhanaCardIdDigits(spouseGhanaCardId)))
+                      if (
+                        !includeSpouse ||
+                        (!spouseName && !hasGhanaCardIdDigits(spouseGhanaCardId))
+                      )
                         setIncludeSpouse(false);
                       else setConfirmation("spouse");
                     }}

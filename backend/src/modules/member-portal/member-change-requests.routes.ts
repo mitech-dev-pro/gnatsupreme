@@ -17,18 +17,16 @@ memberChangeCorrectionRouter.patch("/:id/resubmit", async (request, response) =>
   const version = versionSchema.safeParse(request.body);
   const body = createChangeRequestSchema.safeParse(request.body);
   if (!params.success || !version.success || !body.success) {
-    response
-      .status(400)
-      .json({
-        success: false,
-        message: "Check the corrected details and refresh the request if necessary.",
-        errors: body.success
-          ? undefined
-          : body.error.issues.map((issue) => ({
-              field: issue.path.join("."),
-              message: issue.message,
-            })),
-      });
+    response.status(400).json({
+      success: false,
+      message: "Check the corrected details and refresh the request if necessary.",
+      errors: body.success
+        ? undefined
+        : body.error.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
+    });
     return;
   }
   const actor = response.locals.member as AuthenticatedMember;

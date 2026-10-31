@@ -435,7 +435,10 @@ memberAuthRouter.post("/change-password", authenticateMember, async (request, re
     where: { id: memberId },
     select: { id: true, controllerId: true, passwordHash: true },
   });
-  if (!member?.passwordHash || !(await verifyMemberPassword(member.passwordHash, parsed.data.currentPassword))) {
+  if (
+    !member?.passwordHash ||
+    !(await verifyMemberPassword(member.passwordHash, parsed.data.currentPassword))
+  ) {
     response.status(401).json({ success: false, message: "Your current password is incorrect" });
     return;
   }

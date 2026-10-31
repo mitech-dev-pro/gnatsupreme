@@ -22,7 +22,9 @@ import { prisma } from "../src/lib/prisma.js";
 //
 // Run with: npx tsx scripts/report-underpaid-spouse-claims.ts
 
-async function eligibilityDate(linkedMemberId: number): Promise<{ date: Date | null; source: string }> {
+async function eligibilityDate(
+  linkedMemberId: number,
+): Promise<{ date: Date | null; source: string }> {
   const approved = await prisma.memberWorkflowEvent.findFirst({
     where: { memberId: linkedMemberId, action: "APPROVED" },
     orderBy: { createdAt: "asc" },
@@ -30,7 +32,10 @@ async function eligibilityDate(linkedMemberId: number): Promise<{ date: Date | n
   });
   if (approved) return { date: approved.createdAt, source: "APPROVED event" };
 
-  const member = await prisma.member.findUnique({ where: { id: linkedMemberId }, select: { createdAt: true } });
+  const member = await prisma.member.findUnique({
+    where: { id: linkedMemberId },
+    select: { createdAt: true },
+  });
   if (member) return { date: member.createdAt, source: "createdAt" };
 
   return { date: null, source: "unknown" };
@@ -124,7 +129,9 @@ async function main() {
     return;
   }
 
-  console.log(`${mismatches.length} of ${claims.length} linked SPOUSE claim(s) may be underpaid:\n`);
+  console.log(
+    `${mismatches.length} of ${claims.length} linked SPOUSE claim(s) may be underpaid:\n`,
+  );
   for (const item of mismatches) {
     console.log(
       `  Claim #${item.claimId}  ${item.controllerId}  ${item.claimType}  submitted ${item.submittedAt.toISOString().slice(0, 10)}  ` +
@@ -132,7 +139,9 @@ async function main() {
     );
   }
   if (skippedUnknownEligibility > 0) {
-    console.log(`\n${skippedUnknownEligibility} claim(s) have an unknown eligibility date -- review those manually.`);
+    console.log(
+      `\n${skippedUnknownEligibility} claim(s) have an unknown eligibility date -- review those manually.`,
+    );
   }
   console.log("\nThis is a read-only report. No claim amounts were changed.");
 }

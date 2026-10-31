@@ -168,13 +168,11 @@ try {
     await check("history-page-two");
     await page.getByRole("button", { name: "Previous", exact: true }).click();
     await page.getByRole("button", { name: "Teaching staff", exact: true }).click();
-    await page
-      .getByLabel("Member import file")
-      .setInputFiles({
-        name: "same-file.csv",
-        mimeType: "text/csv",
-        buffer: Buffer.from("Controller ID,Full Name\nTEST1234,Test Member"),
-      });
+    await page.getByLabel("Member import file").setInputFiles({
+      name: "same-file.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("Controller ID,Full Name\nTEST1234,Test Member"),
+    });
     await page.getByRole("button", { name: "Upload & Validate", exact: true }).click();
     await page.getByRole("link", { name: "Open saved import #42" }).waitFor();
     await check("duplicate-upload-recovery");
@@ -203,13 +201,11 @@ try {
     assert.equal(download.suggestedFilename(), "member-import-42-corrections.xlsx");
     await page.getByRole("link", { name: "Upload corrected rows", exact: true }).click();
     await page.getByRole("button", { name: "Teaching staff", exact: true }).click();
-    await page
-      .getByLabel("Member import file")
-      .setInputFiles({
-        name: "corrected.csv",
-        mimeType: "text/csv",
-        buffer: Buffer.from("Controller ID,Full Name\nTEST0002,Corrected Member"),
-      });
+    await page.getByLabel("Member import file").setInputFiles({
+      name: "corrected.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("Controller ID,Full Name\nTEST0002,Corrected Member"),
+    });
     await page.getByRole("button", { name: "Upload & Validate", exact: true }).click();
     await page.getByRole("heading", { name: "corrected.csv", exact: true }).waitFor();
     await page.getByText("Ready for enrollment", { exact: true }).waitFor();

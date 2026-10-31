@@ -163,50 +163,46 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
   }
 });
 
-authRouter.post(
-  "/forgot-password",
-  forgotPasswordRateLimiter,
-  async (request, response) => {
-    const startedAt = Date.now();
-    const parsed = forgotPasswordSchema.safeParse(request.body);
-    if (!parsed.success) {
-      response.status(400).json({ success: false, message: "Enter a valid email address" });
-      return;
-    }
-    const user = await prisma.user.findFirst({
-      where: { email: parsed.data.email, isActive: true },
-      select: { id: true, email: true },
+authRouter.post("/forgot-password", forgotPasswordRateLimiter, async (request, response) => {
+  const startedAt = Date.now();
+  const parsed = forgotPasswordSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter a valid email address" });
+    return;
+  }
+  const user = await prisma.user.findFirst({
+    where: { email: parsed.data.email, isActive: true },
+    select: { id: true, email: true },
+  });
+  // Always the same response regardless of whether the account exists or is active --
+  // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
+  // below, and the email itself is never awaited (an SMTP round trip is both much slower than
+  // that floor and would turn a provider rejection into a request failure here).
+  if (user) {
+    const token = createPasswordResetToken();
+    await prisma.userPasswordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashPasswordResetToken(token),
+        expiresAt: passwordResetTokenExpiresAt(),
+        ipAddress: request.ip?.slice(0, 64),
+      },
     });
-    // Always the same response regardless of whether the account exists or is active --
-    // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
-    // below, and the email itself is never awaited (an SMTP round trip is both much slower than
-    // that floor and would turn a provider rejection into a request failure here).
-    if (user) {
-      const token = createPasswordResetToken();
-      await prisma.userPasswordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: hashPasswordResetToken(token),
-          expiresAt: passwordResetTokenExpiresAt(),
-          ipAddress: request.ip?.slice(0, 64),
-        },
-      });
-      // The shared /reset-password page also serves member reset links (same token shape,
-      // same URL path) -- audience=staff is how it knows which backend endpoint to call.
-      const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}&audience=staff`;
-      sendStaffPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
-        logger.error({ err: error, userId: user.id }, "Failed to send staff password reset email");
-      });
-    }
-    const remaining = 200 - (Date.now() - startedAt);
-    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-    response.json({
-      success: true,
-      message:
-        "If an account exists for that email, password reset instructions have been sent to it.",
+    // The shared /reset-password page also serves member reset links (same token shape,
+    // same URL path) -- audience=staff is how it knows which backend endpoint to call.
+    const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}&audience=staff`;
+    sendStaffPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
+      logger.error({ err: error, userId: user.id }, "Failed to send staff password reset email");
     });
-  },
-);
+  }
+  const remaining = 200 - (Date.now() - startedAt);
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  response.json({
+    success: true,
+    message:
+      "If an account exists for that email, password reset instructions have been sent to it.",
+  });
+});
 
 authRouter.post("/reset-password", async (request, response) => {
   const parsed = resetPasswordSchema.safeParse(request.body);

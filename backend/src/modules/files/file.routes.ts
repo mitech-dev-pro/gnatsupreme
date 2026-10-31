@@ -321,13 +321,11 @@ fileRouter.delete("/:id", async (request, response) => {
       select: { id: true },
     }))
   ) {
-    response
-      .status(409)
-      .json({
-        success: false,
-        message:
-          "This attachment belongs to a saved draft. Remove it from the saved draft before deleting it.",
-      });
+    response.status(409).json({
+      success: false,
+      message:
+        "This attachment belongs to a saved draft. Remove it from the saved draft before deleting it.",
+    });
     return;
   }
   const filePath = absoluteStoragePath(file.storagePath);

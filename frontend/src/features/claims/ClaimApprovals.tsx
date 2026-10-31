@@ -1,64 +1,15 @@
 import ClaimsPortalStatus from "@/components/claims/ClaimsPortalStatus";
-import ClaimsTable, { type ClaimSubmission } from "@/components/claims/ClaimsTable";
+import ClaimsTable from "@/components/claims/ClaimsTable";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
-import api from "@/lib/api";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useClaimSubmissionsList } from "./useClaimSubmissionsList";
+
+const FILTERS = { awaitingReview: "true" };
 
 export default function ClaimApprovals() {
-  const [params, setParams] = useSearchParams();
-  const [rows, setRows] = useState<ClaimSubmission[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const rawPage = Number(params.get("page"));
-  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
-  const limit = 10;
-  const request = useRef<AbortController | null>(null);
-
-  const load = useCallback(async () => {
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    const signal = controller.signal;
-    setLoading(true);
-    setRows([]);
-    setError("");
-    try {
-      const response = await api.get("/claims/submissions", {
-        signal,
-        params: { page, limit, awaitingReview: "true" },
-      });
-      if (signal.aborted) return;
-      const pages = Math.max(1, response.data.pagination.totalPages);
-      if (page > pages) {
-        setParams(
-          (previous) => {
-            const next = new URLSearchParams(previous);
-            next.set("page", String(pages));
-            return next;
-          },
-          { replace: true },
-        );
-        return;
-      }
-      setRows(response.data.data);
-      setTotal(response.data.pagination.total);
-      setTotalPages(Math.max(1, response.data.pagination.totalPages));
-    } catch {
-      if (!signal?.aborted) setError("Claims awaiting approval could not be loaded.");
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [page, setParams]);
-
-  useEffect(() => {
-    void load();
-    return () => request.current?.abort();
-  }, [load]);
+  const { page, limit, rows, total, totalPages, loading, error, setError, load, updateParams } =
+    useClaimSubmissionsList(FILTERS);
 
   return (
     <div>
@@ -104,11 +55,7 @@ export default function ClaimApprovals() {
         totalPages={totalPages}
         totalItems={total}
         itemLabel="claims"
-        onPageChange={(nextPage) => {
-          const next = new URLSearchParams(params);
-          next.set("page", String(nextPage));
-          setParams(next);
-        }}
+        onPageChange={(nextPage) => updateParams({ page: String(nextPage) })}
       />
     </div>
   );

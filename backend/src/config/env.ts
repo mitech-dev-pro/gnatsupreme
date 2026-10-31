@@ -23,6 +23,7 @@ const environmentSchema = z.object({
   MEMBER_ACCESS_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(10),
   MEMBER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   MEMBER_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  STAFF_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
   EMAIL_PROVIDER: z.enum(["DEV", "SMTP"]).default("DEV"),
   SMTP_HOST: z.preprocess(

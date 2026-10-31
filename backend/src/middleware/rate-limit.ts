@@ -45,6 +45,21 @@ export const loginRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("staff-login"),
 });
 
+export const forgotPasswordRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (request) => {
+    const email =
+      String(request.body?.email ?? "invalid")
+        .trim()
+        .toLowerCase() || "invalid";
+    return `${ipKeyGenerator(request.ip ?? "unknown")}:${email}`;
+  },
+  handler: jsonRateLimitHandler("staff-forgot-password"),
+});
+
 export const refreshRateLimiter = rateLimit({
   windowMs: 60 * 1_000,
   limit: 30,

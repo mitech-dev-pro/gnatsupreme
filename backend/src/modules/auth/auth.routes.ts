@@ -8,13 +8,22 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
-import { loginRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
-import { loginSchema } from "./auth.schemas.js";
+import {
+  forgotPasswordRateLimiter,
+  loginRateLimiter,
+  refreshRateLimiter,
+} from "../../middleware/rate-limit.js";
+import { sendStaffPasswordResetEmail } from "./auth.profile.js";
+import { forgotPasswordSchema, loginSchema, resetPasswordSchema } from "./auth.schemas.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
   createAccessToken,
+  createPasswordResetToken,
   createRefreshToken,
+  hashPassword,
+  hashPasswordResetToken,
   hashRefreshToken,
+  passwordResetTokenExpiresAt,
   refreshTokenExpiresAt,
 } from "./auth.tokens.js";
 
@@ -152,6 +161,109 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
     logger.error({ err: error }, "Staff login failed");
     response.status(500).json({ success: false, message: "Unable to sign in" });
   }
+});
+
+authRouter.post(
+  "/forgot-password",
+  forgotPasswordRateLimiter,
+  async (request, response) => {
+    const startedAt = Date.now();
+    const parsed = forgotPasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response.status(400).json({ success: false, message: "Enter a valid email address" });
+      return;
+    }
+    const user = await prisma.user.findFirst({
+      where: { email: parsed.data.email, isActive: true },
+      select: { id: true, email: true },
+    });
+    // Always the same response regardless of whether the account exists or is active --
+    // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
+    // below, and the email itself is never awaited (an SMTP round trip is both much slower than
+    // that floor and would turn a provider rejection into a request failure here).
+    if (user) {
+      const token = createPasswordResetToken();
+      await prisma.userPasswordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashPasswordResetToken(token),
+          expiresAt: passwordResetTokenExpiresAt(),
+          ipAddress: request.ip?.slice(0, 64),
+        },
+      });
+      // The shared /reset-password page also serves member reset links (same token shape,
+      // same URL path) -- audience=staff is how it knows which backend endpoint to call.
+      const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}&audience=staff`;
+      sendStaffPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
+        logger.error({ err: error, userId: user.id }, "Failed to send staff password reset email");
+      });
+    }
+    const remaining = 200 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+    response.json({
+      success: true,
+      message:
+        "If an account exists for that email, password reset instructions have been sent to it.",
+    });
+  },
+);
+
+authRouter.post("/reset-password", async (request, response) => {
+  const parsed = resetPasswordSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter a valid password" });
+    return;
+  }
+  const invalidToken = () =>
+    response
+      .status(401)
+      .json({ success: false, message: "This reset link is invalid or has expired" });
+
+  const resetToken = await prisma.userPasswordResetToken.findUnique({
+    where: { tokenHash: hashPasswordResetToken(parsed.data.token) },
+    include: { user: { select: { id: true, fullName: true, isActive: true } } },
+  });
+  if (
+    !resetToken ||
+    resetToken.consumedAt ||
+    resetToken.expiresAt <= new Date() ||
+    !resetToken.user.isActive
+  ) {
+    invalidToken();
+    return;
+  }
+
+  const consumed = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.userPasswordResetToken.updateMany({
+      where: { id: resetToken.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    if (result.count !== 1) return false;
+    await transaction.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash: await hashPassword(parsed.data.password) },
+    });
+    // Same rationale as member-auth's /reset-password -- a password reset invalidates every
+    // existing session, on any device, since the previous password may be what got compromised.
+    await transaction.refreshToken.updateMany({
+      where: { userId: resetToken.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return true;
+  });
+  if (!consumed) {
+    invalidToken();
+    return;
+  }
+
+  await recordAudit({
+    request,
+    action: "USER_PASSWORD_RESET_SELF_SERVICE",
+    entityType: "USER",
+    entityId: resetToken.user.id,
+    description: `${resetToken.user.fullName} reset their password via email link`,
+  });
+  response.json({ success: true, message: "Password updated. You can now sign in." });
 });
 
 authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request, response) => {

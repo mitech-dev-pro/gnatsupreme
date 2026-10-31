@@ -1,3 +1,4 @@
+import { useAuth } from "@/lib/AuthContext";
 import { getApiError } from "@/lib/errorExtract";
 import { useMemberAuth } from "@/lib/MemberAuthContext";
 import { useState, type FormEvent } from "react";
@@ -7,9 +8,21 @@ const inputClasses =
   "w-full rounded-lg border border-border-default bg-text-on-action py-[11px] px-3 text-sm transition-[border-color,box-shadow] duration-150 ease-out focus:border-action-primary focus:shadow-focus-soft focus:outline-none";
 
 export default function ResetPassword() {
-  const { resetPassword } = useMemberAuth();
+  const { resetPassword: resetMemberPassword } = useMemberAuth();
+  const { resetPassword: resetStaffPassword } = useAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
+  // Staff and member reset emails share this one page/URL shape -- audience is how the staff
+  // link (auth.routes.ts /forgot-password) distinguishes itself; its absence keeps every
+  // already-sent member reset link (no audience param) behaving exactly as before.
+  const isStaff = searchParams.get("audience") === "staff";
+  const resetPassword = isStaff ? resetStaffPassword : resetMemberPassword;
+  const signInLink = isStaff ? "/login" : "/login?mode=member";
+  // Staff passwords require 12+ characters with upper/lowercase, a number, and a symbol
+  // (staffPasswordSchema); members only require 8+ (memberPasswordSchema). The server is the
+  // source of truth either way -- this just avoids a pointless round trip for an obviously
+  // too-short password.
+  const minLength = isStaff ? 12 : 8;
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -21,8 +34,8 @@ export default function ResetPassword() {
     e.preventDefault();
     setError("");
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < minLength) {
+      setError(`Password must be at least ${minLength} characters.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -54,7 +67,7 @@ export default function ResetPassword() {
               This reset link is missing or invalid. Request a new one from the sign-in page.
             </div>
             <Link
-              to="/login?mode=member"
+              to={signInLink}
               className="block w-full rounded-lg bg-action-primary py-2.5 text-center text-sm font-bold text-white shadow-action transition hover:bg-success"
             >
               Back to sign in
@@ -66,7 +79,7 @@ export default function ResetPassword() {
               {message}
             </div>
             <Link
-              to="/login?mode=member"
+              to={signInLink}
               className="block w-full rounded-lg bg-action-primary py-2.5 text-center text-sm font-bold text-white shadow-action transition hover:bg-success"
             >
               Sign in
@@ -75,7 +88,9 @@ export default function ResetPassword() {
         ) : (
           <>
             <div className="mb-5 text-sm leading-relaxed text-text-muted">
-              Choose a new password for your membership.
+              {isStaff
+                ? "Choose a new password for your staff account."
+                : "Choose a new password for your membership."}
             </div>
 
             {error && (
@@ -97,7 +112,7 @@ export default function ResetPassword() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
+                  placeholder={`At least ${minLength} characters`}
                   autoComplete="new-password"
                   className={inputClasses}
                 />

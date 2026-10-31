@@ -27,6 +27,13 @@ export default function Login() {
     user,
     isLoading,
     login,
+    staffForgotPassword,
+    staffStep,
+    setStaffStep,
+    forgotEmail,
+    setForgotEmail,
+    staffForgotMessage,
+    setStaffForgotMessage,
     member,
     memberLoading,
     memberLogin,
@@ -135,6 +142,19 @@ export default function Login() {
       navigate(safeStaffRedirect, { replace: true });
     } catch (err: unknown) {
       setError(getApiError(err)?.message || "Unable to sign in. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const handleStaffForgotPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const res = await staffForgotPassword(forgotEmail.trim());
+      setStaffForgotMessage(res.message);
+    } catch (err: unknown) {
+      setError(getApiError(err)?.message || "Unable to process this request.");
     } finally {
       setSubmitting(false);
     }
@@ -346,6 +366,10 @@ export default function Login() {
   };
   const handleMemberModeChange = (nextMode: "staff" | "member") => {
     setMode(nextMode);
+    setStaffStep("login");
+    setForgotEmail("");
+    setStaffForgotMessage("");
+    setError("");
     setMemberStep("login");
     setPasswordStepVisible(false);
     setMemberPassword("");
@@ -498,7 +522,65 @@ export default function Login() {
             </button>
           </div>
 
-          {mode === "staff" ? (
+          {mode === "staff" && staffStep === "forgot" ? (
+            <>
+              <h2 className="mb-1 text-lg font-extrabold tracking-tight text-text-strong">
+                Reset your password
+              </h2>
+              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+                Enter your account email — if it matches an active staff account, we'll send
+                reset instructions to it.
+              </div>
+
+              {error && <ErrorBanner message={error} />}
+              {staffForgotMessage && (
+                <div className="mb-3 rounded-lg bg-success-soft px-2.5 py-2 text-xs font-semibold text-success">
+                  {staffForgotMessage}
+                </div>
+              )}
+
+              {!staffForgotMessage && (
+                <form onSubmit={handleStaffForgotPassword} noValidate>
+                  <div className="mb-3.5">
+                    <label
+                      htmlFor="forgot-email"
+                      className="mb-1 block text-xs font-bold text-text-strong"
+                    >
+                      Email
+                    </label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      autoComplete="username"
+                      className={inputClasses.replace("pl-9", "pl-3")}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? "Sending…" : "Send Reset Instructions"}
+                  </button>
+                </form>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStaffStep("login");
+                  setError("");
+                  setStaffForgotMessage("");
+                }}
+                className="mt-4 w-full text-center text-xs font-semibold text-text-muted hover:text-text-strong"
+              >
+                Back to sign in
+              </button>
+            </>
+          ) : mode === "staff" ? (
             <>
               {error && <ErrorBanner message={error} />}
 
@@ -562,6 +644,20 @@ export default function Login() {
                     />
                     <EyeToggle shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
                   </div>
+                </div>
+
+                <div className="mb-3.5 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffStep("forgot");
+                      setError("");
+                      setStaffForgotMessage("");
+                    }}
+                    className="text-xs font-semibold text-text-strong hover:underline"
+                  >
+                    Forgot password?
+                  </button>
                 </div>
 
                 <button

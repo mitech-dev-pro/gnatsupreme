@@ -9,7 +9,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { emptyBeneficiary, type BeneficiaryDraft } from "./Login.shared";
 export function useLogin() {
   const { settings } = useOrganizationSettings();
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, login, forgotPassword: staffForgotPassword } = useAuth();
   const {
     member,
     isLoading: memberLoading,
@@ -34,6 +34,9 @@ export function useLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [staffStep, setStaffStep] = useState<"login" | "forgot">("login");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [staffForgotMessage, setStaffForgotMessage] = useState("");
   const [memberStep, setMemberStep] = useState<
     "login" | "setup" | "policy" | "beneficiaries" | "forgot"
   >(requestedMode === "member" && searchParams.get("step") === "policy" ? "policy" : "login");
@@ -135,6 +138,13 @@ export function useLogin() {
     user,
     isLoading,
     login,
+    staffForgotPassword,
+    staffStep,
+    setStaffStep,
+    forgotEmail,
+    setForgotEmail,
+    staffForgotMessage,
+    setStaffForgotMessage,
     member,
     memberLoading,
     memberLogin,

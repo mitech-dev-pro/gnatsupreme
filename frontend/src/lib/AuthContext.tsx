@@ -36,6 +36,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // way), the delay clamps to a small positive number instead of firing immediately/negatively.
 const REFRESH_BUFFER_MS = 2 * 60 * 1_000;
 
+// Tokens live only in a module-level JS variable per tab (api.ts), with no shared storage --
+// logging out in one tab otherwise leaves every other open tab still rendering as authenticated
+// (and able to submit requests) until its next API call 401s. This broadcasts the logout so
+// every other tab clears its own state immediately, same-origin only by construction.
+const LOGOUT_CHANNEL_NAME = "gnat-staff-logout";
+const logoutChannel =
+  typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(LOGOUT_CHANNEL_NAME) : null;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!logoutChannel) return;
+    const onMessage = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      setAccessToken(null);
+      setUser(null);
+    };
+    logoutChannel.addEventListener("message", onMessage);
+    return () => logoutChannel.removeEventListener("message", onMessage);
   }, []);
 
   useEffect(() => {
@@ -121,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setAccessToken(null);
       setUser(null);
+      logoutChannel?.postMessage("logout");
     }
   }, []);
 

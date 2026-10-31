@@ -42,6 +42,14 @@ const MemberAuthContext = createContext<MemberAuthContextType | undefined>(undef
 // session never gets caught by surprise mid-request.
 const REFRESH_BUFFER_MS = 2 * 60 * 1_000;
 
+// Same rationale as AuthContext.tsx's logoutChannel -- tokens live only in a per-tab JS
+// variable, so logging out in one tab otherwise leaves every other open tab rendering as
+// authenticated until its next API call 401s. A separate channel from the staff one, since the
+// two sessions are independent.
+const LOGOUT_CHANNEL_NAME = "gnat-member-logout";
+const logoutChannel =
+  typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(LOGOUT_CHANNEL_NAME) : null;
+
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +84,17 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!logoutChannel) return;
+    const onMessage = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      setMemberAccessToken(null);
+      setMember(null);
+    };
+    logoutChannel.addEventListener("message", onMessage);
+    return () => logoutChannel.removeEventListener("message", onMessage);
   }, []);
 
   // Runs once per new member session (login, setup, or a page-load refresh) — not on every
@@ -162,6 +181,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setMemberAccessToken(null);
       setMember(null);
+      logoutChannel?.postMessage("logout");
     }
   }, []);
 

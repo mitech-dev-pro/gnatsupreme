@@ -446,6 +446,17 @@ memberRouter.patch("/:id", async (request, response) => {
   if (nextCategory === "TEACHING" && !body.data.districtId && !existing.districtId) {
     return simpleFailure(response, "districtId", "Select a district");
   }
+  // Mirrors createMemberSchema's beneficiaries.length < 1 refinement for TEACHING -- this PATCH
+  // has no beneficiaries field at all (see updateMemberSchema), so a NON_TEACHING member with
+  // zero beneficiaries switched to TEACHING here would otherwise silently keep violating the
+  // same invariant creation enforces, with no way to satisfy it in this same request.
+  if (nextCategory === "TEACHING" && existing.beneficiaries.length < 1) {
+    return simpleFailure(
+      response,
+      "employmentCategory",
+      "Add at least one beneficiary before switching this member to teaching staff",
+    );
+  }
   if (nextCategory === "NON_TEACHING") {
     const nextPlaceOfWork =
       body.data.placeOfWork !== undefined ? body.data.placeOfWork : existing.placeOfWork;

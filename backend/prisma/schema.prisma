@@ -796,6 +796,7 @@ model BenefitAmount {
   spouseAmount    Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
   note            String?
   namedConditions String[]           @default([]) @map("named_conditions")
+  claimSubmissions ExternalClaimSubmission[]
 
   @@unique([planVersionId, type])
   @@index([type])
@@ -911,6 +912,13 @@ model ExternalClaimSubmission {
   // nights is always server-computed and stored, never trusted from the client.
   claimDetails        Json?                 @map("claim_details")
   estimatedAmount     Decimal?              @map("estimated_amount") @db.Decimal(12, 2)
+  // The BenefitAmount row activeBenefit() matched when estimatedAmount was computed, kept as a
+  // traceability link back to the plan/rate that priced this claim -- nullable since older rows
+  // predate this column and some claim types have no benefit configured at all. SetNull rather
+  // than Restrict/Cascade: a priced claim must survive its benefit row being superseded or
+  // removed, it just loses this traceability link.
+  benefitAmountId     Int?                  @map("benefit_amount_id")
+  benefitAmount       BenefitAmount?        @relation(fields: [benefitAmountId], references: [id], onDelete: SetNull)
   paymentMethod       String?               @map("payment_method")
   paymentDetails      Json?                 @map("payment_details")
   documentIds         Int[]                 @default([]) @map("document_ids")
@@ -930,6 +938,7 @@ model ExternalClaimSubmission {
   @@index([memberId])
   @@index([submittedById])
   @@index([submittedByMemberId])
+  @@index([benefitAmountId])
   @@index([status])
   @@index([source, status])
   @@index([deliveryState, deliveryStartedAt])

@@ -316,6 +316,7 @@ claimsRouter.post("/submissions", async (request, response) => {
         incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
         claimDetails,
         estimatedAmount: estimate.amount ?? null,
+        benefitAmountId: estimate.benefit?.id ?? null,
         paymentMethod: parsed.data.paymentMethod,
         paymentDetails: parsed.data.paymentDetails,
         documentIds: uniqueDocumentIds,

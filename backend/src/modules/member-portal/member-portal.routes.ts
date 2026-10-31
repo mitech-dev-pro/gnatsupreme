@@ -717,10 +717,12 @@ memberPortalRouter.post("/claims", async (request, response) => {
     response.status(400).json({ success: false, message: error.message });
     return;
   }
-  const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
-    null;
-  if (amount == null) {
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
+  if (estimate.amount == null) {
     response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
     return;
   }
@@ -759,7 +761,8 @@ memberPortalRouter.post("/claims", async (request, response) => {
           claimantContact: parsed.data.claimantContact,
           incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
           claimDetails,
-          estimatedAmount: amount,
+          estimatedAmount: estimate.amount,
+          benefitAmountId: estimate.benefit?.id ?? null,
           paymentMethod: parsed.data.paymentMethod,
           paymentDetails: parsed.data.paymentDetails,
           documentIds: uniqueDocumentIds,
@@ -894,10 +897,12 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     response.status(400).json({ success: false, message: error.message });
     return;
   }
-  const amount =
-    (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
-    null;
-  if (amount == null) {
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
+  if (estimate.amount == null) {
     response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
     return;
   }
@@ -925,7 +930,8 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
       claimantContact: parsed.data.claimantContact,
       incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
       claimDetails,
-      estimatedAmount: amount,
+      estimatedAmount: estimate.amount,
+      benefitAmountId: estimate.benefit?.id ?? null,
       paymentMethod: parsed.data.paymentMethod,
       paymentDetails: parsed.data.paymentDetails,
       documentIds: uniqueDocumentIds,

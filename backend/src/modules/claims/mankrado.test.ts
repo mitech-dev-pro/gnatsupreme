@@ -237,6 +237,7 @@ function deliveryFixture(overrides: Partial<DeliveryClaim> = {}, fail = false) {
     externalAssessment: null,
     incidentDate: null,
     estimatedAmount: null,
+    benefitAmountId: null,
     notes: null,
     errorCode: null,
     errorMessage: null,

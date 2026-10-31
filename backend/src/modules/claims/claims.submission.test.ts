@@ -61,6 +61,7 @@ async function fixture(t: TestContext, role: string, inaccessible = false) {
     id: 1,
     benefits: [
       {
+        id: 101,
         type: "HOSPITALIZATION",
         enabled: true,
         memberAmount: 500,
@@ -202,6 +203,13 @@ for (const role of ["SUPER_ADMIN", "NATIONAL_ADMIN", "DISTRICT_ADMIN"]) {
     assert.equal(f.remote.mock.callCount(), 1);
   });
 }
+test("submission links the claim to the benefit row that priced it", async (t) => {
+  const f = await fixture(t, "SUPER_ADMIN");
+  const res = response("SUPER_ADMIN");
+  await postHandler(claimsRouter, "/submissions")(f.request, res);
+  assert.equal(res.code, 201);
+  assert.equal(responseData(res.body).benefitAmountId, 101);
+});
 test("submission is rejected when the claim type has no configured benefit", async (t) => {
   const f = await fixture(t, "SUPER_ADMIN");
   // Overrides fixture()'s default (a HOSPITALIZATION benefit present) with a plan that has no

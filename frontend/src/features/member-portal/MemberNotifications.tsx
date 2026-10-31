@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Alert } from "@/components/ui/Feedback";
+import Pagination from "@/components/ui/Pagination";
 import { claimNotificationLink } from "@/lib/notificationLinks";
 import { timeAgo, type MemberNotification } from "./MemberHome.shared";
+
+const PAGE_SIZE = 10;
 
 export default function MemberNotifications() {
   const [items, setItems] = useState<MemberNotification[]>([]);
@@ -12,6 +15,8 @@ export default function MemberNotifications() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<"ALL" | "UNREAD">("ALL");
+  const [page, setPage] = useState(1);
   useEffect(() => {
     const controller = new AbortController();
     let running = false;
@@ -63,6 +68,15 @@ export default function MemberNotifications() {
       setSaving(false);
     }
   };
+  const filteredItems =
+    filter === "UNREAD" ? items.filter((item) => !item.readAt) : items;
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleItems = filteredItems.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
   return (
     <section
       className="rounded-2xl border border-border-default bg-white p-5 md:col-span-2"
@@ -70,7 +84,32 @@ export default function MemberNotifications() {
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-text-strong">Notifications</h2>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <div
+            className="flex rounded-lg bg-surface-subtle p-0.5"
+            role="tablist"
+            aria-label="Filter notifications"
+          >
+            {(["ALL", "UNREAD"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={filter === value}
+                onClick={() => {
+                  setFilter(value);
+                  setPage(1);
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                  filter === value
+                    ? "bg-white text-action-primary shadow-sm"
+                    : "text-text-muted hover:text-ink"
+                }`}
+              >
+                {value === "ALL" ? "All" : "Unread"}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             className="text-xs font-semibold text-action-primary hover:underline"
@@ -97,9 +136,11 @@ export default function MemberNotifications() {
         </p>
       ) : items.length === 0 && !error ? (
         <p className="text-sm text-text-muted">No notifications yet.</p>
+      ) : filteredItems.length === 0 ? (
+        <p className="text-sm text-text-muted">No unread notifications.</p>
       ) : null}
       <ul className="divide-y divide-border-default">
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const action = claimNotificationLink(item.actionUrl, "member");
           return (
             <li key={item.id} className="flex items-start justify-between gap-3 py-2.5">
@@ -145,6 +186,13 @@ export default function MemberNotifications() {
           );
         })}
       </ul>
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        totalItems={filteredItems.length}
+        itemLabel="notifications"
+        onPageChange={setPage}
+      />
     </section>
   );
 }

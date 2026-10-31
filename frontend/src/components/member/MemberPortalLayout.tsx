@@ -87,6 +87,11 @@ const HISTORY_LINK: NavItem = {
 // the route/page itself is unchanged and still reachable via this bell.
 const bellIcon = icon(<path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 8h18c0-1-3-1-3-8M10 21h4" />);
 
+// Only added to the mobile "More" sheet, not desktop SECONDARY_LINKS -- the header bell already
+// covers desktop, but the sheet replaces the whole nav on mobile, so without this a user who
+// dismisses/misses the bell badge has no menu path to notifications at all.
+const NOTIFICATIONS_LINK: NavItem = { label: "Notifications", to: "/member/notifications", icon: bellIcon };
+
 const PAGE_TITLES: Record<string, string> = {
   "/member": "Member Details",
   "/member/coverage": "My Scheme Benefits",
@@ -314,7 +319,7 @@ export default function MemberPortalLayout() {
               </span>
             </div>
             <nav className="grid grid-cols-2 gap-2">
-              {[HISTORY_LINK, ...SECONDARY_LINKS].map((item) => (
+              {[HISTORY_LINK, NOTIFICATIONS_LINK, ...SECONDARY_LINKS].map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

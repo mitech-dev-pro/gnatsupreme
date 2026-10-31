@@ -427,6 +427,11 @@ importRouter.post("/:id/rows/:rowId/resolve", async (request, response) => {
         fullName: row.fullName as string,
         school: row.school ?? "",
         districtId: district.id,
+        // REGIONAL_ADMIN scoping filters on Member.regionId directly, not district.regionId --
+        // every other auto-enroll path (report20.service.ts) already derives it from the
+        // district; this one didn't, which made a manually-resolved member invisible to the
+        // correct regional admin.
+        regionId: district.regionId,
         status: "ACTIVE",
         report20Matched: true,
         createdById: currentUser.id,

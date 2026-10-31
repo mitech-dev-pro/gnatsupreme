@@ -315,11 +315,13 @@ export default function MemberClaimNew() {
     }
   };
   const removeDocument = async (file: UploadedClaimDocument) => {
-    if (!resubmitId) {
-      setDocuments((current) => current.filter((item) => item.id !== file.id));
-      return;
-    }
+    setDocError("");
     try {
+      // Always deletes the actual stored file, not just this form's local reference -- a
+      // wrong-document upload on a brand-new (not just a resubmitted) claim left the file
+      // orphaned in backend storage otherwise. The endpoint already refuses this (409, with a
+      // clear message) if the file is attached to a filed claim or a saved draft by the time
+      // this runs, so it's safe to always attempt regardless of resubmitId.
       await api.delete(`/member-portal/claims/documents/${file.id}`);
       setDocuments((current) => current.filter((item) => item.id !== file.id));
     } catch (caught: unknown) {

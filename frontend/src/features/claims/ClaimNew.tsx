@@ -329,7 +329,18 @@ export default function ClaimNew() {
   };
 
   const removeDocument = async (file: UploadedClaimDocument) => {
-    setDocuments((current) => current.filter((item) => item.id !== file.id));
+    setDocError("");
+    try {
+      // Deletes the actual stored file, not just this form's local reference to it -- without
+      // this, a wrong-document upload followed by remove left the file (and its blob) sitting in
+      // backend storage forever, orphaned and unreachable from any UI. The backend already
+      // refuses this (409, with a clear message) if the file turns out to be attached to a
+      // filed claim or a saved draft by the time this runs, so it's safe to always attempt.
+      await api.delete(`/files/${file.id}`);
+      setDocuments((current) => current.filter((item) => item.id !== file.id));
+    } catch (caught: unknown) {
+      setDocError(getApiError(caught)?.message || "The document could not be removed.");
+    }
   };
 
   const buildClaimDetails = () => {

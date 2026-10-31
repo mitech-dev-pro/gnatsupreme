@@ -315,11 +315,11 @@ test("deleting a draft checks its revision and does not delete stored attachment
   assert.equal(files.mock.callCount(), 0);
 });
 test("staff cannot physically delete an attachment referenced by a saved draft", async (t) => {
-  stub(t, prisma.storedFile, "findUnique", async () => ({
+  stub(t, prisma.storedFile, "findFirst", async () => ({
     id: 3,
     category: "CLAIM_DOCUMENT",
     uploadedById: 1,
-    member: { districtId: 9, district: { regionId: 3 } },
+    member: { districtId: 9, regionId: 3 },
     importJob: null,
   }));
   stub(t, prisma.externalClaimSubmission, "findFirst", async () => null);
@@ -354,10 +354,10 @@ test("draft lists exclude consumed records and retain the preparer scope", async
 });
 
 test("draft attachment references do not block authorized staff downloads", async (t) => {
-  stub(t, prisma.storedFile, "findUnique", async () => ({
+  stub(t, prisma.storedFile, "findFirst", async () => ({
     id: 3,
     category: "CLAIM_DOCUMENT",
-    member: { districtId: 9, district: { regionId: 3 } },
+    member: { districtId: 9, regionId: 3 },
     originalName: "report.pdf",
     mimeType: "application/pdf",
     storagePath: "member-files/00000000-0000-4000-8000-000000000003.pdf",

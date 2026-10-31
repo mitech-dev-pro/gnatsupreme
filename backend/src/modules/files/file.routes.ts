@@ -232,17 +232,18 @@ fileRouter.get("/:storedName", async (request, response) => {
     return;
   }
   const user = currentUser(response);
-  const file = await prisma.storedFile.findUnique({
-    where: { storedName: params.data.storedName },
-    include: { member: { select: { districtId: true, district: { select: { regionId: true } } } } },
-  });
   const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
-  const accessible = file?.member
-    ? elevated ||
-      (user.role === "REGIONAL_ADMIN" && file.member.district?.regionId === user.regionId) ||
-      (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
-    : elevated;
-  if (!file || !accessible) {
+  // Reuses memberScope() rather than hand-rolling the role/district/region check, so a file
+  // tied to a district-less NON_TEACHING member (scoped by Member.regionId directly, with no
+  // district row to fall back on) is matched the same way every other route matches it.
+  const file = await prisma.storedFile.findFirst({
+    where: {
+      storedName: params.data.storedName,
+      ...(elevated ? {} : { member: memberScope(user) }),
+    },
+    include: { member: { select: { districtId: true, regionId: true } } },
+  });
+  if (!file) {
     response.status(404).json({ success: false, message: "File not found" });
     return;
   }
@@ -266,20 +267,18 @@ fileRouter.delete("/:id", async (request, response) => {
     return;
   }
   const user = currentUser(response);
-  const file = await prisma.storedFile.findUnique({
-    where: { id: params.data.id },
+  const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
+  const file = await prisma.storedFile.findFirst({
+    where: {
+      id: params.data.id,
+      ...(elevated ? {} : { member: memberScope(user) }),
+    },
     include: {
-      member: { select: { districtId: true, district: { select: { regionId: true } } } },
+      member: { select: { districtId: true, regionId: true } },
       importJob: { select: { id: true } },
     },
   });
-  const elevated = user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN";
-  const accessible = file?.member
-    ? elevated ||
-      (user.role === "REGIONAL_ADMIN" && file.member.district?.regionId === user.regionId) ||
-      (user.role === "DISTRICT_ADMIN" && file.member.districtId === user.districtId)
-    : elevated;
-  if (!file || !accessible) {
+  if (!file) {
     response.status(404).json({ success: false, message: "File not found" });
     return;
   }
@@ -347,7 +346,7 @@ fileRouter.delete("/:id", async (request, response) => {
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
     },
-    regionId: file.member?.district?.regionId,
+    regionId: file.member?.regionId,
     districtId: file.member?.districtId,
   });
   response.status(204).send();

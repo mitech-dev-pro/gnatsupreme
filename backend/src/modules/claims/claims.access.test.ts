@@ -226,6 +226,65 @@ for (const history of [[], [{ id: "other", claimNumber: "MC-OTHER", staffId: "12
   });
 }
 
+test("unconfirmed retry is blocked when history shows an active claim for the same claimant", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    deliveryState: "UNKNOWN",
+    claimantName: "Kwame Mensah",
+    member: { controllerId: "123456" },
+  }));
+  t.mock.method(claimsProvider, "isConfigured", () => true);
+  t.mock.method(claimsProvider, "history", async () => [
+    { id: "other", claimNumber: "MC-OTHER", staffId: "123456", name: "KWAME  mensah", status: "Pending" },
+  ]);
+  const audit = stub(t, prisma.auditLog, "create", async () => ({}));
+  const send = t.mock.method(claimsProvider, "createSubmission", async () => {
+    throw new Error("must not send");
+  });
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/send")(
+    { params: { id: "1" }, body: { historyChecked: true } },
+    res,
+  );
+  assert.equal(res.code, 409);
+  assert.equal(send.mock.callCount(), 0);
+  assert.equal(audit.mock.callCount(), 1);
+});
+
+test("unconfirmed retry proceeds when the only name match in history was rejected", async (t) => {
+  stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
+    id: 1,
+    deliveryState: "UNKNOWN",
+    claimantName: "Kwame Mensah",
+    member: { controllerId: "123456" },
+  }));
+  t.mock.method(claimsProvider, "isConfigured", () => true);
+  t.mock.method(claimsProvider, "history", async () => [
+    { id: "other", claimNumber: "MC-OTHER", staffId: "123456", name: "Kwame Mensah", status: "Rejected" },
+  ]);
+  stub(
+    t,
+    prisma.externalClaimSubmission,
+    "updateMany",
+    async () => ({ count: 0 }), // Another attempt already holds the delivery lock -- irrelevant here.
+  );
+  stub(t, prisma.externalClaimSubmission, "findUniqueOrThrow", async () => ({
+    id: 1,
+    deliveryState: "SENDING",
+  }));
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  const send = t.mock.method(claimsProvider, "createSubmission", async () => {
+    throw new Error("must not send");
+  });
+  const res = response();
+  await routeHandler(claimsRouter, "/submissions/:id/send")(
+    { params: { id: "1" }, body: { historyChecked: true } },
+    res,
+  );
+  assert.equal(res.code, 200);
+  assert.equal(send.mock.callCount(), 0);
+});
+
 test("saved-claim recovery is scoped and only reaches a claim in a deliverable state", async (t) => {
   const history = t.mock.method(claimsProvider, "history", async () => []);
   stub(

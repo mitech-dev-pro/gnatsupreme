@@ -37,6 +37,19 @@ import {
 
 export const claimsRouter = Router();
 
+// Mirrors the vocabulary frontend/src/lib/claimStatus.ts already treats as a dead-end status --
+// a history entry matching this was rejected/cancelled/failed, so it can never be the live
+// duplicate an UNKNOWN-state retry needs to worry about.
+const INACTIVE_HISTORY_STATUS = /reject|declin|denied|fail|cancel|void/i;
+
+function namesLikelyMatch(a: string, b: string) {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const left = normalize(a);
+  const right = normalize(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
 const claimMemberInclude = {
   district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
   spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
@@ -457,6 +470,7 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       reviewedAt: true,
       reviewNote: true,
       deliveryState: true,
+      claimantName: true,
       member: { select: { controllerId: true } },
     },
   });
@@ -484,8 +498,9 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
       });
       return;
     }
+    let history: Awaited<ReturnType<typeof claimsProvider.history>>;
     try {
-      const history = await claimsProvider.history(claim.member.controllerId);
+      history = await claimsProvider.history(claim.member.controllerId);
       if (history.some((item) => item.staffId && item.staffId !== claim.member.controllerId))
         throw new Error("History member mismatch");
     } catch {
@@ -502,6 +517,41 @@ claimsRouter.post("/submissions/:id/send", async (request, response) => {
         success: false,
         message:
           "Claims Portal history is unavailable. Retry is blocked until history can be checked.",
+      });
+      return;
+    }
+    // A reachable, correctly-scoped history on its own only proves the caller COULD have looked
+    // -- it doesn't prove this specific claim isn't already in it, since Mankrado's history
+    // response never echoes back our own submissionReference/idempotencyKey for us to match on.
+    // This is the best available signal instead: a still-active history entry for the same
+    // claimant name. It can't replace the staff member's own check, but it stops a confirmed
+    // "historyChecked: true" from sailing through unexamined when the data in hand already shows
+    // a likely duplicate.
+    const possibleDuplicate = claim.claimantName
+      ? history.find(
+          (item) =>
+            !INACTIVE_HISTORY_STATUS.test(item.status ?? "") &&
+            namesLikelyMatch(item.name ?? "", claim.claimantName!),
+        )
+      : undefined;
+    if (possibleDuplicate) {
+      await recordAudit({
+        request,
+        actor: user,
+        action: "CLAIM_RETRY_BLOCKED",
+        entityType: "EXTERNAL_CLAIM_SUBMISSION",
+        entityId: claim.id,
+        description:
+          "Unconfirmed delivery retry blocked -- history already shows a likely-matching active claim",
+        afterData: {
+          historyChecked: true,
+          historyCheckOutcome: "POSSIBLE_DUPLICATE",
+          matchedClaimNumber: possibleDuplicate.claimNumber,
+        },
+      });
+      response.status(409).json({
+        success: false,
+        message: `Claims Portal history already shows an active claim for ${possibleDuplicate.name} (claim ${possibleDuplicate.claimNumber}). Confirm with the insurer whether this is the same claim before retrying.`,
       });
       return;
     }

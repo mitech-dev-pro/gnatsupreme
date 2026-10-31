@@ -15,6 +15,12 @@ const isPublicPath = (pathname: string) =>
 const api = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
+  // A plain cross-site <form> POST or a credentialed cross-origin fetch with no custom headers
+  // counts as a CORS "simple request" -- sent (with cookies) without a preflight, even though
+  // our CORS policy would reject the response. This header forces a preflight on every request,
+  // which the exact-origin CORS policy then blocks for anyone but this frontend -- closing the
+  // gap on cookie-only endpoints like /refresh that have no other proof of same-origin intent.
+  headers: { "X-Requested-With": "XMLHttpRequest" },
 });
 
 let staffAccessToken: string | null = null;

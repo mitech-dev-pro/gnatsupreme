@@ -7,6 +7,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
 import { loginRateLimiter, refreshRateLimiter } from "../../middleware/rate-limit.js";
 import { loginSchema } from "./auth.schemas.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -153,7 +154,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
   }
 });
 
-authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
+authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request, response) => {
   const currentToken = request.cookies[env.REFRESH_COOKIE_NAME] as string | undefined;
 
   if (!currentToken) {

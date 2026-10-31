@@ -59,7 +59,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Requested-With"],
   }),
 );
 app.use("/api", apiRateLimiter);

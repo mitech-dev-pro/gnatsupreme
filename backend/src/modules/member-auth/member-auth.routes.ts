@@ -5,6 +5,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
+import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
 import {
   memberForgotPasswordRateLimiter,
   memberLoginIpRateLimiter,
@@ -422,64 +423,69 @@ memberAuthRouter.post("/reset-password", async (request, response) => {
   response.json({ success: true, message: "Password updated. You can now sign in." });
 });
 
-memberAuthRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
-  const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as string | undefined;
-  if (!token) {
-    response.status(401).json({ success: false, message: "Member refresh session required" });
-    return;
-  }
-  const session = await prisma.memberSession.findUnique({
-    where: { tokenHash: hashMemberRefreshToken(token) },
-    include: {
-      member: {
-        select: {
-          id: true,
-          controllerId: true,
-          fullName: true,
-          status: true,
+memberAuthRouter.post(
+  "/refresh",
+  refreshRateLimiter,
+  requireXhrHeader,
+  async (request, response) => {
+    const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as string | undefined;
+    if (!token) {
+      response.status(401).json({ success: false, message: "Member refresh session required" });
+      return;
+    }
+    const session = await prisma.memberSession.findUnique({
+      where: { tokenHash: hashMemberRefreshToken(token) },
+      include: {
+        member: {
+          select: {
+            id: true,
+            controllerId: true,
+            fullName: true,
+            status: true,
+          },
         },
       },
-    },
-  });
-  if (
-    !session ||
-    session.revokedAt ||
-    session.expiresAt <= new Date() ||
-    !["ACTIVE", "FLAGGED"].includes(session.member.status)
-  ) {
-    response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
-    response.status(401).json({ success: false, message: "Member refresh session is invalid" });
-    return;
-  }
-  const nextToken = createMemberRefreshToken();
-  const rotated = await prisma.$transaction(async (transaction) => {
-    const result = await transaction.memberSession.updateMany({
-      where: { id: session.id, revokedAt: null },
-      data: { revokedAt: new Date() },
     });
-    if (result.count !== 1) return false;
-    await transaction.memberSession.create({
-      data: {
-        tokenHash: hashMemberRefreshToken(nextToken),
-        memberId: session.memberId,
-        expiresAt: memberSessionExpiresAt(),
-        ...metadata(request),
-      },
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      !["ACTIVE", "FLAGGED"].includes(session.member.status)
+    ) {
+      response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
+      response.status(401).json({ success: false, message: "Member refresh session is invalid" });
+      return;
+    }
+    const nextToken = createMemberRefreshToken();
+    const rotated = await prisma.$transaction(async (transaction) => {
+      const result = await transaction.memberSession.updateMany({
+        where: { id: session.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count !== 1) return false;
+      await transaction.memberSession.create({
+        data: {
+          tokenHash: hashMemberRefreshToken(nextToken),
+          memberId: session.memberId,
+          expiresAt: memberSessionExpiresAt(),
+          ...metadata(request),
+        },
+      });
+      return true;
     });
-    return true;
-  });
-  if (!rotated) {
-    response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
-    response.status(401).json({ success: false, message: "Member refresh session is invalid" });
-    return;
-  }
-  setMemberCookie(response, nextToken);
-  response.json({
-    success: true,
-    accessToken: await createMemberAccessToken(session.member.id),
-    member: publicMember(session.member),
-  });
-});
+    if (!rotated) {
+      response.clearCookie(env.MEMBER_REFRESH_COOKIE_NAME, memberCookieOptions);
+      response.status(401).json({ success: false, message: "Member refresh session is invalid" });
+      return;
+    }
+    setMemberCookie(response, nextToken);
+    response.json({
+      success: true,
+      accessToken: await createMemberAccessToken(session.member.id),
+      member: publicMember(session.member),
+    });
+  },
+);
 
 memberAuthRouter.post("/logout", async (request, response) => {
   const token = request.cookies[env.MEMBER_REFRESH_COOKIE_NAME] as string | undefined;

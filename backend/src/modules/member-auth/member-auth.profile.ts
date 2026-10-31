@@ -1,4 +1,5 @@
-import { logger } from "../../lib/logger.js";
+import { emailProvider } from "../notifications/email.provider.js";
+
 export function publicMember(member: {
   id: number;
   controllerId: string;
@@ -13,5 +14,10 @@ export function publicMember(member: {
   };
 }
 export async function sendPasswordResetEmail(email: string, resetUrl: string) {
-  logger.info({ email, resetUrl }, "[stub] Would send member password reset email");
+  await emailProvider.send({
+    to: email,
+    subject: "Reset your GNAT Supreme password",
+    text: `We received a request to reset your GNAT Supreme member portal password.\n\nReset your password: ${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+    html: `<p>We received a request to reset your GNAT Supreme member portal password.</p><p><a href="${resetUrl}">Reset your password</a></p><p>If you did not request this, you can safely ignore this email.</p>`,
+  });
 }

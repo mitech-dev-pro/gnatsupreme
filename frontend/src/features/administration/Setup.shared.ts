@@ -82,6 +82,10 @@ export function formatDate(iso: string) {
     day: "numeric",
   });
 }
+// Deliberately distinct from lib/currency.ts's formatCurrency(): benefit amounts are always in
+// the org's base currency (no multi-currency symbol needed) and a null spouse amount here means
+// "no spousal cover for this benefit type" -- showing it as GHS 0.00 would read as a real zero
+// payout rather than "not applicable", so it renders as an em dash instead.
 export function formatMoney(value: string | null) {
   if (value == null) return "—";
   return `GHS ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

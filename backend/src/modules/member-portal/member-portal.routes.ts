@@ -5,6 +5,7 @@ import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
 import { refreshClaimAssessment } from "../claims/claims.assessment.js";
 import {
   activeBenefit,
+  BENEFIT_NOT_CONFIGURED_MESSAGE,
   linkedClaimConflict,
   resolveSpouseLinkedMemberId,
   uploadedSlotKeys,
@@ -719,6 +720,10 @@ memberPortalRouter.post("/claims", async (request, response) => {
   const amount =
     (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
     null;
+  if (amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {
@@ -892,6 +897,10 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   const amount =
     (await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId)).amount ??
     null;
+  if (amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
       ? {

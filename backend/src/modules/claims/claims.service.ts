@@ -25,6 +25,11 @@ export async function resolveSpouseLinkedMemberId(
 // figure here and be paid another. Needs a separate, owned follow-up (confirm with Mankrado how
 // a linked spouse should be submitted) before this can be considered complete in a Mankrado-live
 // environment.
+// Shared across every submission entrypoint (staff, member, member resubmit) so the rejection
+// text can't drift between them -- see ensureBenefitConfigured below for the actual guard.
+export const BENEFIT_NOT_CONFIGURED_MESSAGE =
+  "This claim type's benefit is not currently configured for your plan. Contact an administrator before filing this claim.";
+
 export async function activeBenefit(
   claimType: "DEATH" | "TOTAL_PERMANENT_DISABILITY" | "CRITICAL_ILLNESS" | "HOSPITALIZATION",
   claimantType: "MEMBER" | "SPOUSE",

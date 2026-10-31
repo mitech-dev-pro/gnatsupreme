@@ -1,6 +1,7 @@
 import { createClaimDraftRouter, commitClaimDraft } from "./claims.drafts.js";
 import {
   activeBenefit,
+  BENEFIT_NOT_CONFIGURED_MESSAGE,
   linkedClaimConflict,
   resolveSpouseLinkedMemberId,
   uploadedSlotKeys,
@@ -256,6 +257,13 @@ claimsRouter.post("/submissions", async (request, response) => {
     parsed.data.claimantType,
     linkedMemberId,
   );
+  // /estimate already surfaces this as an informational `available: false` flag -- enforce it
+  // here too, or a claim type with no seeded benefit (or one an admin disabled) still gets
+  // filed and sent to Claims Portal with a null estimatedAmount.
+  if (estimate.amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
   if (!claimsProvider.isConfigured()) {
     response
       .status(503)

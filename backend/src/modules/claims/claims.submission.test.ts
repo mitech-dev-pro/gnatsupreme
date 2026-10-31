@@ -54,7 +54,21 @@ async function fixture(t: TestContext, role: string, inaccessible = false) {
   stub(t, Redis.prototype, "get", async () => null);
   stub(t, Redis.prototype, "set", async () => "OK");
   stub(t, Redis.prototype, "eval", async () => 1);
-  stub(t, prisma.benefitPlanVersion, "findFirst", async () => null);
+  // Includes a configured HOSPITALIZATION benefit -- claims.service.ts's activeBenefit() now
+  // blocks submission outright when a claim type has no benefit amount on the current plan, so
+  // these fixtures need one even though they're not testing benefit amounts themselves.
+  stub(t, prisma.benefitPlanVersion, "findFirst", async () => ({
+    id: 1,
+    benefits: [
+      {
+        type: "HOSPITALIZATION",
+        enabled: true,
+        memberAmount: 500,
+        spouseAmount: 250,
+        namedConditions: [],
+      },
+    ],
+  }));
   stub(t, prisma.auditLog, "create", async () => ({}));
   const member = {
     id: 123,
@@ -188,6 +202,17 @@ for (const role of ["SUPER_ADMIN", "NATIONAL_ADMIN", "DISTRICT_ADMIN"]) {
     assert.equal(f.remote.mock.callCount(), 1);
   });
 }
+test("submission is rejected when the claim type has no configured benefit", async (t) => {
+  const f = await fixture(t, "SUPER_ADMIN");
+  // Overrides fixture()'s default (a HOSPITALIZATION benefit present) with a plan that has no
+  // benefit row for this claim type at all -- activeBenefit() then resolves amount: undefined.
+  stub(t, prisma.benefitPlanVersion, "findFirst", async () => ({ id: 1, benefits: [] }));
+  const res = response("SUPER_ADMIN");
+  await postHandler(claimsRouter, "/submissions")(f.request, res);
+  assert.equal(res.code, 409);
+  assert.equal(f.creates(), 0);
+  assert.equal(f.remote.mock.callCount(), 0);
+});
 test("a claim submits without a payee name or claimant phone", async (t) => {
   const f = await fixture(t, "SUPER_ADMIN");
   const req = {

@@ -1,6 +1,10 @@
 import { memberProfileLink } from "./memberNavigation";
 import { useMemberListReturn } from "./useMemberListReturn";
+import { useMemberBulkReview } from "./useMemberBulkReview";
 import RowActionMenu from "@/components/ui/ActionMenu";
+import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
+import Dialog from "@/components/ui/Dialog";
+import ReviewDecisionDialog from "@/components/ui/ReviewDecisionDialog";
 import Dropdown from "@/components/ui/Dropdown";
 import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
@@ -398,6 +402,39 @@ export default function MembersList() {
     };
   }, [load]);
 
+  const [approvalIds, setApprovalIds] = useState<number[]>([]);
+  const [returning, setReturning] = useState(false);
+  const [returnNote, setReturnNote] = useState("");
+  const {
+    busy: bulkBusy,
+    result: bulkResult,
+    clearResult: clearBulkResult,
+    actionError: bulkActionError,
+    clearActionError: clearBulkActionError,
+    approve: bulkApproveIds,
+    returnForCorrection,
+  } = useMemberBulkReview(() => load());
+
+  useEffect(() => {
+    clearBulkActionError();
+  }, [approvalIds, returning, clearBulkActionError]);
+
+  const requestBulkApprove = () => {
+    if (!selected.length) return;
+    setApprovalIds(selected);
+  };
+  const confirmBulkApprove = async () => {
+    if (!(await bulkApproveIds(approvalIds))) return;
+    setSelected([]);
+    setApprovalIds([]);
+  };
+  const confirmBulkReturn = async () => {
+    if (!(await returnForCorrection(selected, returnNote))) return;
+    setSelected([]);
+    setReturning(false);
+    setReturnNote("");
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     setStatsLoading(true);
@@ -704,6 +741,92 @@ export default function MembersList() {
           </Alert>
         </div>
       )}
+      {bulkActionError && (
+        <div className="mb-3">
+          <Alert tone="error">{bulkActionError}</Alert>
+        </div>
+      )}
+      {bulkResult && (
+        <div className="mb-3">
+          <Alert tone={bulkResult.failed ? "warning" : "success"}>
+            <strong>
+              {bulkResult.succeeded} of {bulkResult.requested} completed.
+            </strong>{" "}
+            {bulkResult.failed
+              ? `${bulkResult.failed} member${bulkResult.failed === 1 ? "" : "s"} could not be processed.`
+              : "All selected members were processed successfully."}
+            {bulkResult.failed > 0 && (
+              <ul className="mt-2 list-disc pl-5">
+                {bulkResult.results
+                  .filter((item) => !item.success)
+                  .map((item) => (
+                    <li key={item.memberId}>
+                      {item.memberName || `Member ${item.memberId}`}: {item.message}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            <button className="ml-2 underline" onClick={clearBulkResult}>
+              Dismiss
+            </button>
+          </Alert>
+        </div>
+      )}
+      {approvalIds.length > 0 && (
+        <Dialog
+          title={`Approve ${approvalIds.length} member${approvalIds.length === 1 ? "" : "s"}`}
+          busy={bulkBusy}
+          onClose={() => setApprovalIds([])}
+          description={
+            <ul className="max-h-32 overflow-y-auto">
+              {approvalIds.map((id) => (
+                <li key={id}>{rows.find((member) => member.id === id)?.fullName || `Member ${id}`}</li>
+              ))}
+            </ul>
+          }
+        >
+          {bulkActionError && (
+            <div className="mb-4">
+              <Alert tone="error">{bulkActionError}</Alert>
+            </div>
+          )}
+          <ConfirmationPanel
+            title="Confirm approval"
+            description="Members matched in Report 20 will become Active. Unmatched members will become Flagged for follow-up. Members not currently eligible for approval will be skipped."
+            confirmLabel="Approve members"
+            busyLabel="Approving…"
+            tone="warning"
+            confirmVariant="primary"
+            busy={bulkBusy}
+            onConfirm={() => void confirmBulkApprove()}
+            onCancel={() => setApprovalIds([])}
+          />
+        </Dialog>
+      )}
+      {returning && (
+        <ReviewDecisionDialog
+          title={`Return ${selected.length} member${selected.length === 1 ? "" : "s"} for correction`}
+          description={
+            <ul className="max-h-32 overflow-y-auto">
+              {selected.map((id) => (
+                <li key={id}>{rows.find((member) => member.id === id)?.fullName || `Member ${id}`}</li>
+              ))}
+            </ul>
+          }
+          help="The same correction note will be sent to every selected member. Members not currently eligible will be skipped."
+          decision="RETURN"
+          note={returnNote}
+          onNote={setReturnNote}
+          busy={bulkBusy}
+          error={bulkActionError}
+          minNoteLength={2}
+          onClose={() => {
+            setReturning(false);
+            setReturnNote("");
+          }}
+          onConfirm={() => void confirmBulkReturn()}
+        />
+      )}
       <section className="members-table-shell" aria-label="Member register">
         {loading && rows.length === 0 ? (
           <div className="members-loading" role="status" aria-label="Loading members">
@@ -742,7 +865,17 @@ export default function MembersList() {
             {selected.length > 0 && (
               <div className="members-selection">
                 <strong>{selected.length}</strong> selected{" "}
-                <button type="button" onClick={() => setSelected([])}>
+                <button type="button" disabled={bulkBusy} onClick={requestBulkApprove}>
+                  Approve selected
+                </button>
+                <button type="button" disabled={bulkBusy} onClick={() => setReturning(true)}>
+                  Return for correction
+                </button>
+                <button
+                  type="button"
+                  className="members-selection-clear"
+                  onClick={() => setSelected([])}
+                >
                   Clear selection
                 </button>
               </div>

@@ -692,13 +692,21 @@
 }
 
 .members-selection button {
-  margin-left: auto;
   border: 0;
   background: transparent;
   color: inherit;
   font-size: var(--text-sm);
   font-weight: 700;
   cursor: pointer;
+}
+
+.members-selection button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.members-selection-clear {
+  margin-left: auto;
 }
 
 .members-actions {

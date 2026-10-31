@@ -7,7 +7,7 @@ import { Alert, EmptyState } from "@/components/ui/Feedback";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import api from "@/lib/api";
-import { getApiError } from "@/lib/errorExtract";
+import { useMemberBulkReview } from "./useMemberBulkReview";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import "./PendingApprovals.css";
@@ -27,18 +27,6 @@ type Member = {
   spouse: unknown | null;
   _count: { beneficiaries: number };
   createdBy: { id: number; fullName: string } | null;
-};
-type BulkResult = {
-  requested: number;
-  succeeded: number;
-  failed: number;
-  results: Array<{
-    memberId: number;
-    success: boolean;
-    memberName?: string;
-    status?: string;
-    message?: string;
-  }>;
 };
 
 function Signal({ good, yes, no }: { good: boolean; yes: string; no: string }) {
@@ -84,13 +72,9 @@ export default function PendingApprovals() {
   const [preview, setPreview] = useState<Member | null>(null);
   const [returning, setReturning] = useState(false);
   const [returnNote, setReturnNote] = useState("");
-  const [result, setResult] = useState<BulkResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
-  const actionLock = useRef(false);
-  const [actionError, setActionError] = useState("");
   const [approvalIds, setApprovalIds] = useState<number[]>([]);
 
   const updateParams = (values: Record<string, string | null>) => {
@@ -143,6 +127,16 @@ export default function PendingApprovals() {
     }
   }, [limit, page, search, setParams]);
 
+  const {
+    busy,
+    result,
+    clearResult,
+    actionError,
+    clearActionError,
+    approve: bulkApproveIds,
+    returnForCorrection,
+  } = useMemberBulkReview(load);
+
   useEffect(() => {
     setApprovalIds([]);
     setReturning(false);
@@ -151,8 +145,8 @@ export default function PendingApprovals() {
     return () => request.current?.abort();
   }, [load]);
   useEffect(() => {
-    setActionError("");
-  }, [approvalIds, returning]);
+    clearActionError();
+  }, [approvalIds, returning, clearActionError]);
   const allSelected = rows.length > 0 && rows.every((item) => selected.includes(item.id));
   const toggleAll = () => setSelected(allSelected ? [] : rows.map((item) => item.id));
   const toggle = (id: number) =>
@@ -165,7 +159,7 @@ export default function PendingApprovals() {
   };
 
   const bulkApprove = async (memberIds = selected) => {
-    if (!memberIds.length || actionLock.current) return;
+    if (!memberIds.length) return;
     if (
       approvalIds.length !== memberIds.length ||
       memberIds.some((memberId) => !approvalIds.includes(memberId))
@@ -173,51 +167,18 @@ export default function PendingApprovals() {
       setApprovalIds(memberIds);
       return;
     }
-    actionLock.current = true;
-    setBusy(true);
-    setActionError("");
-    setResult(null);
-    try {
-      const response = await api.post("/members/bulk/approve", { memberIds });
-      setResult(response.data.data);
-      setSelected([]);
-      setPreview(null);
-      setApprovalIds([]);
-      await load();
-    } catch (requestError: unknown) {
-      setActionError(
-        getApiError(requestError)?.message || "The selected members could not be approved.",
-      );
-    } finally {
-      actionLock.current = false;
-      setBusy(false);
-    }
+    if (!(await bulkApproveIds(memberIds))) return;
+    setSelected([]);
+    setPreview(null);
+    setApprovalIds([]);
   };
 
   const bulkReturn = async () => {
-    if (!selected.length || returnNote.trim().length < 2 || actionLock.current) return;
-    actionLock.current = true;
-    setBusy(true);
-    setActionError("");
-    setResult(null);
-    try {
-      const response = await api.post("/members/bulk/return", {
-        memberIds: selected,
-        note: returnNote.trim(),
-      });
-      setResult(response.data.data);
-      setSelected([]);
-      setReturning(false);
-      setReturnNote("");
-      await load();
-    } catch (requestError: unknown) {
-      setActionError(
-        getApiError(requestError)?.message || "The selected members could not be returned.",
-      );
-    } finally {
-      actionLock.current = false;
-      setBusy(false);
-    }
+    if (!selected.length) return;
+    if (!(await returnForCorrection(selected, returnNote))) return;
+    setSelected([]);
+    setReturning(false);
+    setReturnNote("");
   };
 
   return (
@@ -282,7 +243,7 @@ export default function PendingApprovals() {
                   ))}
               </ul>
             )}
-            <button className="ml-2 underline" onClick={() => setResult(null)}>
+            <button className="ml-2 underline" onClick={clearResult}>
               Dismiss
             </button>
           </Alert>

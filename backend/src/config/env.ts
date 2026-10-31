@@ -47,6 +47,29 @@ const environmentSchema = z.object({
     .max(1440)
     .default(60),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
+  EMAIL_PROVIDER: z.enum(["DEV", "SMTP"]).default("DEV"),
+  SMTP_HOST: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(587),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  SMTP_USER: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+  SMTP_PASS: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  EMAIL_FROM_NAME: z.string().trim().min(1).default("GNAT Supreme"),
+  EMAIL_FROM_ADDRESS: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().email().optional(),
+  ),
   API_DOCS_ENABLED: z
     .enum(["true", "false"])
     .default("true")
@@ -146,6 +169,19 @@ if (
 ) {
   throw new Error(
     "EXTERNAL_API_KEY is required when the external member API is enabled",
+  );
+}
+
+if (
+  result.success &&
+  result.data.EMAIL_PROVIDER === "SMTP" &&
+  (!result.data.SMTP_HOST ||
+    !result.data.SMTP_USER ||
+    !result.data.SMTP_PASS ||
+    !result.data.EMAIL_FROM_ADDRESS)
+) {
+  throw new Error(
+    "SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM_ADDRESS are required when EMAIL_PROVIDER=SMTP",
   );
 }
 

@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from "express";
 
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
-import { logger } from "../../lib/logger.js";
 import { authenticateMember } from "../../middleware/authenticate-member.js";
 import {
   memberForgotPasswordRateLimiter,
@@ -14,6 +13,7 @@ import {
   refreshRateLimiter,
 } from "../../middleware/rate-limit.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { emailProvider } from "../notifications/email.provider.js";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -81,12 +81,13 @@ function publicMember(member: {
   };
 }
 
-// No email-sending provider is wired up yet — this stands in for it so the reset flow is fully
-// built and testable end-to-end (the token, expiry, and consumption logic below don't change once
-// a real provider is added), without blocking on picking/configuring one now. Swap the body for a
-// real send when that's ready; nothing else in this route needs to change.
 async function sendPasswordResetEmail(email: string, resetUrl: string) {
-  logger.info({ email, resetUrl }, "[stub] Would send member password reset email");
+  await emailProvider.send({
+    to: email,
+    subject: "Reset your GNAT Supreme password",
+    text: `We received a request to reset your GNAT Supreme member portal password.\n\nReset your password: ${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+    html: `<p>We received a request to reset your GNAT Supreme member portal password.</p><p><a href="${resetUrl}">Reset your password</a></p><p>If you did not request this, you can safely ignore this email.</p>`,
+  });
 }
 
 async function createSession(request: Request, memberId: number) {

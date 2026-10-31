@@ -824,23 +824,6 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   <h2 id="coverage-heading" className="text-lg font-bold text-(--brand-primary)">
                     My benefit plan
                   </h2>
-                  {/* <div className="flex flex-wrap gap-2">
-                    <a
-                      href="/policy/terms-and-conditions.pdf"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg border border-border-default px-3 py-1.5 text-xs font-bold text-(--brand-primary) no-underline hover:bg-surface-subtle"
-                    >
-                      View Terms &amp; Conditions ↗
-                    </a>
-                    <a
-                      href="/policy/terms-and-conditions.pdf"
-                      download="GNAT-Supreme-Care-Terms-and-Conditions.pdf"
-                      className="rounded-lg border border-border-default px-3 py-1.5 text-xs font-bold text-(--brand-primary) no-underline hover:bg-surface-subtle"
-                    >
-                      Download PDF
-                    </a>
-                  </div> */}
                 </div>
                 <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                   <div>

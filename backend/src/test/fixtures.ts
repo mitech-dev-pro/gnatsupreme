@@ -36,8 +36,14 @@ export function routeHandler(router: Router, path: string, method?: string) {
     const methods: unknown = Reflect.get(item.route, "methods");
     return methods !== null && typeof methods === "object" && Reflect.get(methods, method) === true;
   });
-  assert.ok(layer?.route?.stack[0]);
-  const handle = layer.route.stack[0].handle;
+  // The last handler in the route's middleware stack is always its actual business logic --
+  // anything before it is per-route middleware (rate limiters, authorizeRoles, etc.) that tests
+  // deliberately bypass by driving the handler directly with a crafted response.locals.
+  const stack = layer?.route?.stack;
+  assert.ok(stack && stack.length > 0);
+  // noUncheckedIndexedAccess can't prove this index is in-bounds even after the length check
+  // above, since it's a dynamic index rather than the literal the assert matched on.
+  const handle = stack[stack.length - 1]!.handle;
   // The test adapter supplies only the HTTP members used by these handlers.
   return async (request: TestRequest, response: TestResponse) =>
     handle(request as Request, response as Response, (error) => {

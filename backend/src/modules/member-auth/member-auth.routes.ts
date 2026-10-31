@@ -17,6 +17,7 @@ import {
 } from "../../middleware/rate-limit.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   memberLookupSchema,
@@ -421,6 +422,45 @@ memberAuthRouter.post("/reset-password", async (request, response) => {
     description: `Member ${resetToken.member.controllerId} reset their password via email link`,
   });
   response.json({ success: true, message: "Password updated. You can now sign in." });
+});
+
+memberAuthRouter.post("/change-password", authenticateMember, async (request, response) => {
+  const parsed = changePasswordSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter a valid password" });
+    return;
+  }
+  const memberId = response.locals.member.id;
+  const member = await prisma.member.findUnique({
+    where: { id: memberId },
+    select: { id: true, controllerId: true, passwordHash: true },
+  });
+  if (!member?.passwordHash || !(await verifyMemberPassword(member.passwordHash, parsed.data.currentPassword))) {
+    response.status(401).json({ success: false, message: "Your current password is incorrect" });
+    return;
+  }
+  await prisma.$transaction(async (transaction) => {
+    await transaction.member.update({
+      where: { id: memberId },
+      data: { passwordHash: await hashMemberPassword(parsed.data.password) },
+    });
+    // Same rationale as /reset-password -- a password change invalidates every existing
+    // session, on any device, including this one (the short-lived access token keeps working
+    // until it next expires, at which point the refresh attempt fails and a fresh login with
+    // the new password is required).
+    await transaction.memberSession.updateMany({
+      where: { memberId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  });
+  await recordAudit({
+    request,
+    action: "MEMBER_PASSWORD_CHANGED_SELF_SERVICE",
+    entityType: "MEMBER",
+    entityId: member.id,
+    description: `Member ${member.controllerId} changed their password`,
+  });
+  response.json({ success: true, message: "Password updated." });
 });
 
 memberAuthRouter.post(

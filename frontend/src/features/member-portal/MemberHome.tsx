@@ -1,3 +1,4 @@
+import { ChangePasswordForm } from "./ChangePasswordForm";
 import MemberChangeRequests from "./MemberChangeRequests";
 import MemberNotifications from "./MemberNotifications";
 import ConfirmationPanel from "@/components/ui/ConfirmationPanel";
@@ -34,6 +35,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestsError, setRequestsError] = useState("");
   const [editingProfile, setEditingProfile] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [editingSpouse, setEditingSpouse] = useState(false);
   const [addingBeneficiary, setAddingBeneficiary] = useState(false);
   const [editingBeneficiaryId, setEditingBeneficiaryId] = useState<number | null>(null);
@@ -527,6 +529,34 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     onClose={() => setEditingProfile(false)}
                     onSubmitted={afterRequestSubmitted}
                   />
+                )}
+              </section>
+
+              <section
+                className="overflow-hidden rounded-2xl border border-border-default bg-(--surface-raised) p-5 md:col-span-2"
+                aria-labelledby="account-security-title"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 id="account-security-title" className="text-lg font-bold text-text-strong">
+                      Account security
+                    </h2>
+                    <p className="mt-0.5 text-xs text-text-muted">
+                      Change the password you use to sign in to this portal.
+                    </p>
+                  </div>
+                  {!changingPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setChangingPassword(true)}
+                      className="min-h-9 shrink-0 rounded-lg border border-border-default px-3 text-xs font-semibold text-action-primary hover:bg-surface-subtle"
+                    >
+                      Change password
+                    </button>
+                  )}
+                </div>
+                {changingPassword && (
+                  <ChangePasswordForm onClose={() => setChangingPassword(false)} />
                 )}
               </section>
             </>

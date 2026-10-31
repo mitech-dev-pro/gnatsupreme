@@ -98,7 +98,7 @@ export default function ClaimsTable({
             )}
             <th className="px-4 py-2.5">Member</th>
             <th className="px-4 py-2.5">Claim</th>
-            <th className="px-4 py-2.5">{reviewActions ? "Portal Reference" : "Reference"}</th>
+            <th className="px-4 py-2.5">{reviewActions ? "Claim Reference" : "Reference"}</th>
             <th className="px-4 py-2.5">Estimated benefit — subject to insurer assessment</th>
             <th className="px-4 py-2.5">Status</th>
             <th className="px-4 py-2.5">Sent to Claims Portal on</th>

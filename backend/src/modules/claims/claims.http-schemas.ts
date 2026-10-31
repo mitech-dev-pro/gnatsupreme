@@ -8,6 +8,7 @@ export const querySchema = z.object({
     .enum(["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"])
     .optional(),
   source: z.enum(["STAFF", "MEMBER_PORTAL"]).optional(),
+  deliveryState: z.enum(["NOT_SENT", "SENDING", "ACCEPTED", "FAILED", "UNKNOWN"]).optional(),
   // Mirrors the four-condition check the frontend already uses to decide whether a
   // claim's review actions should show (Claims.tsx, ClaimDetail.tsx) -- lets the
   // Claim Approvals queue page ask for exactly that set server-side. A literal (not

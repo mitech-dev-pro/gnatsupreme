@@ -600,7 +600,7 @@ claimsRouter.get("/submissions", async (request, response) => {
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
-  const { page, limit, status, source, awaitingReview } = parsed.data;
+  const { page, limit, status, source, deliveryState, awaitingReview } = parsed.data;
   const where = {
     member: { is: memberScope(user) },
     ...(awaitingReview
@@ -610,7 +610,11 @@ claimsRouter.get("/submissions", async (request, response) => {
           reviewedAt: null,
           deliveryState: "NOT_SENT" as const,
         }
-      : { ...(status ? { status } : {}), ...(source ? { source } : {}) }),
+      : {
+          ...(status ? { status } : {}),
+          ...(source ? { source } : {}),
+          ...(deliveryState ? { deliveryState } : {}),
+        }),
   };
   const [submissions, total] = await Promise.all([
     prisma.externalClaimSubmission.findMany({

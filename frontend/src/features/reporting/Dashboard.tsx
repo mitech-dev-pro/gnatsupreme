@@ -28,7 +28,11 @@ type DashboardData = {
     } | null;
   };
   transfers: { pending: number };
-  claims: Record<string, number>;
+  claims: {
+    byStatus: Record<string, number>;
+    awaitingReview: number;
+    unknownDelivery: number;
+  };
   enrollmentGrowth: { month: string; count: number }[];
   recentActivity: {
     id: number;
@@ -194,8 +198,7 @@ export default function Dashboard() {
       </div>
     );
 
-  const claims = Object.entries(data.claims);
-  const claimsTotal = claims.reduce((sum, [, count]) => sum + count, 0);
+  const claimsTotal = Object.values(data.claims.byStatus).reduce((sum, count) => sum + count, 0);
   const firstName = user?.fullName?.trim().split(/\s+/)[0];
 
   const today = new Intl.DateTimeFormat(undefined, {
@@ -277,6 +280,22 @@ export default function Dashboard() {
             <p>Report 20 reconciliation</p>
           </div>
           <ul>
+            <li>
+              <span className="amber" />
+              Claims awaiting your review{" "}
+              <strong>
+                <Link to="/claims/approvals">{data.claims.awaitingReview.toLocaleString()}</Link>
+              </strong>
+            </li>
+            <li>
+              <span className="red" />
+              Claims stuck sending to insurer{" "}
+              <strong>
+                <Link to="/claims?deliveryState=UNKNOWN">
+                  {data.claims.unknownDelivery.toLocaleString()}
+                </Link>
+              </strong>
+            </li>
             <li>
               <span className="amber" />
               Pending transfers <strong>{data.transfers.pending}</strong>

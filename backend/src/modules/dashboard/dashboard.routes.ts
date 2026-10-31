@@ -118,6 +118,8 @@ async function loadDashboard(user: AuthenticatedUser) {
     recentActivity,
     latestImport,
     claimStatusGroups,
+    claimsAwaitingReview,
+    claimsWithUnknownDelivery,
   ] = await Promise.all([
     aggregateMembers(user, firstMonth),
     prisma.spouse.count({ where: { member: { is: scope } } }),
@@ -152,6 +154,20 @@ async function loadDashboard(user: AuthenticatedUser) {
       by: ["status"],
       where: { member: { is: scope } },
       _count: { _all: true },
+    }),
+    // Mirrors the exact criteria /claims/approvals?awaitingReview=true filters on, so the
+    // dashboard count and the queue it links to never disagree.
+    prisma.externalClaimSubmission.count({
+      where: {
+        member: { is: scope },
+        status: "PENDING",
+        source: "MEMBER_PORTAL",
+        reviewedAt: null,
+        deliveryState: "NOT_SENT",
+      },
+    }),
+    prisma.externalClaimSubmission.count({
+      where: { member: { is: scope }, deliveryState: "UNKNOWN" },
     }),
   ]);
 
@@ -190,7 +206,13 @@ async function loadDashboard(user: AuthenticatedUser) {
       latestImport,
     },
     transfers: { pending: pendingTransfers },
-    claims: Object.fromEntries(claimStatusGroups.map((group) => [group.status, group._count._all])),
+    claims: {
+      byStatus: Object.fromEntries(
+        claimStatusGroups.map((group) => [group.status, group._count._all]),
+      ),
+      awaitingReview: claimsAwaitingReview,
+      unknownDelivery: claimsWithUnknownDelivery,
+    },
     enrollmentGrowth,
     recentActivity,
   };

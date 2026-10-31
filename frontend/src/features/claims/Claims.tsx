@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 const STATUSES = ["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"];
+const DELIVERY_STATES = ["NOT_SENT", "SENDING", "ACCEPTED", "FAILED", "UNKNOWN"];
 const labelize = (value: string | null) =>
   value
     ? value
@@ -32,6 +33,7 @@ export default function Claims() {
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const request = useRef<AbortController | null>(null);
   const status = params.get("status") ?? "";
+  const deliveryState = params.get("deliveryState") ?? "";
   const limit = 10;
   const updateParams = (values: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -50,7 +52,7 @@ export default function Claims() {
     try {
       const response = await api.get("/claims/submissions", {
         signal,
-        params: { page, limit, status: status || undefined },
+        params: { page, limit, status: status || undefined, deliveryState: deliveryState || undefined },
       });
       if (signal.aborted) return;
       const pages = Math.max(1, response.data.pagination.totalPages);
@@ -73,7 +75,7 @@ export default function Claims() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [page, status, setParams]);
+  }, [page, status, deliveryState, setParams]);
   useEffect(() => {
     setRows([]);
     void load();
@@ -112,17 +114,35 @@ export default function Claims() {
           </Alert>
         </div>
       )}
-      <div className="mb-4 max-w-52">
-        <label className="mb-1.5 block text-xs font-bold text-text-strong">Submission status</label>
-        <Dropdown
-          aria-label="Submission status"
-          value={status}
-          onChange={(value) => updateParams({ status: value || null, page: null })}
-          options={[
-            { value: "", label: "All statuses" },
-            ...STATUSES.map((item) => ({ value: item, label: labelize(item) })),
-          ]}
-        />
+      <div className="mb-4 flex flex-wrap gap-4">
+        <div className="max-w-52">
+          <label className="mb-1.5 block text-xs font-bold text-text-strong">
+            Submission status
+          </label>
+          <Dropdown
+            aria-label="Submission status"
+            value={status}
+            onChange={(value) => updateParams({ status: value || null, page: null })}
+            options={[
+              { value: "", label: "All statuses" },
+              ...STATUSES.map((item) => ({ value: item, label: labelize(item) })),
+            ]}
+          />
+        </div>
+        <div className="max-w-52">
+          <label className="mb-1.5 block text-xs font-bold text-text-strong">
+            Delivery to insurer
+          </label>
+          <Dropdown
+            aria-label="Delivery to insurer"
+            value={deliveryState}
+            onChange={(value) => updateParams({ deliveryState: value || null, page: null })}
+            options={[
+              { value: "", label: "All delivery states" },
+              ...DELIVERY_STATES.map((item) => ({ value: item, label: labelize(item) })),
+            ]}
+          />
+        </div>
       </div>
       <ClaimsTable
         rowOffset={(page - 1) * limit}

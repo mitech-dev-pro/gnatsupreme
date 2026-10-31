@@ -598,18 +598,14 @@ memberWorkflowRouter.post(
           performedById: actor.id,
         },
       });
-      const claim =
-        body.data.reason === "DEATH" || body.data.reason === "DISABILITY"
-          ? await transaction.externalClaimSubmission.create({
-              data: {
-                memberId: existing.id,
-                submittedById: actor.id,
-                idempotencyKey: `removal:${event.id}`,
-                status: "PENDING",
-              },
-            })
-          : null;
-      return { member, event, claim };
+      // No placeholder ExternalClaimSubmission is created for DEATH/DISABILITY removals --
+      // claimType/claimantType/claimDetails/documentIds have no "fill in later" path (no route
+      // edits an existing submission once created), so a stub row here could only ever end up
+      // permanently stuck: PENDING forever, or FAILED-and-unfixable if anyone tried to deliver
+      // it. Staff can and already do file the real DEATH/TOTAL_PERMANENT_DISABILITY claim for
+      // this member through the normal /submissions flow -- it has no ACTIVE-only restriction,
+      // so filing it after this removal already works today.
+      return { member, event };
     });
     await invalidateMemberAuth(result.member.id);
     await recordAudit({
@@ -624,7 +620,6 @@ memberWorkflowRouter.post(
         status: result.member.status,
         reason: body.data.reason,
         workflowEventId: result.event.id,
-        claimSubmissionId: result.claim?.id,
       },
       regionId: existing.district?.regionId,
       districtId: existing.districtId,

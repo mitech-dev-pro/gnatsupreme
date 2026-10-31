@@ -33,9 +33,15 @@ const storage = multer.diskStorage({
   },
 });
 
+// fields/parts/fieldNameSize bound the non-file parts of the multipart body — without them,
+// multer's defaults (Infinity fields, 100-byte field names but unlimited count) let a crafted
+// request with thousands of tiny fields exhaust CPU/memory during parsing before fileFilter or
+// the file-size limit ever gets a chance to reject anything.
+const singleFileLimits = { fields: 5, parts: 10, fieldNameSize: 100 };
+
 export const memberFileUpload = multer({
   storage,
-  limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
+  limits: { ...singleFileLimits, fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!allowedMimeTypes.has(file.mimetype) && !CLAIM_MIME_EXTENSIONS[file.mimetype]) {
       callback(new Error("Only PDF, JPEG, PNG, and WebP files are allowed"));
@@ -47,7 +53,7 @@ export const memberFileUpload = multer({
 
 export const claimFileUpload = multer({
   storage,
-  limits: { fileSize: CLAIM_MAX_FILE_BYTES, files: 1 },
+  limits: { ...singleFileLimits, fileSize: CLAIM_MAX_FILE_BYTES, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!CLAIM_MIME_EXTENSIONS[file.mimetype])
       return callback(new Error("Claims accept PDF, DOC, DOCX, JPEG and JPG only."));
@@ -72,7 +78,7 @@ const report20Storage = multer.diskStorage({
 
 export const report20FileUpload = multer({
   storage: report20Storage,
-  limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
+  limits: { ...singleFileLimits, fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!report20MimeTypes.has(file.mimetype)) {
       callback(new Error("Only CSV and XLSX files are allowed"));
@@ -92,7 +98,7 @@ const memberImportStorage = multer.diskStorage({
 
 export const memberImportFileUpload = multer({
   storage: memberImportStorage,
-  limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
+  limits: { ...singleFileLimits, fileSize: env.MAX_UPLOAD_SIZE_MB * 1_024 * 1_024, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!report20MimeTypes.has(file.mimetype)) {
       callback(new Error("Only CSV and XLSX files are allowed"));

@@ -249,6 +249,9 @@ export async function auditLinkChanges(
     select: { id: true, fullName: true },
   });
   const ownerNameById = new Map(owners.map((owner) => [owner.id, owner.fullName]));
+  // Best-effort -- every caller invokes this after its own transaction has already committed,
+  // so a failed notification send must not surface as a 500 on an otherwise-successful save
+  // (same rationale/pattern as report20.service.ts's notifyMember calls).
   for (const change of newLinks) {
     const ownerName = ownerNameById.get(change.ownerMemberId) ?? "Another GNAT member";
     await notifyMember({
@@ -257,6 +260,6 @@ export async function auditLinkChanges(
       title: "You may have been named as a spouse",
       message: `${ownerName} has named you as their spouse on their GNAT Supreme Care profile. If this is correct, add them as your spouse too to keep your own record complete.`,
       idempotencyKey: `spouse-link-suggested:${change.spouseId}:${change.after}`,
-    });
+    }).catch(() => undefined);
   }
 }

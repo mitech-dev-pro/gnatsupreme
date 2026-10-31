@@ -32,7 +32,11 @@ test("manually resolving a Report 20 row sets regionId from the selected distric
     rowNumber: 3,
   }));
   stub(t, prisma.member, "findUnique", async () => null);
-  stub(t, prisma.district, "findUnique", async () => ({ id: 4, name: "Test District", regionId: 2 }));
+  stub(t, prisma.district, "findUnique", async () => ({
+    id: 4,
+    name: "Test District",
+    regionId: 2,
+  }));
   stub(t, prisma, "$transaction", async (callback: (tx: typeof prisma) => Promise<unknown>) =>
     callback(prisma),
   );

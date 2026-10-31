@@ -17,6 +17,7 @@ import {
 import { invalidateMemberAuth } from "../../lib/auth-cache.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { prisma } from "../../lib/prisma.js";
+import { uniqueFieldLabel, uniqueViolationField } from "../../lib/prisma-errors.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
@@ -300,32 +301,54 @@ memberRouter.post("/", async (request, response) => {
     regionId: _regionId,
     ...memberData
   } = parsed.data;
-  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
-    const created = await transaction.member.create({
-      data: {
-        ...memberData,
-        districtId: districtId ?? null,
-        regionId: resolvedRegion.regionId,
-        createdById: user.id,
-        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
-        ...(spouse ? { spouse: { create: spouse } } : {}),
-        beneficiaries: { create: beneficiaries },
-      },
-      include: memberInclude,
-    });
-    const changes = await relinkSpousesForMember(transaction, created.id, created.ghanaCardId);
-    if (created.spouse) {
-      const change = await reconcileSpouseLink(
+  const createMember = () =>
+    prisma.$transaction(async (transaction) => {
+      const createdMember = await transaction.member.create({
+        data: {
+          ...memberData,
+          districtId: districtId ?? null,
+          regionId: resolvedRegion.regionId,
+          createdById: user.id,
+          spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
+          ...(spouse ? { spouse: { create: spouse } } : {}),
+          beneficiaries: { create: beneficiaries },
+        },
+        include: memberInclude,
+      });
+      const changes = await relinkSpousesForMember(
         transaction,
-        created.spouse.id,
-        created.spouse.ghanaCardId,
-        created.id,
-        undefined,
+        createdMember.id,
+        createdMember.ghanaCardId,
       );
-      if (change) changes.push(change);
-    }
-    return { member: created, linkChanges: changes };
-  });
+      if (createdMember.spouse) {
+        const change = await reconcileSpouseLink(
+          transaction,
+          createdMember.spouse.id,
+          createdMember.spouse.ghanaCardId,
+          createdMember.id,
+          undefined,
+        );
+        if (change) changes.push(change);
+      }
+      return { member: createdMember, linkChanges: changes };
+    });
+  let created: Awaited<ReturnType<typeof createMember>>;
+  try {
+    created = await createMember();
+  } catch (error) {
+    // The pre-checks above close the common case, but two concurrent requests enrolling the
+    // same new controllerId/ghanaCardId/phone/email can both pass them and race on the DB's
+    // unique index -- map that to the same clean 409 the pre-check would have given, rather
+    // than an uncaught 500.
+    const violatedField = uniqueViolationField(error);
+    if (violatedField === null) throw error;
+    response.status(409).json({
+      success: false,
+      message: `${uniqueFieldLabel(violatedField)} is already in use by another record`,
+    });
+    return;
+  }
+  const { member, linkChanges } = created;
   await auditLinkChanges(request, user, linkChanges);
   await recordAudit({
     request,
@@ -464,26 +487,42 @@ memberRouter.patch("/:id", async (request, response) => {
     regionUpdate = { regionId: resolvedRegion.regionId };
   }
 
-  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
-    const updated = await transaction.member.update({
-      where: { id: existing.id },
-      data: {
-        ...body.data,
-        ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
-        body.data.phone !== existing.phone
-          ? { phoneVerifiedAt: null }
-          : {}),
-        ...clearingUpdate,
-        ...placeOfWorkClearingUpdate,
-        ...regionUpdate,
-      },
-      include: memberInclude,
+  const updateMember = () =>
+    prisma.$transaction(async (transaction) => {
+      const updated = await transaction.member.update({
+        where: { id: existing.id },
+        data: {
+          ...body.data,
+          ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
+          body.data.phone !== existing.phone
+            ? { phoneVerifiedAt: null }
+            : {}),
+          ...clearingUpdate,
+          ...placeOfWorkClearingUpdate,
+          ...regionUpdate,
+        },
+        include: memberInclude,
+      });
+      const changes = Object.prototype.hasOwnProperty.call(body.data, "ghanaCardId")
+        ? await relinkSpousesForMember(transaction, existing.id, updated.ghanaCardId)
+        : [];
+      return { member: updated, linkChanges: changes };
     });
-    const changes = Object.prototype.hasOwnProperty.call(body.data, "ghanaCardId")
-      ? await relinkSpousesForMember(transaction, existing.id, updated.ghanaCardId)
-      : [];
-    return { member: updated, linkChanges: changes };
-  });
+  let updateResult: Awaited<ReturnType<typeof updateMember>>;
+  try {
+    updateResult = await updateMember();
+  } catch (error) {
+    // Same rationale as the POST / handler above -- the pre-checks close the common case, but
+    // a concurrent request can still race on the unique index between the check and this write.
+    const violatedField = uniqueViolationField(error);
+    if (violatedField === null) throw error;
+    response.status(409).json({
+      success: false,
+      message: `${uniqueFieldLabel(violatedField)} is already in use by another record`,
+    });
+    return;
+  }
+  const { member, linkChanges } = updateResult;
   await auditLinkChanges(request, user, linkChanges);
   await invalidateMemberAuth(member.id);
   await recordAudit({

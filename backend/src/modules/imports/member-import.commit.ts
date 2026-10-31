@@ -1,8 +1,8 @@
 import { beneficiarySchema } from "../members/member.schemas.js";
 import type { Request } from "express";
-import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
+import { uniqueFieldLabel, uniqueViolationField } from "../../lib/prisma-errors.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
@@ -15,28 +15,6 @@ function optionalDate(value: string | null) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// Returns the violated column name for a Prisma unique-constraint error, or null if `error` isn't
-// one. `error.meta?.target` is an array of field names OR a constraint-name string depending on
-// Prisma/driver version, so both shapes are checked.
-function uniqueViolationField(error: unknown): string | null {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
-    return null;
-  }
-  const target = error.meta?.target;
-  if (Array.isArray(target)) return String(target[0] ?? "");
-  if (typeof target === "string") return target;
-  return "";
-}
-
-function uniqueFieldLabel(field: string) {
-  field = field.replaceAll("_", "").toLowerCase();
-  if (field.includes("ghanacardid")) return "Ghana Card ID";
-  if (field.includes("controllerid")) return "Controller ID";
-  if (field.includes("phone")) return "Phone number";
-  if (field.includes("email")) return "Email";
-  return "A unique field";
 }
 
 export async function runMemberImportCommit(

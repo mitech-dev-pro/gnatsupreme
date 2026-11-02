@@ -522,7 +522,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
       <TableFrame label="Staff accounts" className="min-w-205">
         <thead>
-          <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             <th className="px-4 py-2.5">Name</th>
             <th className="px-4 py-2.5">Email</th>
             <th className="px-4 py-2.5">Role</th>
@@ -562,7 +562,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     <button
                       type="button"
                       onClick={() => startEdit(row)}
-                      className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong"
+                      className="rounded-lg border border-border-default px-2.5 py-1 text-[11.5px] font-semibold text-text-strong"
                     >
                       Edit
                     </button>
@@ -589,7 +589,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                         setSuccess("");
                       }}
                       disabled={busyId === row.id}
-                      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold disabled:opacity-60 ${row.isActive ? "border-danger text-danger" : "border-success text-success"}`}
+                      className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-60 ${row.isActive ? "border-danger text-danger" : "border-success text-success"}`}
                     >
                       {row.isActive ? "Deactivate" : "Activate"}
                     </button>

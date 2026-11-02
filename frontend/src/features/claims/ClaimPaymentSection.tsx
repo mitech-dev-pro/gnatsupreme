@@ -23,7 +23,9 @@ export function ClaimPaymentSection({
   return (
     <>
       <SectionTitle>Payment option</SectionTitle>
-      <p className="mb-4 text-sm font-semibold text-ink">Approved claims are paid by cheque.</p>
+      <p className="mb-4 text-[12.5px] font-semibold text-ink">
+        Approved claims are paid by cheque.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <InputField
           label="Payee name"
@@ -34,7 +36,7 @@ export function ClaimPaymentSection({
       </div>
       <div className="mt-8">
         <SectionTitle>Declaration</SectionTitle>
-        <div className="max-w-[75ch] space-y-3 text-xs leading-relaxed text-ink">
+        <div className="max-w-[75ch] space-y-3 text-[12px] leading-relaxed text-ink">
           <p>
             Submitting false or altered information may delay payment or result in rejection of the
             claim.
@@ -46,7 +48,7 @@ export function ClaimPaymentSection({
               " I understand this claim will be reviewed by staff before it is sent for processing."}
           </p>
         </div>
-        <label className="mt-5 flex cursor-pointer items-start gap-3 text-sm font-semibold text-ink">
+        <label className="mt-5 flex cursor-pointer items-start gap-3 text-[12.5px] font-semibold text-ink">
           <input
             type="checkbox"
             required

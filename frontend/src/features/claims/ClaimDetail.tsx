@@ -84,7 +84,7 @@ const formatDate = (iso: string | null | undefined) =>
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-border-default bg-(--surface-raised) p-5">
-      <h2 className="mb-3 text-lg font-extrabold text-text-strong">{title}</h2>
+      <h2 className="mb-3 text-[13px] font-extrabold text-text-strong">{title}</h2>
       {children}
     </section>
   );
@@ -93,8 +93,8 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm font-semibold text-ink">
+      <dt className="text-[10.5px] font-bold uppercase tracking-wide text-text-muted">{label}</dt>
+      <dd className="mt-0.5 text-[12.5px] font-semibold text-ink">
         {value || <span className="font-normal text-text-muted">Not provided</span>}
       </dd>
     </div>
@@ -174,7 +174,7 @@ export default function ClaimDetail() {
     <div>
       <Link
         to="/claims"
-        className="mb-4 inline-block text-xs font-semibold text-text-muted hover:text-text-strong"
+        className="mb-4 inline-block text-[12px] font-semibold text-text-muted hover:text-text-strong"
       >
         &larr; All claims
       </Link>
@@ -220,7 +220,7 @@ export default function ClaimDetail() {
             !claim.reviewedAt &&
             claim.deliveryState === "NOT_SENT" && (
               <div className="mb-4 rounded-xl border border-border-default bg-surface-subtle p-5">
-                <p className="mb-2 text-sm font-bold text-text-strong">
+                <p className="mb-2 text-[12.5px] font-bold text-text-strong">
                   Review this member-submitted claim
                 </p>
                 {reviewError && (
@@ -347,7 +347,7 @@ export default function ClaimDetail() {
                 </div>
               )}
               {manifest.length === 0 ? (
-                <p className="text-xs text-text-muted">
+                <p className="text-[12px] text-text-muted">
                   No document checklist for this claim type.
                 </p>
               ) : (
@@ -355,7 +355,10 @@ export default function ClaimDetail() {
                   {manifest.map((slot) => {
                     const uploaded = documentsBySlot(slot.key);
                     return (
-                      <li key={slot.key} className="flex flex-wrap items-center gap-2 py-2 text-xs">
+                      <li
+                        key={slot.key}
+                        className="flex flex-wrap items-center gap-2 py-2 text-[12px]"
+                      >
                         <span className="min-w-0 flex-1 font-semibold text-ink">{slot.label}</span>
                         {uploaded.length > 0 ? (
                           uploaded.map((doc) => (
@@ -363,13 +366,13 @@ export default function ClaimDetail() {
                               key={doc.id}
                               type="button"
                               onClick={() => void openDocument(doc)}
-                              className="rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong hover:underline"
+                              className="rounded-full bg-info-soft px-2.5 py-0.5 text-[11px] font-semibold text-text-strong hover:underline"
                             >
                               {doc.originalName}
                             </button>
                           ))
                         ) : (
-                          <span className="text-xs font-semibold text-text-muted">
+                          <span className="text-[11px] font-semibold text-text-muted">
                             {slot.tag === "OPTIONAL" ? "Not provided" : "Missing"}
                           </span>
                         )}
@@ -377,14 +380,14 @@ export default function ClaimDetail() {
                     );
                   })}
                   {unmatchedDocuments && unmatchedDocuments.length > 0 && (
-                    <li className="flex flex-wrap items-center gap-2 py-2 text-xs">
+                    <li className="flex flex-wrap items-center gap-2 py-2 text-[12px]">
                       <span className="min-w-0 flex-1 font-semibold text-ink">Other documents</span>
                       {unmatchedDocuments.map((doc) => (
                         <button
                           key={doc.id}
                           type="button"
                           onClick={() => void openDocument(doc)}
-                          className="rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong hover:underline"
+                          className="rounded-full bg-info-soft px-2.5 py-0.5 text-[11px] font-semibold text-text-strong hover:underline"
                         >
                           {doc.originalName}
                         </button>
@@ -397,7 +400,7 @@ export default function ClaimDetail() {
 
             {claim.notes && (
               <Card title="Comment">
-                <p className="text-sm leading-relaxed text-ink">{claim.notes}</p>
+                <p className="text-[12.5px] leading-relaxed text-ink">{claim.notes}</p>
               </Card>
             )}
           </div>

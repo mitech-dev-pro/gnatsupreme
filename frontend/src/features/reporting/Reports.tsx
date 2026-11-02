@@ -103,8 +103,10 @@ export default function Reports() {
             className="flex flex-col justify-between rounded-xl border border-border-default bg-white p-5"
           >
             <div>
-              <h2 className="text-lg font-bold text-text-strong">{report.title}</h2>
-              <p className="mt-1.5 text-xs leading-relaxed text-text-muted">{report.description}</p>
+              <h2 className="text-[14.5px] font-bold text-text-strong">{report.title}</h2>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">
+                {report.description}
+              </p>
             </div>
             <Button
               onClick={() => void download(report)}

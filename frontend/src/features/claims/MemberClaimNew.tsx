@@ -422,7 +422,9 @@ export default function MemberClaimNew() {
 
   if (loading)
     return (
-      <div className="mx-auto max-w-295 py-12 text-center text-sm text-text-muted">Loading…</div>
+      <div className="mx-auto max-w-295 py-12 text-center text-[12.5px] text-text-muted">
+        Loading…
+      </div>
     );
 
   return (
@@ -431,21 +433,25 @@ export default function MemberClaimNew() {
         <button
           type="button"
           onClick={leave}
-          className="text-xs font-bold text-text-muted hover:text-text-strong"
+          className="text-[11.5px] font-bold text-text-muted hover:text-text-strong"
         >
           ← Back to claims
         </button>
-        <span className="text-xs font-semibold text-text-muted">
+        <span className="text-[11px] font-semibold text-text-muted">
           Step {page + 1} of {PAGE_LABELS.length}
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
         <main className="overflow-hidden rounded-xl border border-border-default bg-(--surface-raised) shadow-panel">
           <header className="border-b border-border-strong px-5 py-5 sm:px-7">
-            <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-extrabold text-text-strong">
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-[22px] font-extrabold text-text-strong"
+            >
               {resubmitId ? "Edit and resubmit your claim" : "File a claim"}
             </h1>
-            <p className="mt-1 text-xs text-text-muted">{PAGE_LABELS[page]}</p>
+            <p className="mt-1 text-[12px] text-text-muted">{PAGE_LABELS[page]}</p>
           </header>
           <div className="p-5 sm:p-7">
             <ClaimDraftControls
@@ -454,7 +460,7 @@ export default function MemberClaimNew() {
               documents={documents}
               busy={busy || Boolean(uploadingSlot)}
             />
-            <p className="mb-5 text-xs font-semibold text-text-muted">
+            <p className="mb-5 text-[12px] font-semibold text-text-muted">
               Fields marked <span className="text-danger">*</span> are required. Submitted claims
               are reviewed by staff before they're sent for processing.
             </p>
@@ -497,14 +503,14 @@ export default function MemberClaimNew() {
                         onClick={() => selectClaimType(item.value)}
                         className={`rounded-xl border-1.5 p-4 text-left bg-slate-200/50 transition-[border-color,background-color] ${claimType === item.value ? "border-action-primary bg-info-soft shadow-selected" : "border-border-default bg-(--surface-raised) hover:border-action-primary"}`}
                       >
-                        <div className="text-base font-extrabold text-text-strong">
+                        <div className="text-[15px] font-extrabold text-text-strong">
                           {item.label}
                         </div>
                         {/* CLAIM_TYPES' "coverage" text is shared with the staff wizard, where "Member &
                       Spouse" is accurate -- on the member portal, Death/TPD are locked to
                       spouse-only (a member can't be the one logging in to claim their own death),
                       so it's overridden here to avoid contradicting the restriction below. */}
-                        <div className="mt-1 text-xs text-text-muted">
+                        <div className="mt-1 text-[11px] text-text-muted">
                           {claimSupportsSpouse(item.value) ? "Spouse only" : item.coverage}
                         </div>
                       </button>
@@ -520,7 +526,7 @@ export default function MemberClaimNew() {
                         {profile?.spouse ? (
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <label
-                              className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${claimantType === "SPOUSE" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
+                              className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold ${claimantType === "SPOUSE" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
                             >
                               <input
                                 type="radio"
@@ -666,8 +672,8 @@ export default function MemberClaimNew() {
         </main>
 
         <aside className="rounded-xl border border-border-default bg-(--surface-raised) p-5 shadow-panel">
-          <h2 className="mb-3 text-lg font-extrabold text-text-strong">Claim summary</h2>
-          <dl className="space-y-2.5 text-xs">
+          <h2 className="mb-3 text-[13px] font-extrabold text-text-strong">Claim summary</h2>
+          <dl className="space-y-2.5 text-[12px]">
             <div className="flex justify-between border-b border-border-default pb-2">
               <dt className="text-text-muted">Claim type</dt>
               <dd className="font-semibold text-ink">{claimType ? claimLabel : "Not selected"}</dd>
@@ -684,11 +690,11 @@ export default function MemberClaimNew() {
             </div>
           </dl>
           {claimType && (
-            <div className="mt-3 rounded-lg bg-surface-subtle px-3 py-2 text-xs font-bold text-text-strong">
+            <div className="mt-3 rounded-lg bg-surface-subtle px-3 py-2 text-[11.5px] font-bold text-text-strong">
               {documents.length} document{documents.length === 1 ? "" : "s"} attached
             </div>
           )}
-          <p className="mt-4 text-xs leading-relaxed text-text-muted">
+          <p className="mt-4 text-[11px] leading-relaxed text-text-muted">
             Your claim will be reviewed by a staff member before it is sent to the insurer for
             processing.
           </p>

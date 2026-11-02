@@ -193,8 +193,8 @@ export default function MemberDetail() {
               </div>
               <div>
                 <p>Member profile</p>
-                <h1 className="text-2xl font-extrabold text-text-strong">{member.fullName}</h1>
-                <div className="mt-1 text-sm text-text-muted">
+                <h1 className="text-[22px] font-extrabold text-text-strong">{member.fullName}</h1>
+                <div className="mt-1 text-[12.5px] text-text-muted">
                   Controller ID {member.controllerId} ·{" "}
                   {member.district ? (
                     <>
@@ -229,26 +229,28 @@ export default function MemberDetail() {
                         <button
                           type="submit"
                           disabled={assignBusy || !assignDistrictId}
-                          className="rounded-lg bg-action-primary px-3.5 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg bg-action-primary px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {assignBusy ? "Saving…" : "Save"}
                         </button>
                         <button
                           type="button"
                           onClick={() => setAssigningDistrict(false)}
-                          className="text-xs font-semibold text-text-muted"
+                          className="text-[11.5px] font-semibold text-text-muted"
                         >
                           Cancel
                         </button>
                         {assignError && (
-                          <p className="w-full text-xs font-semibold text-danger">{assignError}</p>
+                          <p className="w-full text-[11.5px] font-semibold text-danger">
+                            {assignError}
+                          </p>
                         )}
                       </form>
                     ) : (
                       <button
                         type="button"
                         onClick={() => setAssigningDistrict(true)}
-                        className="text-xs font-semibold text-action-primary hover:underline"
+                        className="text-[11.5px] font-semibold text-action-primary hover:underline"
                       >
                         Assign district
                       </button>
@@ -320,13 +322,13 @@ export default function MemberDetail() {
           </div>
 
           {actionError && (
-            <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+            <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger">
               {actionError}
             </div>
           )}
 
           {employmentCategoryNote && (
-            <div className="mb-4 rounded-lg bg-warning-soft px-3 py-2 text-sm font-semibold text-warning-accent">
+            <div className="mb-4 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] font-semibold text-warning-accent">
               {employmentCategoryNote}
             </div>
           )}
@@ -368,12 +370,12 @@ export default function MemberDetail() {
           <div className="member-record__grid">
             <div className="member-panel member-panel--details">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-text-strong">Member Details</h2>
+                <h2 className="text-[15px] font-bold text-text-strong">Member Details</h2>
                 {!editing && (
                   <button
                     type="button"
                     onClick={startEditing}
-                    className="text-xs font-semibold text-action-primary hover:underline"
+                    className="text-[11.5px] font-semibold text-action-primary hover:underline"
                   >
                     Edit
                   </button>
@@ -428,7 +430,7 @@ export default function MemberDetail() {
                         className={inputClasses}
                       />
                       {editEmploymentCategory === "NON_TEACHING" && (
-                        <p className="mt-1 text-xs text-text-muted">
+                        <p className="mt-1 text-[11px] text-text-muted">
                           Non-teaching staff are recorded under Head Office, not a school.
                         </p>
                       )}
@@ -507,14 +509,14 @@ export default function MemberDetail() {
                     <button
                       type="submit"
                       disabled={busy}
-                      className="rounded-lg bg-action-primary px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-action-primary px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Save
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditing(false)}
-                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-muted"
                     >
                       Cancel
                     </button>
@@ -578,28 +580,28 @@ export default function MemberDetail() {
             {canReview && (
               <div className="member-panel">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-text-strong">Login &amp; Password</h2>
+                  <h2 className="text-[15px] font-bold text-text-strong">Login &amp; Password</h2>
                 </div>
-                <p className="mb-3 text-xs leading-relaxed text-text-muted">
+                <p className="mb-3 text-[12px] leading-relaxed text-text-muted">
                   Members sign in with their Controller ID and a password. Generate one here and
                   share it with the member through a secure channel — it can't be shown again after
                   this.
                 </p>
                 {passwordError && (
-                  <p className="mb-2 text-xs font-semibold text-danger">{passwordError}</p>
+                  <p className="mb-2 text-[11.5px] font-semibold text-danger">{passwordError}</p>
                 )}
                 {passwordResult ? (
                   <div className="rounded-lg border border-success-border bg-success-soft px-3 py-2.5">
-                    <div className="mb-1 text-xs font-semibold text-success">
+                    <div className="mb-1 text-[11px] font-semibold text-success">
                       New password (shown once)
                     </div>
-                    <code className="text-sm font-bold tracking-wide text-ink">
+                    <code className="text-[14px] font-bold tracking-wide text-ink">
                       {passwordResult}
                     </code>
                     <button
                       type="button"
                       onClick={() => setPasswordResult(null)}
-                      className="mt-2 block text-xs font-semibold text-success hover:underline"
+                      className="mt-2 block text-[11.5px] font-semibold text-success hover:underline"
                     >
                       Done
                     </button>
@@ -620,7 +622,7 @@ export default function MemberDetail() {
                   <button
                     type="button"
                     onClick={() => setConfirmingPasswordReset(true)}
-                    className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-strong hover:border-action-primary"
+                    className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-strong hover:border-action-primary"
                   >
                     Generate / Reset Password
                   </button>
@@ -630,13 +632,13 @@ export default function MemberDetail() {
 
             <div className="member-panel member-panel--spouse">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-text-strong">Spouse</h2>
+                <h2 className="text-[15px] font-bold text-text-strong">Spouse</h2>
                 {!editingSpouse && (
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={startEditingSpouse}
-                      className="text-xs font-semibold text-action-primary hover:underline"
+                      className="text-[11.5px] font-semibold text-action-primary hover:underline"
                     >
                       {member.spouse ? "Edit" : "Add"}
                     </button>
@@ -645,7 +647,7 @@ export default function MemberDetail() {
                         type="button"
                         onClick={() => setConfirmation({ type: "spouse" })}
                         disabled={busy}
-                        className="text-xs font-semibold text-danger hover:underline"
+                        className="text-[11.5px] font-semibold text-danger hover:underline"
                       >
                         Remove
                       </button>
@@ -676,7 +678,7 @@ export default function MemberDetail() {
                     {spouseFieldErrors.fullName && (
                       <p
                         id="spouse-full-name-error"
-                        className="mt-1.5 text-xs font-semibold text-danger"
+                        className="mt-1.5 text-[11.5px] font-semibold text-danger"
                       >
                         {spouseFieldErrors.fullName}
                       </p>
@@ -703,7 +705,7 @@ export default function MemberDetail() {
                       {spouseFieldErrors.ghanaCardId && (
                         <p
                           id="spouse-ghana-card-error"
-                          className="mt-1.5 text-xs font-semibold text-danger"
+                          className="mt-1.5 text-[11.5px] font-semibold text-danger"
                         >
                           {spouseFieldErrors.ghanaCardId}
                         </p>
@@ -714,7 +716,7 @@ export default function MemberDetail() {
                     <button
                       type="submit"
                       disabled={busy}
-                      className="rounded-lg bg-action-primary px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-action-primary px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Save
                     </button>
@@ -725,7 +727,7 @@ export default function MemberDetail() {
                         setSpouseFieldErrors({});
                         setActionError("");
                       }}
-                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-muted"
                     >
                       Cancel
                     </button>
@@ -750,13 +752,13 @@ export default function MemberDetail() {
                   )}
                 </dl>
               ) : (
-                <div className="text-sm text-text-muted">No spouse on record.</div>
+                <div className="text-[12.5px] text-text-muted">No spouse on record.</div>
               )}
             </div>
 
             <div className="member-panel member-panel--beneficiaries">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-text-strong">
+                <h2 className="text-[15px] font-bold text-text-strong">
                   Beneficiaries ({member.beneficiaries.length}/10)
                 </h2>
                 {!addingBeneficiary && member.beneficiaries.length < 10 && (
@@ -766,7 +768,7 @@ export default function MemberDetail() {
                       setEditingBeneficiaryId(null);
                       setAddingBeneficiary(true);
                     }}
-                    className="text-xs font-semibold text-action-primary hover:underline"
+                    className="text-[11.5px] font-semibold text-action-primary hover:underline"
                   >
                     + Add
                   </button>
@@ -836,7 +838,7 @@ export default function MemberDetail() {
                     </div>
                   )}
                   {beneficiaryError && (
-                    <div className="sm:col-span-4 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+                    <div className="sm:col-span-4 rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-semibold text-danger">
                       {beneficiaryError}
                     </div>
                   )}
@@ -844,14 +846,14 @@ export default function MemberDetail() {
                     <button
                       type="submit"
                       disabled={busy}
-                      className="rounded-lg bg-action-primary px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-action-primary px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Save
                     </button>
                     <button
                       type="button"
                       onClick={() => setAddingBeneficiary(false)}
-                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-muted"
                     >
                       Cancel
                     </button>
@@ -946,7 +948,7 @@ export default function MemberDetail() {
               )}
 
               {member.beneficiaries.length === 0 ? (
-                <div className="text-sm text-text-muted">No beneficiaries on record.</div>
+                <div className="text-[12.5px] text-text-muted">No beneficiaries on record.</div>
               ) : (
                 <>
                   <div className="member-beneficiary-cards">
@@ -986,7 +988,7 @@ export default function MemberDetail() {
                                 })
                               }
                               disabled={busy}
-                              className="text-xs font-semibold text-danger hover:underline"
+                              className="text-[11.5px] font-semibold text-danger hover:underline"
                             >
                               Remove
                             </button>
@@ -997,7 +999,7 @@ export default function MemberDetail() {
                   </div>
                   <table className="member-beneficiary-table">
                     <thead>
-                      <tr className="border-b border-border-default text-xs font-semibold uppercase tracking-wide text-text-muted">
+                      <tr className="border-b border-border-default text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                         <th className="py-2">Name</th>
                         <th className="py-2">Relationship</th>
                         <th className="py-2">Date of Birth</th>
@@ -1043,7 +1045,7 @@ export default function MemberDetail() {
                                   })
                                 }
                                 disabled={busy}
-                                className="text-xs font-semibold text-danger hover:underline"
+                                className="text-[11.5px] font-semibold text-danger hover:underline"
                               >
                                 Remove
                               </button>
@@ -1071,7 +1073,7 @@ export default function MemberDetail() {
               </div>
 
               {member.missingFromReport20At && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-notice-border bg-notice-soft px-3.5 py-2.5 text-sm text-notice-text">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-notice-border bg-notice-soft px-3.5 py-2.5 text-[12.5px] text-notice-text">
                   <span>
                     Inactive since {formatDate(member.missingFromReport20At)} — not found in the
                     most recently reconciled Report 20 file. Portal sign-in is blocked while
@@ -1085,7 +1087,7 @@ export default function MemberDetail() {
                           type="button"
                           disabled={busy}
                           onClick={submitReactivate}
-                          className="rounded-lg border border-notice-border bg-white px-3 py-1.5 text-xs font-bold text-notice-text hover:bg-notice-soft disabled:opacity-60"
+                          className="rounded-lg border border-notice-border bg-white px-3 py-1.5 text-[11.5px] font-bold text-notice-text hover:bg-notice-soft disabled:opacity-60"
                         >
                           Reactivate
                         </button>
@@ -1093,7 +1095,7 @@ export default function MemberDetail() {
                       <button
                         type="button"
                         onClick={() => setShowRemoveForm(true)}
-                        className="rounded-lg border border-notice-border bg-white px-3 py-1.5 text-xs font-bold text-notice-text hover:bg-notice-soft"
+                        className="rounded-lg border border-notice-border bg-white px-3 py-1.5 text-[11.5px] font-bold text-notice-text hover:bg-notice-soft"
                       >
                         Review for removal
                       </button>
@@ -1108,7 +1110,7 @@ export default function MemberDetail() {
                     type="button"
                     onClick={checkReport20}
                     disabled={busy}
-                    className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-strong disabled:opacity-60"
+                    className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-strong disabled:opacity-60"
                   >
                     Check against Report 20
                   </button>
@@ -1122,7 +1124,7 @@ export default function MemberDetail() {
                       type="button"
                       onClick={() => setConfirmation({ type: "approve" })}
                       disabled={busy}
-                      className="rounded-lg bg-action-primary px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-action-primary px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       {member.employmentCategory === "NON_TEACHING" || member.report20Matched
                         ? "Approve → Active"
@@ -1133,7 +1135,7 @@ export default function MemberDetail() {
                   <button
                     type="button"
                     onClick={() => setShowReturnForm((v) => !v)}
-                    className="rounded-lg bg-warning-soft px-3.5 py-2 text-sm font-bold text-warning-accent"
+                    className="rounded-lg bg-warning-soft px-3.5 py-2 text-[12.5px] font-bold text-warning-accent"
                   >
                     Return
                   </button>
@@ -1142,7 +1144,7 @@ export default function MemberDetail() {
                   <button
                     type="button"
                     onClick={() => setShowRemoveForm((v) => !v)}
-                    className="rounded-lg bg-danger-soft px-3.5 py-2 text-sm font-bold text-danger"
+                    className="rounded-lg bg-danger-soft px-3.5 py-2 text-[12.5px] font-bold text-danger"
                   >
                     Remove
                   </button>
@@ -1150,7 +1152,7 @@ export default function MemberDetail() {
               </div>
 
               {checkResult && (
-                <div className="-mt-3 mb-5 rounded-lg bg-info-soft px-3 py-2 text-xs font-semibold text-text-strong">
+                <div className="-mt-3 mb-5 rounded-lg bg-info-soft px-3 py-2 text-[12px] font-semibold text-text-strong">
                   {checkResult}
                 </div>
               )}
@@ -1160,13 +1162,13 @@ export default function MemberDetail() {
                 !member.report20Matched && (
                   <>
                     {["PENDING", "RETURNED"].includes(member.status) && (
-                      <div className="-mt-3 mb-5 text-xs text-warning-accent">
+                      <div className="-mt-3 mb-5 text-[11.5px] text-warning-accent">
                         This member hasn't matched Report 20, so approving will set the status to
                         Flagged rather than Active.
                       </div>
                     )}
                     {member.status === "FLAGGED" && (
-                      <div className="-mt-3 mb-5 text-xs text-warning-accent">
+                      <div className="-mt-3 mb-5 text-[11.5px] text-warning-accent">
                         This member is flagged and still isn't matched against Report 20 — use
                         "Check against Report 20" above, or re-run reconciliation on the latest
                         upload, and Approve will become available.
@@ -1191,14 +1193,14 @@ export default function MemberDetail() {
                     <button
                       type="submit"
                       disabled={busy || !returnNote.trim()}
-                      className="rounded-lg bg-warning-accent px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-warning-accent px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Confirm Return
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowReturnForm(false)}
-                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-muted"
                     >
                       Cancel
                     </button>
@@ -1233,14 +1235,14 @@ export default function MemberDetail() {
                     <button
                       type="submit"
                       disabled={busy || (removeReason === "OTHER" && !removeNote.trim())}
-                      className="rounded-lg bg-danger px-3.5 py-2 text-sm font-bold text-white disabled:opacity-60"
+                      className="rounded-lg bg-danger px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
                     >
                       Confirm Remove
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowRemoveForm(false)}
-                      className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-muted"
+                      className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-muted"
                     >
                       Cancel
                     </button>
@@ -1249,20 +1251,20 @@ export default function MemberDetail() {
               )}
 
               {events.length === 0 ? (
-                <div className="text-sm text-text-muted">No workflow events yet.</div>
+                <div className="text-[12.5px] text-text-muted">No workflow events yet.</div>
               ) : (
                 <ul className="member-workflow-history">
                   {events.map((event) => (
                     <li key={event.id} className="py-2.5">
-                      <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center justify-between text-[12.5px]">
                         <span className="font-semibold text-ink">
                           {event.action}: {event.fromStatus} &rarr; {event.toStatus}
                         </span>
-                        <span className="text-xs text-text-muted">
+                        <span className="text-[11px] text-text-muted">
                           {formatDate(event.createdAt)}
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs text-text-muted">
+                      <div className="mt-0.5 text-[11.5px] text-text-muted">
                         {event.performedBy?.fullName ?? "System"}
                         {event.reason ? ` · ${event.reason}` : ""}
                         {event.note ? ` · ${event.note}` : ""}

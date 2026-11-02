@@ -73,7 +73,7 @@ export default function Claims() {
       )}
       <div className="mb-4 flex flex-wrap gap-4">
         <div className="max-w-52">
-          <label className="mb-1.5 block text-xs font-bold text-text-strong">
+          <label className="mb-1.5 block text-[11.5px] font-bold text-text-strong">
             Submission status
           </label>
           <Dropdown

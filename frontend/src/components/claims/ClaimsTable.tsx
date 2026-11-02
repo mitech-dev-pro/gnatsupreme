@@ -90,7 +90,7 @@ export default function ClaimsTable({
     <>
       <TableFrame label="Claim submissions" className="min-w-210">
         <thead>
-          <tr className="border-b border-border-default bg-surface-subtle text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-subtle text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             {rowOffset !== undefined && (
               <th scope="col" className="px-4 py-2.5">
                 No.
@@ -125,26 +125,26 @@ export default function ClaimsTable({
                   >
                     {row.member.fullName}
                   </Link>
-                  <div className="text-xs text-text-muted">{row.member.controllerId}</div>
+                  <div className="text-[11px] text-text-muted">{row.member.controllerId}</div>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="font-semibold text-ink">{labelize(row.claimType)}</span>
                   {row.claimantName && (
-                    <div className="text-xs text-text-muted">{row.claimantName}</div>
+                    <div className="text-[11px] text-text-muted">{row.claimantName}</div>
                   )}
                   {row.source === "MEMBER_PORTAL" && (
-                    <div className="mt-0.5 inline-block rounded-full bg-info-soft px-2 py-0.5 text-xs font-bold text-text-strong">
+                    <div className="mt-0.5 inline-block rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-bold text-text-strong">
                       Filed by member
                     </div>
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <div className="font-mono text-xs text-ink">
+                  <div className="font-mono text-[11.5px] text-ink">
                     {reviewActions
                       ? `CLM-${String(row.id).padStart(6, "0")}`
                       : (row.externalClaimId ?? "Awaiting receipt confirmation")}
                   </div>
-                  <div className="text-xs text-text-muted">{row.provider}</div>
+                  <div className="text-[10.5px] text-text-muted">{row.provider}</div>
                 </td>
                 <td className="px-4 py-2.5 font-semibold text-ink">
                   {row.estimatedAmount ? formatCurrency(row.estimatedAmount) : "Not available"}
@@ -158,10 +158,10 @@ export default function ClaimsTable({
                     </div>
                   )}
                   {row.errorMessage && (
-                    <div className="mt-0.5 text-xs text-danger">{row.errorMessage}</div>
+                    <div className="mt-0.5 text-[11px] text-danger">{row.errorMessage}</div>
                   )}
                   {row.status === "RETURNED" && row.reviewNote && (
-                    <div className="mt-0.5 text-xs text-warning">{row.reviewNote}</div>
+                    <div className="mt-0.5 text-[11px] text-warning">{row.reviewNote}</div>
                   )}
                 </td>
                 <td className="px-4 py-2.5 text-text-muted">{formatDate(row.submittedAt)}</td>

@@ -142,7 +142,7 @@ export function SpouseForm({
       {error && (
         <div
           role="alert"
-          className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+          className="rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-semibold text-danger"
         >
           {error}
         </div>
@@ -151,7 +151,7 @@ export function SpouseForm({
         <button
           type="submit"
           disabled={busy || fullName.trim().length < 2}
-          className="rounded-lg bg-action-primary px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-action-primary px-4 py-2 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Submitting…" : "Submit for review"}
         </button>
@@ -159,7 +159,7 @@ export function SpouseForm({
           type="button"
           onClick={onClose}
           disabled={busy}
-          className="rounded-lg border border-border-default px-4 py-2 text-sm font-semibold text-text-strong"
+          className="rounded-lg border border-border-default px-4 py-2 text-[12.5px] font-semibold text-text-strong"
         >
           Cancel
         </button>

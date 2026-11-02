@@ -38,7 +38,7 @@ export function ClaimReviewControls({
 }: Props) {
   return (
     <>
-      <p className="mb-2 text-xs text-text-muted">
+      <p className="mb-2 text-[12px] text-text-muted">
         Approval forwards this claim to Claims Portal for insurer assessment; it does not approve
         payment.
       </p>
@@ -51,7 +51,7 @@ export function ClaimReviewControls({
             aria-pressed={decision === item.value}
             onClick={() => onDecision(item.value)}
             className={cn(
-              "rounded-lg border px-3 py-1.5 text-sm font-bold",
+              "rounded-lg border px-3 py-1.5 text-[11.5px] font-bold",
               decision === item.value ? item.selected : "border-border-default text-ink",
             )}
           >

@@ -56,14 +56,14 @@ export function CriticalIllnessSection({
         />
       </div>
       <fieldset className="mt-4">
-        <legend className="mb-2 text-xs font-bold text-text-strong">
+        <legend className="mb-2 text-[11.5px] font-bold text-text-strong">
           Named critical illness diagnosed <span className="text-danger">*</span>
         </legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {illnesses.map((item) => (
             <label
               key={item}
-              className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs ${illness === item ? "border-action-primary bg-info-soft font-semibold text-text-strong" : "border-border-default text-ink hover:bg-surface-subtle"}`}
+              className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12px] ${illness === item ? "border-action-primary bg-info-soft font-semibold text-text-strong" : "border-border-default text-ink hover:bg-surface-subtle"}`}
             >
               <input
                 type="radio"
@@ -76,7 +76,7 @@ export function CriticalIllnessSection({
             </label>
           ))}
           <label
-            className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs ${illness === "Others" ? "border-action-primary bg-info-soft font-semibold text-text-strong" : "border-border-default text-ink hover:bg-surface-subtle"}`}
+            className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12px] ${illness === "Others" ? "border-action-primary bg-info-soft font-semibold text-text-strong" : "border-border-default text-ink hover:bg-surface-subtle"}`}
           >
             <input
               type="radio"

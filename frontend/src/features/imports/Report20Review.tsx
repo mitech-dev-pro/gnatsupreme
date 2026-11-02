@@ -42,13 +42,13 @@ export default function Report20Review() {
   } = useReport20Review();
   if (!job && error) {
     return (
-      <div className="rounded-xl border border-border-default bg-white p-6 text-sm text-danger">
+      <div className="rounded-xl border border-border-default bg-white p-6 text-[13px] text-danger">
         {error}
       </div>
     );
   }
   if (!job) {
-    return <div className="text-sm text-text-muted">Loading…</div>;
+    return <div className="text-[13px] text-text-muted">Loading…</div>;
   }
   const isStuck =
     (job.status === "PENDING" || job.status === "PROCESSING") &&
@@ -57,21 +57,21 @@ export default function Report20Review() {
     <div>
       <Link
         to="/imports/report20"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-strong"
+        className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text-muted hover:text-text-strong"
       >
         &larr; Report 20 Uploads
       </Link>
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold text-text-strong">{job.file.originalName}</h1>
-          <div className="mt-1 text-sm text-text-muted">
+          <h1 className="text-[22px] font-extrabold text-text-strong">{job.file.originalName}</h1>
+          <div className="mt-1 text-[12.5px] text-text-muted">
             Uploaded by {job.uploadedBy.fullName}
             {job.reportMonth ? ` · ${formatDate(job.reportMonth)}` : ""}
           </div>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="rounded-full bg-info-soft px-3 py-1 text-xs font-bold text-text-strong">
+          <span className="rounded-full bg-info-soft px-3 py-1 text-[12px] font-bold text-text-strong">
             {job.status}
           </span>
           {(job.status === "COMPLETED" || isStuck) && (
@@ -79,7 +79,7 @@ export default function Report20Review() {
               type="button"
               onClick={() => setConfirmingRerun(true)}
               disabled={rerunning}
-              className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-strong transition hover:border-action-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-strong transition hover:border-action-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {rerunning
                 ? "Re-running…"
@@ -112,25 +112,25 @@ export default function Report20Review() {
       )}
 
       {rerunMessage && (
-        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success">
+        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-[12.5px] font-semibold text-success">
           {rerunMessage}
         </div>
       )}
 
       {error && (
-        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger">
           {error}
         </div>
       )}
 
       {job.errorMessage && (
-        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger">
           {job.errorMessage}
         </div>
       )}
 
       {(job.status === "PENDING" || job.status === "PROCESSING") && (
-        <div className="mb-4 rounded-lg bg-info-soft px-3 py-3 text-sm font-semibold text-text-strong">
+        <div className="mb-4 rounded-lg bg-info-soft px-3 py-3 text-[12.5px] font-semibold text-text-strong">
           {job.totalRows > 0 ? (
             <>
               <div className="mb-1.5 flex items-center justify-between">
@@ -167,8 +167,8 @@ export default function Report20Review() {
           ["Flagged for removal", job.flaggedForRemovalRows, "#b9791a"],
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-border-default bg-white p-3">
-            <div className="text-xs font-semibold text-text-muted">{label}</div>
-            <div className="mt-1 text-lg font-extrabold" style={{ color: color as string }}>
+            <div className="text-[10.5px] font-semibold text-text-muted">{label}</div>
+            <div className="mt-1 text-[18px] font-extrabold" style={{ color: color as string }}>
               {value}
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function Report20Review() {
           ]}
         />
         {(refreshing || job.status === "PENDING" || job.status === "PROCESSING") && (
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-text-muted">
+          <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-text-muted">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-border-default border-t-[#1f9c7c]" />
             Updating…
           </span>
@@ -198,16 +198,16 @@ export default function Report20Review() {
       </div>
 
       {actionMessage && (
-        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success">
+        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-[12.5px] font-semibold text-success">
           {actionMessage}
         </div>
       )}
 
       <div className="overflow-hidden rounded-xl border border-border-default bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-180 text-left text-sm">
+          <table className="w-full min-w-180 text-left text-[12.5px]">
             <thead>
-              <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+              <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                 <th className="px-4 py-2.5">Row</th>
                 <th className="px-4 py-2.5">Controller ID</th>
                 <th className="px-4 py-2.5">Name</th>
@@ -254,7 +254,7 @@ export default function Report20Review() {
                         <td className="px-4 py-2.5 text-text-muted">{row.districtName ?? "—"}</td>
                         <td className="px-4 py-2.5">
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ROW_STATUS_STYLES[row.status] ?? ""}`}
                           >
                             {row.status}
                           </span>
@@ -267,7 +267,7 @@ export default function Report20Review() {
                             <button
                               type="button"
                               onClick={() => openAction(row.id, "resolve")}
-                              className="mr-3 text-xs font-semibold text-action-primary hover:underline"
+                              className="mr-3 text-[11.5px] font-semibold text-action-primary hover:underline"
                             >
                               Resolve
                             </button>
@@ -276,7 +276,7 @@ export default function Report20Review() {
                             <button
                               type="button"
                               onClick={() => openAction(row.id, "alias")}
-                              className="text-xs font-semibold text-text-strong hover:underline"
+                              className="text-[11.5px] font-semibold text-text-strong hover:underline"
                             >
                               Map as Alias
                             </button>
@@ -287,7 +287,7 @@ export default function Report20Review() {
                         <tr className="border-b border-border-default bg-surface-hover last:border-0">
                           <td colSpan={7} className="px-4 py-3">
                             <div className="flex flex-wrap items-center gap-2.5">
-                              <span className="text-sm text-text-muted">
+                              <span className="text-[12.5px] text-text-muted">
                                 {actionMode === "resolve"
                                   ? `Enroll Controller ID ${row.controllerId} in:`
                                   : `Map "${row.districtName}" to:`}
@@ -310,7 +310,7 @@ export default function Report20Review() {
                                     : submitAlias(row))
                                 }
                                 disabled={actionBusy || !actionDistrictId}
-                                className="rounded-lg bg-action-primary px-3.5 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                className="rounded-lg bg-action-primary px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {actionBusy
                                   ? "Saving…"
@@ -321,20 +321,20 @@ export default function Report20Review() {
                               <button
                                 type="button"
                                 onClick={() => setActionRowId(null)}
-                                className="text-xs font-semibold text-text-muted"
+                                className="text-[11.5px] font-semibold text-text-muted"
                               >
                                 Cancel
                               </button>
                             </div>
                             {actionMode === "resolve" && (
-                              <p className="mt-2 text-xs text-text-muted">
+                              <p className="mt-2 text-[11px] text-text-muted">
                                 Enrolls this member immediately with the district you pick — use
                                 this for a one-off or ambiguous spelling. To fix the spelling for
                                 every future upload instead, use "Map as Alias".
                               </p>
                             )}
                             {actionError && (
-                              <p className="mt-2 text-xs font-semibold text-danger">
+                              <p className="mt-2 text-[11.5px] font-semibold text-danger">
                                 {actionError}
                               </p>
                             )}
@@ -351,7 +351,7 @@ export default function Report20Review() {
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm">
+        <div className="mt-4 flex items-center justify-between text-[12.5px]">
           <span className="text-text-muted">
             Page {page} of {totalPages}
           </span>

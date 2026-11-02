@@ -145,7 +145,7 @@ export function AuditLogTab() {
 
       <TableFrame label="Audit log" className="min-w-200">
         <thead>
-          <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             <th className="px-4 py-2.5">When</th>
             <th className="px-4 py-2.5">Actor</th>
             <th className="px-4 py-2.5">Action</th>
@@ -171,7 +171,7 @@ export function AuditLogTab() {
                 <td className="px-4 py-2.5 text-text-muted">{formatDateTime(row.createdAt)}</td>
                 <td className="px-4 py-2.5">{row.actor?.fullName ?? row.actorEmail ?? "System"}</td>
                 <td className="px-4 py-2.5">
-                  <code className="rounded bg-info-soft px-1.5 py-0.5 text-xs text-text-strong">
+                  <code className="rounded bg-info-soft px-1.5 py-0.5 text-[11px] text-text-strong">
                     {row.action}
                   </code>
                 </td>
@@ -247,7 +247,7 @@ export function AuditLogTab() {
                 {data == null ? (
                   <p className="text-sm text-text-muted">No snapshot recorded.</p>
                 ) : (
-                  <pre className="max-h-64 overflow-auto rounded-lg border border-border-default bg-surface-subtle p-3 text-xs">
+                  <pre className="max-h-64 overflow-auto rounded-lg border border-border-default bg-surface-subtle p-3 text-[11px]">
                     {JSON.stringify(data, null, 2)}
                   </pre>
                 )}

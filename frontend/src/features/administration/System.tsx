@@ -7,7 +7,7 @@ export default function System() {
   const { isSuperAdmin, canView, tab, setTab } = useSystem();
   if (!canView) {
     return (
-      <div className="rounded-xl border border-border-default bg-white p-6 text-sm text-text-muted">
+      <div className="rounded-xl border border-border-default bg-white p-6 text-[13px] text-text-muted">
         System is available to National Admins and above.
       </div>
     );

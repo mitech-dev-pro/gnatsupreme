@@ -450,17 +450,17 @@ export default function ClaimNew() {
           <button
             type="button"
             onClick={() => navigate("/claims")}
-            className="mb-5 text-xs font-bold text-text-muted hover:text-text-strong"
+            className="mb-5 text-[11.5px] font-bold text-text-muted hover:text-text-strong"
           >
             ← Back to claims
           </button>
-          <h1 id="claim-lookup-heading" className="text-2xl font-extrabold text-text-strong">
+          <h1 id="claim-lookup-heading" className="text-[22px] font-extrabold text-text-strong">
             File a claim
           </h1>
-          <p className="mt-1 text-sm leading-relaxed text-text-muted">
+          <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
             Find the policy holder before entering claim information.
           </p>
-          <div className="my-5 rounded-lg bg-brand-navy px-4 py-3 text-sm font-semibold text-text-on-action">
+          <div className="my-5 rounded-lg bg-brand-navy px-4 py-3 text-[12.5px] font-semibold text-text-on-action">
             Provide the member's Staff ID to continue.
           </div>
           {error && (
@@ -500,30 +500,34 @@ export default function ClaimNew() {
         <button
           type="button"
           onClick={leave}
-          className="text-xs font-bold text-text-muted hover:text-text-strong"
+          className="text-[11.5px] font-bold text-text-muted hover:text-text-strong"
         >
           ← Back to claims
         </button>
-        <span className="text-xs font-semibold text-text-muted">
+        <span className="text-[11px] font-semibold text-text-muted">
           Step {page + 1} of {PAGE_LABELS.length}
         </span>
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
         <main className="overflow-hidden rounded-xl border border-border-default bg-(--surface-raised) shadow-panel">
           <header className="border-b border-border-strong px-5 py-5 sm:px-7">
-            <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-extrabold text-text-strong">
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-[22px] font-extrabold text-text-strong"
+            >
               File a claim
             </h1>
-            <p className="mt-1 text-xs text-text-muted">{PAGE_LABELS[page]}</p>
+            <p className="mt-1 text-[12px] text-text-muted">{PAGE_LABELS[page]}</p>
           </header>
           <div className="p-5 sm:p-7">
             <div
-              className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-info-border bg-info-soft px-4 py-3 text-sm text-text-strong"
+              className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-info-border bg-info-soft px-4 py-3 text-[12.5px] text-text-strong"
               role="status"
             >
               <span
                 aria-hidden="true"
-                className="grid size-5 place-items-center rounded-full bg-brand-navy text-xs font-bold text-text-on-action"
+                className="grid size-5 place-items-center rounded-full bg-brand-navy text-[11px] font-bold text-text-on-action"
               >
                 i
               </span>
@@ -537,7 +541,7 @@ export default function ClaimNew() {
               documents={documents}
               busy={busy || Boolean(uploadingSlot)}
             />
-            <p className="mb-5 text-xs font-semibold text-text-muted">
+            <p className="mb-5 text-[12px] font-semibold text-text-muted">
               Fields marked <span className="text-danger">*</span> are required.
             </p>
             {error && (
@@ -582,10 +586,10 @@ export default function ClaimNew() {
                         onClick={() => selectClaimType(item.value)}
                         className={`rounded-xl border-1.5 p-4 text-left bg-slate-200/50 transition-[border-color,background-color] ${claimType === item.value ? "border-action-primary bg-info-soft shadow-selected" : "border-border-default bg-(--surface-raised) hover:border-action-primary"}`}
                       >
-                        <div className="text-base font-extrabold text-text-strong">
+                        <div className="text-[15px] font-extrabold text-text-strong">
                           {item.label}
                         </div>
-                        <div className="mt-1 text-xs text-text-muted">{item.coverage}</div>
+                        <div className="mt-1 text-[11px] text-text-muted">{item.coverage}</div>
                       </button>
                     ))}
                   </div>
@@ -598,7 +602,7 @@ export default function ClaimNew() {
                         <SectionTitle>Who is this claim for?</SectionTitle>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <label
-                            className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${claimantType === "MEMBER" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
+                            className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold ${claimantType === "MEMBER" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
                           >
                             <input
                               type="radio"
@@ -611,7 +615,7 @@ export default function ClaimNew() {
                           </label>
                           {member?.spouse && (
                             <label
-                              className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${claimantType === "SPOUSE" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
+                              className={`flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold ${claimantType === "SPOUSE" ? "border-action-primary bg-info-soft text-text-strong" : "border-border-default text-ink"}`}
                             >
                               <input
                                 type="radio"
@@ -629,11 +633,11 @@ export default function ClaimNew() {
 
                     <div className="mt-7 flex flex-col gap-3 rounded-lg border border-border-default bg-surface-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-xs font-bold text-text-strong">
+                        <p className="text-[12px] font-bold text-text-strong">
                           Estimated claim amount{" "}
                           <span className="font-normal text-text-muted">(optional)</span>
                         </p>
-                        <p className="mt-0.5 text-xs text-text-muted">
+                        <p className="mt-0.5 text-[11.5px] text-text-muted">
                           You can continue without calculating an estimate.
                         </p>
                       </div>
@@ -649,13 +653,13 @@ export default function ClaimNew() {
                     </div>
                     {estimate && (
                       <div className="mt-4 rounded-lg border border-success-border bg-success-soft px-4 py-3">
-                        <span className="text-xs font-bold uppercase tracking-wide text-success">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-success">
                           Estimated benefit
                         </span>
-                        <strong className="ml-3 text-lg text-text-strong">
+                        <strong className="ml-3 text-[17px] text-text-strong">
                           {estimate.available ? formatCurrency(estimate.amount) : "Not configured"}
                         </strong>
-                        <p className="mt-1 text-xs text-text-muted">
+                        <p className="mt-1 text-[11.5px] text-text-muted">
                           {estimate.available
                             ? "Calculated from the active benefit plan. Final assessment may differ."
                             : "No benefit amount is configured for this selection."}
@@ -782,8 +786,8 @@ export default function ClaimNew() {
         </main>
 
         <aside className="rounded-xl border border-border-default bg-(--surface-raised) p-5 shadow-panel">
-          <h2 className="mb-3 text-lg font-extrabold text-text-strong">Benefit summary</h2>
-          <dl className="space-y-2.5 text-xs">
+          <h2 className="mb-3 text-[13px] font-extrabold text-text-strong">Benefit summary</h2>
+          <dl className="space-y-2.5 text-[12px]">
             <div className="flex justify-between border-b border-border-default pb-2">
               <dt className="text-text-muted">Claim type</dt>
               <dd className="font-semibold text-ink">{claimType ? claimLabel : "Not selected"}</dd>
@@ -810,7 +814,7 @@ export default function ClaimNew() {
             </div>
           </dl>
           {claimType && (
-            <div className="mt-3 rounded-lg bg-surface-subtle px-3 py-2 text-xs font-bold text-text-strong">
+            <div className="mt-3 rounded-lg bg-surface-subtle px-3 py-2 text-[11.5px] font-bold text-text-strong">
               {documents.length} document{documents.length === 1 ? "" : "s"} attached
             </div>
           )}

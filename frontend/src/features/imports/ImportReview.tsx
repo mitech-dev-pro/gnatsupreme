@@ -85,7 +85,7 @@ export default function ImportReview() {
     <div>
       <Link
         to="/members/upload"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-strong"
+        className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text-muted hover:text-text-strong"
       >
         &larr; Import history
       </Link>
@@ -105,7 +105,7 @@ export default function ImportReview() {
                 type="button"
                 onClick={() => setConfirmingRerun(true)}
                 disabled={rerunning}
-                className="rounded-lg border border-border-default px-3.5 py-2 text-sm font-semibold text-text-strong transition hover:border-action-primary disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border-default px-3.5 py-2 text-[12.5px] font-semibold text-text-strong transition hover:border-action-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {rerunning
                   ? "Retrying…"
@@ -225,7 +225,7 @@ export default function ImportReview() {
                     }}
                   />
                 </div>
-                <p className="mt-1.5 text-xs font-normal">
+                <p className="mt-1.5 text-[11px] font-normal">
                   Processing continues in the background. This page refreshes automatically.
                 </p>
               </div>
@@ -246,8 +246,8 @@ export default function ImportReview() {
           ["Enrolled", job.importedRows, "text-success"],
         ].map(([label, value, tone]) => (
           <div key={label} className="min-w-0">
-            <dt className="text-xs font-semibold text-text-muted">{label}</dt>
-            <dd className={`mt-1 text-lg font-bold tabular-nums ${tone}`}>{value}</dd>
+            <dt className="text-[10.5px] font-semibold text-text-muted">{label}</dt>
+            <dd className={`mt-1 text-[18px] font-bold tabular-nums ${tone}`}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -305,7 +305,7 @@ export default function ImportReview() {
 
       <TableFrame label="Import rows" className="min-w-180">
         <thead>
-          <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             <th className="px-4 py-2.5">Row</th>
             <th className="px-4 py-2.5">Controller ID</th>
             <th className="px-4 py-2.5">Name</th>
@@ -388,7 +388,7 @@ export default function ImportReview() {
                           onClick={() =>
                             setMappingRowId((current) => (current === row.id ? null : row.id))
                           }
-                          className="text-xs font-semibold text-action-primary hover:underline"
+                          className="text-[11.5px] font-semibold text-action-primary hover:underline"
                         >
                           Map District
                         </button>
@@ -439,7 +439,7 @@ export default function ImportReview() {
                     <tr className="border-b border-border-default bg-surface-hover last:border-0">
                       <td colSpan={7} className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2.5">
-                          <span className="text-sm text-text-muted">
+                          <span className="text-[12.5px] text-text-muted">
                             Map "{row.districtName}" to:
                           </span>
                           <Dropdown
@@ -456,14 +456,14 @@ export default function ImportReview() {
                             type="button"
                             onClick={() => submitDistrictMapping(row)}
                             disabled={mappingBusy || !mappingDistrictId}
-                            className="rounded-lg bg-action-primary px-3.5 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-lg bg-action-primary px-3.5 py-1.5 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {mappingBusy ? "Saving…" : "Save Mapping"}
                           </button>
                           <button
                             type="button"
                             onClick={() => setMappingRowId(null)}
-                            className="text-xs font-semibold text-text-muted"
+                            className="text-[11.5px] font-semibold text-text-muted"
                           >
                             Cancel
                           </button>

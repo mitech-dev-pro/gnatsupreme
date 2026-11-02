@@ -227,7 +227,7 @@ export default function UploadMembers() {
     <div>
       <Link
         to="/members"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-strong"
+        className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text-muted hover:text-text-strong"
       >
         &larr; All Members
       </Link>
@@ -252,7 +252,7 @@ export default function UploadMembers() {
           </Button>
         }
       />
-      <div className="mb-5 text-sm text-text-muted">
+      <div className="mb-5 text-[12.5px] text-text-muted">
         Upload a CSV or XLSX file with Controller ID, Full Name, School, and District columns. Each
         row also needs a beneficiary name and relationship; spouse details are optional. For
         non-teaching staff, School/District/beneficiary aren't needed — use Place of Work instead,
@@ -282,7 +282,7 @@ export default function UploadMembers() {
         className="rounded-xl border border-border-default bg-white p-6"
       >
         <div className="mb-5">
-          <div className="mb-1.5 text-sm font-semibold text-text-strong">
+          <div className="mb-1.5 text-[12.5px] font-semibold text-text-strong">
             This file contains<b className="ml-1 text-danger">Required</b>
           </div>
           <div className="flex gap-2">
@@ -291,7 +291,7 @@ export default function UploadMembers() {
               disabled={uploading}
               aria-pressed={employmentCategory === "TEACHING"}
               onClick={() => setEmploymentCategory("TEACHING")}
-              className={`min-h-10 flex-1 rounded-lg border px-3 text-sm font-semibold transition ${
+              className={`min-h-10 flex-1 rounded-lg border px-3 text-[12.5px] font-semibold transition ${
                 employmentCategory === "TEACHING"
                   ? "border-action-primary bg-info-soft text-text-strong"
                   : "border-border-default text-text-muted hover:border-action-primary"
@@ -304,7 +304,7 @@ export default function UploadMembers() {
               disabled={uploading}
               aria-pressed={employmentCategory === "NON_TEACHING"}
               onClick={() => setEmploymentCategory("NON_TEACHING")}
-              className={`min-h-10 flex-1 rounded-lg border px-3 text-sm font-semibold transition ${
+              className={`min-h-10 flex-1 rounded-lg border px-3 text-[12.5px] font-semibold transition ${
                 employmentCategory === "NON_TEACHING"
                   ? "border-action-primary bg-info-soft text-text-strong"
                   : "border-border-default text-text-muted hover:border-action-primary"
@@ -315,7 +315,7 @@ export default function UploadMembers() {
           </div>
           {needsRegionPicker && (
             <div className="mt-3">
-              <div className="mb-1.5 text-sm font-semibold text-text-strong">
+              <div className="mb-1.5 text-[12.5px] font-semibold text-text-strong">
                 Region<b className="ml-1 text-danger">Required</b>
               </div>
               <Dropdown
@@ -347,10 +347,10 @@ export default function UploadMembers() {
             <path d="M12 3v12m0-12 4 4m-4-4-4 4" />
             <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
           </svg>
-          <div className="text-sm font-semibold text-text-strong">
+          <div className="text-[13px] font-semibold text-text-strong">
             {file ? file.name : "Click to choose a file"}
           </div>
-          <div className="mt-1 text-xs text-text-muted">CSV or XLSX</div>
+          <div className="mt-1 text-[11.5px] text-text-muted">CSV or XLSX</div>
         </button>
         <input
           aria-label="Member import file"
@@ -379,7 +379,7 @@ export default function UploadMembers() {
                 style={{ transform: `scaleX(${uploadProgress / 100})` }}
               />
             </div>
-            <div className="mt-1.5 text-xs text-text-muted">
+            <div className="mt-1.5 text-[11.5px] text-text-muted">
               {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : "Saving upload…"}
             </div>
           </div>
@@ -397,7 +397,7 @@ export default function UploadMembers() {
       </form>
 
       <div className="mb-3 mt-8 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-text-strong">Import history</h2>
+        <h2 className="text-[15px] font-bold text-text-strong">Import history</h2>
         <div className="flex flex-wrap gap-2">
           <Dropdown
             className="w-60"
@@ -434,7 +434,7 @@ export default function UploadMembers() {
 
       <TableFrame label="Recent member uploads" className="min-w-205">
         <thead>
-          <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             <th className="px-4 py-2.5">No.</th>
             <th className="px-4 py-2.5">File</th>
             <th className="px-4 py-2.5">Uploaded By</th>
@@ -476,9 +476,11 @@ export default function UploadMembers() {
                   >
                     {job.file.originalName}
                   </Link>
-                  <div className="text-xs text-text-muted">{formatSize(job.file.sizeBytes)}</div>
+                  <div className="text-[11px] text-text-muted">
+                    {formatSize(job.file.sizeBytes)}
+                  </div>
                   {job.status === "FAILED" && job.errorMessage && (
-                    <div className="mt-0.5 text-xs text-danger">{job.errorMessage}</div>
+                    <div className="mt-0.5 text-[11px] text-danger">{job.errorMessage}</div>
                   )}
                 </td>
                 <td className="px-4 py-2.5 text-text-muted">{job.uploadedBy.fullName}</td>

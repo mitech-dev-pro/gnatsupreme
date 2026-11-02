@@ -56,8 +56,8 @@ export function MemberDetailsForm({
   return (
     <form onSubmit={submit} className="border-t border-border-default px-5 py-5 sm:px-6">
       <div className="mb-4">
-        <h3 className="text-base font-bold text-text-strong">Request profile changes</h3>
-        <p className="mt-0.5 text-xs text-text-muted">
+        <h3 className="text-[13.5px] font-bold text-text-strong">Request profile changes</h3>
+        <p className="mt-0.5 text-[11.5px] text-text-muted">
           Your current details remain active until an administrator approves this request.
         </p>
       </div>
@@ -129,7 +129,7 @@ export function MemberDetailsForm({
       {error && (
         <div
           role="alert"
-          className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+          className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-semibold text-danger"
         >
           {error}
         </div>
@@ -138,7 +138,7 @@ export function MemberDetailsForm({
         <button
           type="submit"
           disabled={busy || !changed}
-          className="min-h-10 rounded-lg bg-action-primary px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-10 rounded-lg bg-action-primary px-4 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? "Submitting…" : "Submit for review"}
         </button>
@@ -146,7 +146,7 @@ export function MemberDetailsForm({
           type="button"
           onClick={onClose}
           disabled={busy}
-          className="min-h-10 rounded-lg border border-border-default px-4 text-xs font-semibold text-text-strong"
+          className="min-h-10 rounded-lg border border-border-default px-4 text-[12px] font-semibold text-text-strong"
         >
           Cancel
         </button>

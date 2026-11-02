@@ -71,8 +71,8 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const inputClasses =
-  "w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-sm transition focus:border-action-primary focus:shadow-focus-soft focus:outline-none";
-const labelClasses = "mb-1 block text-xs font-bold text-text-strong";
+  "w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-[12.5px] transition focus:border-action-primary focus:shadow-focus-soft focus:outline-none";
+const labelClasses = "mb-1 block text-[11px] font-bold text-text-strong";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -268,12 +268,12 @@ export default function Settings() {
   };
 
   if (loading) {
-    return <div className="text-sm text-text-muted">Loading…</div>;
+    return <div className="text-[13px] text-text-muted">Loading…</div>;
   }
 
   if (!settings) {
     return (
-      <div className="rounded-xl border border-border-default bg-white p-6 text-sm text-danger">
+      <div className="rounded-xl border border-border-default bg-white p-6 text-[13px] text-danger">
         {error || "Settings could not be loaded."}
       </div>
     );
@@ -283,8 +283,8 @@ export default function Settings() {
     <div>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold text-text-strong">Organization Settings</h1>
-          <div className="mt-1 text-sm text-text-muted">
+          <h1 className="text-[22px] font-extrabold text-text-strong">Organization Settings</h1>
+          <div className="mt-1 text-[12.5px] text-text-muted">
             Version {settings.version} · last updated {formatDate(settings.updatedAt)}
             {settings.updatedBy ? ` by ${settings.updatedBy.fullName}` : ""}
           </div>
@@ -292,18 +292,18 @@ export default function Settings() {
       </div>
 
       {!canEdit && (
-        <div className="mb-4 rounded-lg bg-warning-soft px-3 py-2 text-sm font-semibold text-warning-accent">
+        <div className="mb-4 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] font-semibold text-warning-accent">
           You can view these settings, but only Super Admins and National Admins can change them.
         </div>
       )}
 
       {error && (
-        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+        <div className="mb-4 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger">
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success">
+        <div className="mb-4 rounded-lg bg-success-soft px-3 py-2 text-[12.5px] font-semibold text-success">
           {success}
         </div>
       )}
@@ -321,7 +321,7 @@ export default function Settings() {
           <a
             key={target}
             href={`#${target}`}
-            className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-text-strong no-underline hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-soft"
+            className="shrink-0 rounded-lg px-3 py-2 text-[12px] font-semibold text-text-strong no-underline hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-soft"
           >
             {label}
           </a>
@@ -335,7 +335,7 @@ export default function Settings() {
             className="scroll-mt-5 rounded-xl border border-border-default bg-white p-5"
           >
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-text-strong">Branding</h2>
+              <h2 className="text-[15px] font-bold text-text-strong">Branding</h2>
               {canEdit && (
                 <button
                   type="button"
@@ -344,7 +344,7 @@ export default function Settings() {
                     form.accentColor === DEFAULT_BRAND_COLORS.accentColor
                   }
                   onClick={() => setForm((current) => ({ ...current, ...DEFAULT_BRAND_COLORS }))}
-                  className="rounded-lg border border-border-default bg-white px-3 py-1.5 text-xs font-semibold text-text-strong transition hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-soft disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg border border-border-default bg-white px-3 py-1.5 text-[11.5px] font-semibold text-text-strong transition hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-soft disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Restore default colors
                 </button>
@@ -360,13 +360,13 @@ export default function Settings() {
                   style={{ backgroundColor: form.primaryColor }}
                 >
                   <span
-                    className="flex size-9 items-center justify-center rounded-lg bg-white text-xs font-extrabold"
+                    className="flex size-9 items-center justify-center rounded-lg bg-white text-[12px] font-extrabold"
                     style={{ color: form.primaryColor }}
                   >
                     {form.sidebarMark || "?"}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm">
+                    <strong className="block truncate text-[13px]">
                       {form.portalName || "Portal name"}
                     </strong>
                     <small className="text-white/70">
@@ -374,13 +374,13 @@ export default function Settings() {
                     </small>
                   </span>
                   <span
-                    className="rounded-lg px-3 py-2 text-xs font-bold text-white"
+                    className="rounded-lg px-3 py-2 text-[11px] font-bold text-white"
                     style={{ backgroundColor: form.accentColor }}
                   >
                     Primary action
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-3 px-4 py-2 text-xs text-text-muted">
+                <div className="flex flex-wrap gap-3 px-4 py-2 text-[10.5px] text-text-muted">
                   <span>
                     Primary contrast:{" "}
                     <strong className={primaryContrast >= 4.5 ? "text-success" : "text-danger"}>
@@ -409,7 +409,7 @@ export default function Settings() {
                   className={inputClasses}
                 />
                 {fieldErrors.portalName && (
-                  <p className="mt-1 text-xs text-danger">{fieldErrors.portalName}</p>
+                  <p className="mt-1 text-[11px] text-danger">{fieldErrors.portalName}</p>
                 )}
               </div>
               <div>
@@ -425,7 +425,7 @@ export default function Settings() {
                   className={inputClasses}
                 />
                 <p
-                  className={`mt-1 text-xs ${fieldErrors.sidebarMark ? "text-danger" : "text-text-muted"}`}
+                  className={`mt-1 text-[10.5px] ${fieldErrors.sidebarMark ? "text-danger" : "text-text-muted"}`}
                 >
                   {fieldErrors.sidebarMark || `${form.sidebarMark.length}/3 characters`}
                 </p>
@@ -501,7 +501,7 @@ export default function Settings() {
             id="terminology"
             className="scroll-mt-5 rounded-xl border border-border-default bg-white p-5"
           >
-            <h2 className="mb-4 text-lg font-bold text-text-strong">Scheme Terminology</h2>
+            <h2 className="mb-4 text-[15px] font-bold text-text-strong">Scheme Terminology</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="settings-member-id-label" className={labelClasses}>
@@ -568,7 +568,7 @@ export default function Settings() {
             id="contact"
             className="scroll-mt-5 rounded-xl border border-border-default bg-white p-5"
           >
-            <h2 className="mb-4 text-lg font-bold text-text-strong">Contact</h2>
+            <h2 className="mb-4 text-[15px] font-bold text-text-strong">Contact</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="settings-organization-email" className={labelClasses}>
@@ -583,7 +583,7 @@ export default function Settings() {
                   className={inputClasses}
                 />
                 {fieldErrors.organizationEmail && (
-                  <p className="mt-1 text-xs text-danger">{fieldErrors.organizationEmail}</p>
+                  <p className="mt-1 text-[11px] text-danger">{fieldErrors.organizationEmail}</p>
                 )}
               </div>
               <div>
@@ -609,7 +609,7 @@ export default function Settings() {
                   className={inputClasses}
                 />
                 {fieldErrors.websiteUrl && (
-                  <p className="mt-1 text-xs text-danger">{fieldErrors.websiteUrl}</p>
+                  <p className="mt-1 text-[11px] text-danger">{fieldErrors.websiteUrl}</p>
                 )}
               </div>
               <div>
@@ -643,7 +643,7 @@ export default function Settings() {
               <button
                 type="submit"
                 disabled={saving || !isDirty || Object.keys(fieldErrors).length > 0}
-                className="rounded-lg bg-action-primary px-5 py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg bg-action-primary px-5 py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving…" : "Save Changes"}
               </button>
@@ -655,14 +655,14 @@ export default function Settings() {
                   setSuccess("");
                 }}
                 disabled={saving || !isDirty}
-                className="rounded-lg border border-border-default px-4 py-2.5 text-sm font-bold text-text-strong disabled:opacity-40"
+                className="rounded-lg border border-border-default px-4 py-2.5 text-[12.5px] font-bold text-text-strong disabled:opacity-40"
               >
                 Discard changes
               </button>
               <Button variant="danger" onClick={() => setConfirmingReset(true)} disabled={saving}>
                 Reset to Defaults
               </Button>
-              <span className="ml-auto text-xs text-text-muted">
+              <span className="ml-auto text-[11.5px] text-text-muted">
                 {isDirty
                   ? `${changedFields.length} unsaved ${changedFields.length === 1 ? "change" : "changes"}`
                   : "All changes saved"}
@@ -690,10 +690,10 @@ export default function Settings() {
           id="history"
           className="mt-6 scroll-mt-5 rounded-xl border border-border-default bg-white p-5"
         >
-          <h2 className="mb-3 text-lg font-bold text-text-strong">Change History</h2>
+          <h2 className="mb-3 text-[15px] font-bold text-text-strong">Change History</h2>
           <ul className="divide-y divide-[#e5e9f0]">
             {history.map((item) => (
-              <li key={item.id} className="text-sm">
+              <li key={item.id} className="text-[12.5px]">
                 <button
                   type="button"
                   aria-expanded={openHistoryId === item.id}
@@ -721,7 +721,7 @@ export default function Settings() {
                       {item.changedFields.length === 1 ? "field" : "fields"}
                     </small>
                   </span>
-                  <time className="shrink-0 text-xs text-text-muted">
+                  <time className="shrink-0 text-[11px] text-text-muted">
                     {formatDate(item.createdAt)}
                   </time>
                 </button>
@@ -733,7 +733,7 @@ export default function Settings() {
                           key={field}
                           className="border-t border-surface-disabled py-2 first:border-t-0 sm:[&:nth-child(2)]:border-t-0"
                         >
-                          <dt className="text-xs font-bold uppercase tracking-wide text-text-muted">
+                          <dt className="text-[10.5px] font-bold uppercase tracking-wide text-text-muted">
                             {FIELD_LABELS[field] ?? field}
                           </dt>
                           <dd className="mt-0.5 break-words text-ink">

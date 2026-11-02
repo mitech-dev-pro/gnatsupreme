@@ -31,10 +31,10 @@ export const ROLE_LABELS: Record<string, string> = {
   DISTRICT_ADMIN: "District Admin",
 };
 export const inputClasses =
-  "w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-sm transition focus:border-action-primary focus:shadow-focus-soft focus:outline-none";
-export const labelClasses = "mb-1 block text-xs font-bold text-text-strong";
+  "w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-[12.5px] transition focus:border-action-primary focus:shadow-focus-soft focus:outline-none";
+export const labelClasses = "mb-1 block text-[11px] font-bold text-text-strong";
 export const tabButton = (active: boolean) =>
-  `rounded-lg px-4 py-2 text-sm font-bold transition ${
+  `rounded-lg px-4 py-2 text-[12.5px] font-bold transition ${
     active
       ? "bg-text-strong text-white"
       : "border border-border-default text-text-strong hover:bg-surface-hover"

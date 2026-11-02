@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-4 bg-surface-subtle px-3 py-2 text-lg font-extrabold text-text-strong">
+    <h2 className="mb-4 bg-surface-subtle px-3 py-2 text-[15px] font-extrabold text-text-strong">
       {children}
     </h2>
   );
@@ -9,8 +9,8 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 export function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-bold text-text-strong">{label}</div>
-      <div className="min-h-10 rounded-lg border border-border-default bg-surface-subtle px-3 py-2.5 text-sm font-semibold text-ink">
+      <div className="mb-1.5 text-[11.5px] font-bold text-text-strong">{label}</div>
+      <div className="min-h-10 rounded-lg border border-border-default bg-surface-subtle px-3 py-2.5 text-[12.5px] font-semibold text-ink">
         {value}
       </div>
     </div>

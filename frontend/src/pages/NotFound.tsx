@@ -11,7 +11,7 @@ export default function NotFound() {
       />
       <Link
         to="/"
-        className="inline-flex min-h-10 items-center rounded-lg bg-action-primary px-4 py-2 text-sm font-bold text-text-on-action hover:bg-(--action-primary-hover) focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        className="inline-flex min-h-10 items-center rounded-lg bg-action-primary px-4 py-2 text-[12.5px] font-bold text-text-on-action hover:bg-(--action-primary-hover) focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
         Return to dashboard
       </Link>

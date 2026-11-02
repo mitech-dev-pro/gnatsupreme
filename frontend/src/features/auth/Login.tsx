@@ -481,7 +481,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => handleMemberModeChange("member")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold transition ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
                 mode === "member"
                   ? "bg-white text-text-strong shadow-subtle"
                   : "bg-transparent text-text-muted"
@@ -502,7 +502,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => handleMemberModeChange("staff")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold transition ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12.5px] font-bold transition ${
                 mode === "staff"
                   ? "bg-white text-text-strong shadow-subtle"
                   : "bg-transparent text-text-muted"
@@ -527,14 +527,14 @@ export default function Login() {
               <h2 className="mb-1 text-lg font-extrabold tracking-tight text-text-strong">
                 Reset your password
               </h2>
-              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+              <div className="mb-5 text-[12.5px] leading-relaxed text-text-muted">
                 Enter your account email — if it matches an active staff account, we'll send reset
                 instructions to it.
               </div>
 
               {error && <ErrorBanner message={error} />}
               {staffForgotMessage && (
-                <div className="mb-3 rounded-lg bg-success-soft px-2.5 py-2 text-xs font-semibold text-success">
+                <div className="mb-3 rounded-lg bg-success-soft px-2.5 py-2 text-[12.5px] font-semibold text-success">
                   {staffForgotMessage}
                 </div>
               )}
@@ -544,7 +544,7 @@ export default function Login() {
                   <div className="mb-3.5">
                     <label
                       htmlFor="forgot-email"
-                      className="mb-1 block text-xs font-bold text-text-strong"
+                      className="mb-1 block text-[11.5px] font-bold text-text-strong"
                     >
                       Email
                     </label>
@@ -561,7 +561,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {submitting ? "Sending…" : "Send Reset Instructions"}
                   </button>
@@ -575,7 +575,7 @@ export default function Login() {
                   setError("");
                   setStaffForgotMessage("");
                 }}
-                className="mt-4 w-full text-center text-xs font-semibold text-text-muted hover:text-text-strong"
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-text-muted hover:text-text-strong"
               >
                 Back to sign in
               </button>
@@ -588,7 +588,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="login-email"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Email
                   </label>
@@ -618,7 +618,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="login-password"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Password
                   </label>
@@ -654,7 +654,7 @@ export default function Login() {
                       setError("");
                       setStaffForgotMessage("");
                     }}
-                    className="text-xs font-semibold text-text-strong hover:underline"
+                    className="text-[11.5px] font-semibold text-text-strong hover:underline"
                   >
                     Forgot password?
                   </button>
@@ -663,7 +663,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {submitting ? "Signing in…" : "Sign In"}
                 </button>
@@ -671,7 +671,7 @@ export default function Login() {
             </>
           ) : memberStep === "login" ? (
             <>
-              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+              <div className="mb-5 text-[12.5px] leading-relaxed text-text-muted">
                 {passwordStepVisible
                   ? "Enter your password to continue."
                   : // : `Enter your ${settings.memberIdLabel} to continue.`}
@@ -684,7 +684,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="controller-id"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     {settings.memberIdLabel}
                   </label>
@@ -721,7 +721,7 @@ export default function Login() {
                       <button
                         type="button"
                         onClick={editMemberId}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-text-strong hover:underline"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-text-strong hover:underline"
                       >
                         Edit
                       </button>
@@ -733,7 +733,7 @@ export default function Login() {
                   <div className="mb-1.5">
                     <label
                       htmlFor="member-password"
-                      className="mb-1 block text-xs font-bold text-text-strong"
+                      className="mb-1 block text-[11.5px] font-bold text-text-strong"
                     >
                       Password
                     </label>
@@ -778,7 +778,7 @@ export default function Login() {
                         setMemberError("");
                         setForgotMessage("");
                       }}
-                      className="text-xs font-semibold text-text-strong hover:underline"
+                      className="text-[11.5px] font-semibold text-text-strong hover:underline"
                     >
                       Forgot password?
                     </button>
@@ -788,7 +788,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={memberSubmitting}
-                  className={`${passwordStepVisible ? "mt-0.5" : "mt-3.5"} w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60`}
+                  className={`${passwordStepVisible ? "mt-0.5" : "mt-3.5"} w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   {passwordStepVisible
                     ? memberSubmitting
@@ -799,7 +799,7 @@ export default function Login() {
                       : "Continue"}
                 </button>
               </form>
-              <div className="mt-5 border-t border-surface-disabled pt-4 text-xs leading-relaxed text-text-muted">
+              <div className="mt-5 border-t border-surface-disabled pt-4 text-[11px] leading-relaxed text-text-muted">
                 Can't sign in?
                 {(settings.organizationPhone || settings.organizationEmail) && (
                   <p className="mt-2">
@@ -842,7 +842,7 @@ export default function Login() {
               {/* <div className="mb-5 text-sm leading-relaxed text-text-muted">
                 Set your login email and password.
               </div> */}
-              <div className="mb-5 rounded-lg bg-[#eef2fb] px-2.5 py-2 text-xs leading-relaxed font-semibold text-[#334a7a]">
+              <div className="mb-5 rounded-lg bg-[#eef2fb] px-2.5 py-2 text-[11.5px] leading-relaxed font-semibold text-[#334a7a]">
                 The details below were recorded by your district office at enrollment. If any of
                 this information is incorrect, please contact your district office to have it
                 corrected.
@@ -854,7 +854,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="setup-full-name"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Full name
                   </label>
@@ -870,7 +870,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="setup-school"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     School
                   </label>
@@ -886,7 +886,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="setup-district"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     {setupDistrictLocked ? "District" : "District (optional)"}
                   </label>
@@ -918,7 +918,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="setup-email"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Email
                   </label>
@@ -934,7 +934,7 @@ export default function Login() {
                     autoComplete="email"
                     className={inputClasses.replace("pl-9", "pl-3")}
                   />
-                  <p className="mt-1.5 text-xs text-text-muted">
+                  <p className="mt-1.5 text-[11px] text-text-muted">
                     Used to reset your password if needed.
                   </p>
                 </div>
@@ -942,7 +942,7 @@ export default function Login() {
                 <div className="mb-3.5">
                   <label
                     htmlFor="setup-password"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     New password
                   </label>
@@ -969,7 +969,7 @@ export default function Login() {
                 <div className="mb-4">
                   <label
                     htmlFor="setup-confirm-password"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Confirm new password
                   </label>
@@ -996,7 +996,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={memberSubmitting}
-                  className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {memberSubmitting ? "Continuing…" : "Continue"}
                 </button>
@@ -1009,7 +1009,7 @@ export default function Login() {
                   setPasswordStepVisible(false);
                   setMemberError("");
                 }}
-                className="mt-4 w-full text-center text-xs font-semibold text-text-muted hover:text-text-strong"
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-text-muted hover:text-text-strong"
               >
                 Already set up? Log in
               </button>
@@ -1019,7 +1019,7 @@ export default function Login() {
               <h2 className="mb-1 text-lg font-extrabold tracking-tight text-text-strong">
                 Please provide your policy details
               </h2>
-              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+              <div className="mb-5 text-[12.5px] leading-relaxed text-text-muted">
                 A few more details to finish setup.
               </div>
 
@@ -1029,7 +1029,7 @@ export default function Login() {
                 <div className="mb-4">
                   <label
                     htmlFor="policy-ghana-card"
-                    className="mb-1 block text-xs font-bold text-text-strong"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
                   >
                     Ghana Card ID
                   </label>
@@ -1056,14 +1056,14 @@ export default function Login() {
                   )}
                 </div>
 
-                <h3 className="mb-2.5 text-base font-bold text-text-strong">
+                <h3 className="mb-2.5 text-[11.5px] font-bold text-text-strong">
                   Spouse details (optional)
                 </h3>
                 <div className="rounded-lg border border-border-default p-3">
                   <div className="mb-3">
                     <label
                       htmlFor="spouse-name"
-                      className="mb-1 block text-xs font-bold text-text-strong"
+                      className="mb-1 block text-[11.5px] font-bold text-text-strong"
                     >
                       Spouse full name
                     </label>
@@ -1086,7 +1086,7 @@ export default function Login() {
                   <div>
                     <label
                       htmlFor="spouse-ghana-card"
-                      className="mb-1 block text-xs font-bold text-text-strong"
+                      className="mb-1 block text-[11.5px] font-bold text-text-strong"
                     >
                       Spouse Ghana Card (optional)
                     </label>
@@ -1117,7 +1117,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={memberSubmitting}
-                  className="mt-4 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-4 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Continue
                 </button>
@@ -1128,7 +1128,7 @@ export default function Login() {
               <h2 className="mb-1 text-lg font-extrabold tracking-tight text-text-strong">
                 Beneficiaries
               </h2>
-              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+              <div className="mb-5 text-[12.5px] leading-relaxed text-text-muted">
                 {existingBeneficiaryCount > 0
                   ? `You already have ${existingBeneficiaryCount} beneficiar${existingBeneficiaryCount === 1 ? "y" : "ies"} on file. Add another below if needed, or continue without adding one.`
                   : "Add anyone who should be listed as a beneficiary."}
@@ -1140,21 +1140,21 @@ export default function Login() {
                 {beneficiaries.map((item, index) => (
                   <div key={index} className="mb-3 rounded-lg border border-border-default p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-bold text-text-strong">
+                      <span className="text-[11px] font-bold text-text-strong">
                         Beneficiary {index + 1}
                       </span>
                       {beneficiaries.length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeBeneficiary(index)}
-                          className="text-xs font-semibold text-danger hover:underline"
+                          className="text-[11px] font-semibold text-danger hover:underline"
                         >
                           Remove
                         </button>
                       )}
                     </div>
                     <div className="mb-2.5">
-                      <label className="mb-1 block text-xs font-bold text-text-strong">
+                      <label className="mb-1 block text-[11px] font-bold text-text-strong">
                         Full name
                       </label>
                       <input
@@ -1164,7 +1164,7 @@ export default function Login() {
                       />
                     </div>
                     <div className="mb-2.5">
-                      <label className="mb-1 block text-xs font-bold text-text-strong">
+                      <label className="mb-1 block text-[11px] font-bold text-text-strong">
                         Relationship
                       </label>
                       <Dropdown
@@ -1190,11 +1190,11 @@ export default function Login() {
                     </div>
                     {isMinor(item.dateOfBirth) && (
                       <>
-                        <p className="mb-2.5 rounded-lg bg-warning-soft px-3 py-2 text-xs font-semibold text-warning-accent">
+                        <p className="mb-2.5 rounded-lg bg-warning-soft px-3 py-2 text-[11px] font-semibold text-warning-accent">
                           This beneficiary is under 18 — a trustee name is required.
                         </p>
                         <div>
-                          <label className="mb-1 block text-xs font-bold text-text-strong">
+                          <label className="mb-1 block text-[11px] font-bold text-text-strong">
                             Trustee name
                           </label>
                           <input
@@ -1218,7 +1218,7 @@ export default function Login() {
                     type="button"
                     disabled={beneficiaries.length >= 10}
                     onClick={() => setBeneficiaries((current) => [...current, emptyBeneficiary()])}
-                    className="text-xs font-semibold text-text-strong hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                    className="text-[11.5px] font-semibold text-text-strong hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     + Add another beneficiary
                   </button>
@@ -1227,7 +1227,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={memberSubmitting}
-                  className="mt-2 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-2 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {memberSubmitting ? "Saving…" : "Finish Setup"}
                 </button>
@@ -1239,7 +1239,7 @@ export default function Login() {
                   setMemberStep("policy");
                   setMemberError("");
                 }}
-                className="mt-4 w-full text-center text-xs font-semibold text-text-muted hover:text-text-strong"
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-text-muted hover:text-text-strong"
               >
                 Back
               </button>
@@ -1249,14 +1249,14 @@ export default function Login() {
               <h2 className="mb-1 text-lg font-extrabold tracking-tight text-text-strong">
                 Reset your password
               </h2>
-              <div className="mb-5 text-sm leading-relaxed text-text-muted">
+              <div className="mb-5 text-[12.5px] leading-relaxed text-text-muted">
                 Enter your {settings.memberIdLabel} — if there's an email on file for your
                 membership, we'll send reset instructions to it.
               </div>
 
               {memberError && <ErrorBanner message={memberError} />}
               {forgotMessage && (
-                <div className="mb-3 rounded-lg bg-success-soft px-2.5 py-2 text-xs font-semibold text-success">
+                <div className="mb-3 rounded-lg bg-success-soft px-2.5 py-2 text-[12.5px] font-semibold text-success">
                   {forgotMessage}
                 </div>
               )}
@@ -1266,7 +1266,7 @@ export default function Login() {
                   <div className="mb-3.5">
                     <label
                       htmlFor="forgot-controller-id"
-                      className="mb-1 block text-xs font-bold text-text-strong"
+                      className="mb-1 block text-[11.5px] font-bold text-text-strong"
                     >
                       {settings.memberIdLabel}
                     </label>
@@ -1286,7 +1286,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={memberSubmitting}
-                    className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-sm font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-0.5 w-full rounded-lg bg-action-primary py-2.5 text-[13px] font-bold text-white shadow-action transition hover:bg-success disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {memberSubmitting ? "Sending…" : "Send Reset Instructions"}
                   </button>
@@ -1300,7 +1300,7 @@ export default function Login() {
                   setMemberError("");
                   setForgotMessage("");
                 }}
-                className="mt-4 w-full text-center text-xs font-semibold text-text-muted hover:text-text-strong"
+                className="mt-4 w-full text-center text-[11.5px] font-semibold text-text-muted hover:text-text-strong"
               >
                 Back to sign in
               </button>

@@ -68,7 +68,7 @@ export function HospitalizationSection({
       </div>
       {nights !== null && (
         <div
-          className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold ${nightsEligible ? "bg-success-soft text-success" : "bg-danger-soft text-danger"}`}
+          className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-bold ${nightsEligible ? "bg-success-soft text-success" : "bg-danger-soft text-danger"}`}
         >
           {nightsEligible
             ? `${nights} nights meets the ${HOSPITALIZATION_MINIMUM_NIGHTS}-night minimum — eligible for the hospitalization benefit`

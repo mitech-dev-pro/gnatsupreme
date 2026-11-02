@@ -121,17 +121,17 @@ function RequestTransferForm({
 
   return (
     <div className="mb-5 rounded-xl border border-border-default bg-white p-5">
-      <h2 className="mb-3 text-lg font-bold text-text-strong">Request a transfer</h2>
+      <h2 className="mb-3 text-[14.5px] font-bold text-text-strong">Request a transfer</h2>
       <form onSubmit={submit} className="space-y-4">
         <div>
           <label
             htmlFor="transfer-member-search"
-            className="mb-1 block text-xs font-bold text-text-strong"
+            className="mb-1 block text-[11px] font-bold text-text-strong"
           >
             Member
           </label>
           {member ? (
-            <div className="flex items-center justify-between rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-sm">
+            <div className="flex items-center justify-between rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-[12.5px]">
               <span>
                 <strong>{member.fullName}</strong> · {member.controllerId} · currently{" "}
                 {member.district?.name ?? "no district"}
@@ -157,7 +157,7 @@ function RequestTransferForm({
                 }
                 aria-controls="transfer-member-options"
                 aria-autocomplete="list"
-                className="w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-sm focus:border-action-primary focus:shadow-focus-soft focus:outline-none"
+                className="w-full rounded-lg border border-border-default bg-text-on-action px-3 py-2 text-[12.5px] focus:border-action-primary focus:shadow-focus-soft focus:outline-none"
               />
               {memberSearch.trim().length >= 2 && (searching || memberOptions.length > 0) && (
                 <div
@@ -166,7 +166,7 @@ function RequestTransferForm({
                   className="absolute z-10 mt-1 w-full rounded-lg border border-border-default bg-white shadow-lg"
                 >
                   {searching ? (
-                    <div className="px-3 py-2 text-sm text-text-muted">Searching…</div>
+                    <div className="px-3 py-2 text-[12.5px] text-text-muted">Searching…</div>
                   ) : (
                     memberOptions.map((option) => (
                       <button
@@ -179,7 +179,7 @@ function RequestTransferForm({
                           setMemberSearch("");
                           setMemberOptions([]);
                         }}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-hover"
+                        className="block w-full px-3 py-2 text-left text-[12.5px] hover:bg-surface-hover"
                       >
                         <strong>{option.fullName}</strong> · {option.controllerId} ·{" "}
                         {option.district?.name ?? "no district"}
@@ -193,7 +193,7 @@ function RequestTransferForm({
         </div>
 
         <div className="max-w-72">
-          <label className="mb-1.5 block text-xs font-bold text-text-strong">
+          <label className="mb-1.5 block text-[11.5px] font-bold text-text-strong">
             Destination district
           </label>
           <Dropdown
@@ -348,7 +348,9 @@ export default function Transfers() {
       )}
 
       <div className="mb-4 max-w-52">
-        <label className="mb-1.5 block text-xs font-bold text-text-strong">Transfer status</label>
+        <label className="mb-1.5 block text-[11.5px] font-bold text-text-strong">
+          Transfer status
+        </label>
         <Dropdown
           value={status}
           onChange={(value) => updateParams({ status: value || null, page: null })}
@@ -361,7 +363,7 @@ export default function Transfers() {
 
       <TableFrame label="Transfer requests" className="min-w-225">
         <thead>
-          <tr className="border-b border-border-default bg-surface-hover text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <tr className="border-b border-border-default bg-surface-hover text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             <th className="px-4 py-2.5">Member</th>
             <th className="px-4 py-2.5">From</th>
             <th className="px-4 py-2.5">To</th>
@@ -397,13 +399,13 @@ export default function Transfers() {
                     >
                       {row.member.fullName}
                     </Link>
-                    <div className="text-xs text-text-muted">{row.member.controllerId}</div>
+                    <div className="text-[11px] text-text-muted">{row.member.controllerId}</div>
                   </td>
                   <td className="px-4 py-2.5 text-text-muted">{row.fromDistrict.name}</td>
                   <td className="px-4 py-2.5 text-text-muted">{row.toDistrict.name}</td>
                   <td className="px-4 py-2.5 text-text-muted">
                     {formatDate(row.requestedAt)}
-                    <div className="text-xs">by {row.requestedBy.fullName}</div>
+                    <div className="text-[11px]">by {row.requestedBy.fullName}</div>
                   </td>
                   <td className="px-4 py-2.5">
                     <StatusBadge tone={STATUS_TONES[row.status] ?? "neutral"}>
@@ -418,7 +420,7 @@ export default function Transfers() {
                             type="button"
                             onClick={() => setReviewingId(reviewingId === row.id ? null : row.id)}
                             disabled={busyId === row.id}
-                            className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-text-strong disabled:opacity-60"
+                            className="rounded-lg border border-border-default px-2.5 py-1 text-[11.5px] font-semibold text-text-strong disabled:opacity-60"
                           >
                             Review
                           </button>
@@ -429,7 +431,7 @@ export default function Transfers() {
                             type="button"
                             onClick={() => setCancellingId(row.id)}
                             disabled={busyId === row.id}
-                            className="rounded-lg border border-border-default px-2.5 py-1 text-xs font-semibold text-danger disabled:opacity-60"
+                            className="rounded-lg border border-border-default px-2.5 py-1 text-[11.5px] font-semibold text-danger disabled:opacity-60"
                           >
                             Cancel
                           </button>
@@ -437,7 +439,9 @@ export default function Transfers() {
                       </div>
                     )}
                     {row.status !== "PENDING" && row.reviewedBy && (
-                      <span className="text-xs text-text-muted">by {row.reviewedBy.fullName}</span>
+                      <span className="text-[11px] text-text-muted">
+                        by {row.reviewedBy.fullName}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -466,13 +470,13 @@ export default function Transfers() {
                           onChange={(e) => setReviewNote(e.target.value)}
                           placeholder="Review note (optional)"
                           maxLength={500}
-                          className="min-w-64 flex-1 rounded-lg border border-border-default bg-white px-3 py-1.5 text-sm focus:border-action-primary focus:outline-none"
+                          className="min-w-64 flex-1 rounded-lg border border-border-default bg-white px-3 py-1.5 text-[12.5px] focus:border-action-primary focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => void review(row.id, "APPROVED")}
                           disabled={busyId === row.id}
-                          className="rounded-lg bg-action-primary px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                          className="rounded-lg bg-action-primary px-3.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-60"
                         >
                           Approve
                         </button>
@@ -480,7 +484,7 @@ export default function Transfers() {
                           type="button"
                           onClick={() => void review(row.id, "REJECTED")}
                           disabled={busyId === row.id}
-                          className="rounded-lg border border-danger px-3.5 py-1.5 text-xs font-bold text-danger disabled:opacity-60"
+                          className="rounded-lg border border-danger px-3.5 py-1.5 text-[12px] font-bold text-danger disabled:opacity-60"
                         >
                           Reject
                         </button>

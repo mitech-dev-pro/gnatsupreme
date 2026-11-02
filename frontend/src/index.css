@@ -84,6 +84,20 @@ input[type="radio"]:not(:disabled) {
 @theme {
   --font-sans: "Inter", sans-serif;
   --font-heading: "Plus Jakarta Sans", sans-serif;
+
+  /* Matches release/live's fixed type scale -- Tailwind v4's own default --text-* sizes are
+     noticeably larger at every step, which is why they'd been left unset here. Restored
+     2026-11-02; revert by deleting this block (down to the closing brace) if test is meant to
+     diverge from live's sizing again. */
+  --text-xs: 13px;
+  --text-sm: 13px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --text-2xl: 19px;
+  --text-3xl: 21px;
+  --text-4xl: 24px;
+  --text-5xl: 28px;
 }
 
 @layer base {

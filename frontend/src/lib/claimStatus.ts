@@ -28,17 +28,34 @@ export type ClaimStageInput = {
   deliveryState?: string;
 };
 
-export function claimStage(claim: ClaimStageInput): {
+// Members never see the delivery-pipeline mechanics below (which external system, whether a
+// send attempt failed or came back unconfirmed) -- that's purely GNAT's internal plumbing and
+// not actionable by them. Staff get the explicit states via the default "staff" audience, since
+// they're the ones who act on a failed/unconfirmed delivery. The insurer-reported assessment
+// (claim number, status, amount, rejection reason -- shown elsewhere, e.g. MankradoDetails) is
+// genuine claim progress and stays explicit for members; only this delivery-pipeline status does
+// not.
+export function claimStage(
+  claim: ClaimStageInput,
+  options: { audience?: "staff" | "member" } = {},
+): {
   label: string;
   tone: BadgeTone;
   next: string;
 } {
+  const audience = options.audience ?? "staff";
   if (claim.provider === "SIMULATION")
-    return {
-      label: "Historical simulation",
-      tone: "neutral",
-      next: "This historical record is not connected to Claims Portal.",
-    };
+    return audience === "member"
+      ? {
+          label: "Historical record",
+          tone: "neutral",
+          next: "This is a historical record from before the current system.",
+        }
+      : {
+          label: "Historical simulation",
+          tone: "neutral",
+          next: "This historical record is not connected to Claims Portal.",
+        };
   if (claim.status === "RETURNED")
     return {
       label: "Returned for correction",
@@ -51,6 +68,29 @@ export function claimStage(claim: ClaimStageInput): {
       tone: "danger",
       next: "Read the review note for the reason and contact GNAT for help.",
     };
+  const accepted =
+    claim.deliveryState === "ACCEPTED" ||
+    claim.status === "SUBMITTED" ||
+    claim.status === "SYNCHRONIZED";
+  if (audience === "member") {
+    if (accepted)
+      return {
+        label: "Submitted for assessment",
+        tone: "info",
+        next: "Your claim has been forwarded for assessment. We’ll let you know as soon as there’s a decision.",
+      };
+    if (claim.source === "MEMBER_PORTAL" && !claim.reviewedAt)
+      return {
+        label: "Awaiting GNAT review",
+        tone: "info",
+        next: "GNAT staff must review this claim before it can move forward.",
+      };
+    return {
+      label: "Being processed",
+      tone: "info",
+      next: "GNAT is handling this claim. No action is needed from you right now.",
+    };
+  }
   if (claim.deliveryState === "UNKNOWN")
     return {
       label: "Delivery unconfirmed",
@@ -69,11 +109,7 @@ export function claimStage(claim: ClaimStageInput): {
       tone: "info",
       next: "Wait for confirmation that Claims Portal received the claim.",
     };
-  if (
-    claim.deliveryState === "ACCEPTED" ||
-    claim.status === "SUBMITTED" ||
-    claim.status === "SYNCHRONIZED"
-  )
+  if (accepted)
     return {
       label: "Received by Claims Portal",
       tone: "info",

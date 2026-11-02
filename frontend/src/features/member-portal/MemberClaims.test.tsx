@@ -147,7 +147,7 @@ it("orders dates before IDs and refreshes the stage after the member details mod
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Update assessment" }));
-  expect(await within(table).findByText("Received by Claims Portal")).toBeVisible();
+  expect(await within(table).findByText("Submitted for assessment")).toBeVisible();
   expect(screen.getByText("Claims Portal: Awaiting Approval")).toBeVisible();
   expect(screen.getByText("CLM-000001")).toBeVisible();
   expect(screen.queryByText("lookup-99")).not.toBeInTheDocument();

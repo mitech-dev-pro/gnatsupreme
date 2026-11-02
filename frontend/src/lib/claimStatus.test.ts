@@ -40,4 +40,29 @@ describe("claim stages", () => {
     expect(claimStatusTone("Rejected")).toBe("danger");
     expect(claimStatusTone("Unfamiliar insurer stage")).toBe("neutral");
   });
+  it("never names the external delivery pipeline or its states to a member", () => {
+    const member = { audience: "member" as const };
+    // NOT_SENT, SENDING, FAILED and UNKNOWN delivery states all collapse to the same
+    // non-actionable "being processed" label for a member -- none of them are things the member
+    // can or should act on, unlike for staff.
+    for (const deliveryState of ["NOT_SENT", "SENDING", "FAILED", "UNKNOWN"]) {
+      expect(claimStage({ ...claim, reviewedAt: "2026-10-29", deliveryState }, member).label).toBe(
+        "Being processed",
+      );
+    }
+    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }, member).label).toBe(
+      "Submitted for assessment",
+    );
+    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }, member).next).not.toMatch(
+      /claims portal/i,
+    );
+    expect(claimStage(claim, member).label).toBe("Awaiting GNAT review");
+    expect(claimStage({ ...claim, provider: "SIMULATION" }, member).next).not.toMatch(
+      /claims portal/i,
+    );
+  });
+  it("still gives staff the explicit delivery states by default", () => {
+    expect(claimStage({ ...claim, deliveryState: "FAILED" }).label).toBe("Delivery failed");
+    expect(claimStage({ ...claim, deliveryState: "UNKNOWN" }).label).toBe("Delivery unconfirmed");
+  });
 });

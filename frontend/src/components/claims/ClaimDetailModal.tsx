@@ -265,7 +265,7 @@ export default function ClaimDetailModal({
               <Alert tone="error">{error || "Claim not found."}</Alert>
             ) : (
               <>
-                <ClaimStageSummary claim={detail} />
+                <ClaimStageSummary claim={detail} audience={audience} />
                 {audience === "staff" && (
                   <ClaimDeliveryControls
                     key={`delivery:${detail.id}`}
@@ -304,7 +304,10 @@ export default function ClaimDetailModal({
                   <Row
                     label="External lookup reference"
                     value={
-                      detail.externalClaimId ?? "Available after Claims Portal confirms receipt"
+                      detail.externalClaimId ??
+                      (audience === "member"
+                        ? "Not yet assigned"
+                        : "Available after Claims Portal confirms receipt")
                     }
                   />
                   <Row label="Policy holder" value={detail.member.fullName} />
@@ -316,18 +319,22 @@ export default function ClaimDetailModal({
                   />
                 </Section>
 
-                <Section title="Filing & delivery">
+                <Section title={audience === "member" ? "Filing" : "Filing & delivery"}>
                   <Row label="Filed by" value={filedBy} />
                   <Row label="Filed via" value={filedVia} />
                   <Row label="Branch" value={detail.member.district?.name ?? "—"} />
-                  <Row label="Provider" value={detail.provider} />
-                  <Row label="Delivery" value={deliveryText} />
-                  <Row
-                    label="Sent to Claims Portal on"
-                    value={
-                      detail.submittedAt ? formatDate(detail.submittedAt) : "Not yet confirmed"
-                    }
-                  />
+                  {audience === "staff" && (
+                    <>
+                      <Row label="Provider" value={detail.provider} />
+                      <Row label="Delivery" value={deliveryText} />
+                      <Row
+                        label="Sent to Claims Portal on"
+                        value={
+                          detail.submittedAt ? formatDate(detail.submittedAt) : "Not yet confirmed"
+                        }
+                      />
+                    </>
+                  )}
                 </Section>
 
                 {particulars.length > 0 && (

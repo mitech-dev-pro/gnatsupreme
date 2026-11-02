@@ -60,14 +60,14 @@ export default function MemberClaims() {
       sorted.filter(
         (claim) =>
           (!claimType || claim.claimType === claimType) &&
-          (!stageFilter || claimStage(claim).label === stageFilter) &&
+          (!stageFilter || claimStage(claim, { audience: "member" }).label === stageFilter) &&
           inDateRange(filedDate(claim.createdAt), from, through),
       ),
     [sorted, claimType, stageFilter, from, through],
   );
   const stages = [
     ...new Set([
-      ...sorted.map((claim) => claimStage(claim).label),
+      ...sorted.map((claim) => claimStage(claim, { audience: "member" }).label),
       ...(stageFilter ? [stageFilter] : []),
     ]),
   ].sort();
@@ -262,7 +262,7 @@ export default function MemberClaims() {
             </thead>
             <tbody className="divide-y divide-border-default">
               {filtered.slice(offset, offset + PAGE_SIZE).map((claim, index) => {
-                const stage = claimStage(claim);
+                const stage = claimStage(claim, { audience: "member" });
                 return (
                   <tr
                     key={claim.id}

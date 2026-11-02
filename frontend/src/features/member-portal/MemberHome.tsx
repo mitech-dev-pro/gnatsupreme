@@ -165,7 +165,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
   return (
     <div>
       {loading ? (
-        <div className="rounded-2xl border border-border-default bg-white p-6 text-sm text-text-muted">
+        <div className="rounded-2xl border border-border-default bg-white p-6 text-[13px] text-text-muted">
           Loading your profile…
         </div>
       ) : profile ? (
@@ -184,16 +184,16 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 >
                   <div>
                     <div className="mb-2 flex items-center gap-2">
-                      <span className="rounded-full bg-white/14 px-2.5 py-1 text-xs font-bold uppercase tracking-wide">
+                      <span className="rounded-full bg-white/14 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide">
                         {profile.status}
                       </span>
-                      <span className="text-xs text-white/65">Membership coverage</span>
+                      <span className="text-[11px] text-white/65">Membership coverage</span>
                     </div>
-                    <h2 id="coverage-summary-title" className="text-lg font-extrabold">
+                    <h2 id="coverage-summary-title" className="text-[19px] font-extrabold">
                       My cover is{" "}
                       {profile.status === "ACTIVE" ? "active" : profile.status.toLowerCase()}
                     </h2>
-                    <p className="mt-1 max-w-[60ch] text-xs leading-relaxed text-white/72">
+                    <p className="mt-1 max-w-[60ch] text-[12px] leading-relaxed text-white/72">
                       {profile.school} ·{" "}
                       {profile.district
                         ? `${profile.district.name}, ${profile.district.region.name}`
@@ -201,7 +201,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-default px-5 py-3 text-xs text-text-muted">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-default px-5 py-3 text-[11.5px] text-text-muted">
                   <span>
                     {settings.memberIdLabel}:{" "}
                     <strong className="text-text-strong">{profile.controllerId}</strong>
@@ -227,7 +227,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     <>
                       <header className="flex flex-col gap-4 border-b border-border-default bg-warning-soft px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
                         <div className="max-w-[70ch]">
-                          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.07em] text-warning">
+                          <div className="mb-2 flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.07em] text-warning">
                             <span
                               aria-hidden="true"
                               className="grid size-5 place-items-center rounded-full bg-(--surface-raised)"
@@ -238,18 +238,18 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                           </div>
                           <h2
                             id="profile-completion-title"
-                            className="text-lg font-extrabold text-text-strong"
+                            className="text-[17px] font-extrabold text-text-strong"
                           >
                             Complete your membership details
                           </h2>
-                          <p className="mt-1 text-xs leading-relaxed text-text-muted">
+                          <p className="mt-1 text-[11.5px] leading-relaxed text-text-muted">
                             Report 20 does not contain every detail needed for your membership.
                             Submit the missing information below; you can continue using the portal
                             while your district reviews it.
                           </p>
                         </div>
                         <div className="min-w-32 shrink-0">
-                          <div className="flex items-center justify-between text-xs font-bold text-text-muted">
+                          <div className="flex items-center justify-between text-[10.5px] font-bold text-text-muted">
                             <span>Profile progress</span>
                             <span>{profileCompletion.percentage}%</span>
                           </div>
@@ -279,7 +279,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                             <div className="flex min-w-0 items-center gap-3">
                               <span
                                 aria-hidden="true"
-                                className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold ${item.status === "COMPLETE" ? "bg-success-soft text-success" : item.status === "PENDING" ? "bg-warning-soft text-warning" : "bg-surface-subtle text-text-muted"}`}
+                                className={`grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-extrabold ${item.status === "COMPLETE" ? "bg-success-soft text-success" : item.status === "PENDING" ? "bg-warning-soft text-warning" : "bg-surface-subtle text-text-muted"}`}
                               >
                                 {item.status === "COMPLETE"
                                   ? "✓"
@@ -288,10 +288,10 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                     : "•"}
                               </span>
                               <span>
-                                <strong className="block text-sm text-text-strong">
+                                <strong className="block text-[12.5px] text-text-strong">
                                   {item.label}
                                 </strong>
-                                <small className="mt-0.5 block text-xs text-text-muted">
+                                <small className="mt-0.5 block text-[10.5px] text-text-muted">
                                   {item.status === "COMPLETE"
                                     ? "Recorded"
                                     : item.status === "PENDING"
@@ -306,7 +306,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                   <button
                                     type="button"
                                     onClick={() => setRequestComposer("MEMBER_DETAILS")}
-                                    className="min-h-9 rounded-lg bg-action-primary px-3 text-xs font-bold text-white"
+                                    className="min-h-9 rounded-lg bg-action-primary px-3 text-[11px] font-bold text-white"
                                   >
                                     Add personal details
                                   </button>
@@ -316,7 +316,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                     <button
                                       type="button"
                                       onClick={() => setRequestComposer("SPOUSE")}
-                                      className="min-h-9 rounded-lg bg-action-primary px-3 text-xs font-bold text-white"
+                                      className="min-h-9 rounded-lg bg-action-primary px-3 text-[11px] font-bold text-white"
                                     >
                                       Add spouse
                                     </button>
@@ -324,7 +324,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                       type="button"
                                       disabled={completionBusy}
                                       onClick={() => void declareNoSpouse()}
-                                      className="min-h-9 rounded-lg border border-border-default px-3 text-xs font-bold text-(--brand-primary) disabled:opacity-55"
+                                      className="min-h-9 rounded-lg border border-border-default px-3 text-[11px] font-bold text-(--brand-primary) disabled:opacity-55"
                                     >
                                       I have no spouse
                                     </button>
@@ -334,7 +334,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                   <button
                                     type="button"
                                     onClick={() => setRequestComposer("BENEFICIARY_ADD")}
-                                    className="min-h-9 rounded-lg bg-action-primary px-3 text-xs font-bold text-white"
+                                    className="min-h-9 rounded-lg bg-action-primary px-3 text-[11px] font-bold text-white"
                                   >
                                     Add beneficiary
                                   </button>
@@ -347,7 +347,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       {completionError && (
                         <p
                           role="alert"
-                          className="mx-5 mt-4 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger sm:mx-6"
+                          className="mx-5 mt-4 rounded-lg bg-danger-soft px-3 py-2 text-[11.5px] font-semibold text-danger sm:mx-6"
                         >
                           {completionError}
                         </p>
@@ -378,14 +378,14 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                         </div>
                       )}
                       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border-default px-5 py-3 sm:px-6">
-                        <p className="text-xs text-text-muted">
+                        <p className="text-[10.5px] text-text-muted">
                           Approved changes will appear here automatically.
                         </p>
                         <button
                           type="button"
                           disabled={completionBusy}
                           onClick={() => void dismissCompletionPrompt()}
-                          className="min-h-8 text-xs font-bold text-text-muted hover:text-(--brand-primary) disabled:opacity-55"
+                          className="min-h-8 text-[11px] font-bold text-text-muted hover:text-(--brand-primary) disabled:opacity-55"
                         >
                           Remind me later
                         </button>
@@ -396,11 +396,11 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       <div>
                         <h2
                           id="profile-completion-title"
-                          className="text-lg font-bold text-text-strong"
+                          className="text-[13px] font-bold text-text-strong"
                         >
                           Your profile is {profileCompletion.percentage}% complete
                         </h2>
-                        <p className="mt-0.5 text-xs text-text-muted">
+                        <p className="mt-0.5 text-[10.5px] text-text-muted">
                           {
                             profileCompletion.items.filter((item) => item.status === "MISSING")
                               .length
@@ -420,7 +420,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                             current ? { ...current, showExpandedPrompt: true } : current,
                           )
                         }
-                        className="min-h-9 rounded-lg border border-border-default px-3 text-xs font-bold text-(--brand-primary) hover:bg-surface-subtle"
+                        className="min-h-9 rounded-lg border border-border-default px-3 text-[11px] font-bold text-(--brand-primary) hover:bg-surface-subtle"
                       >
                         Review missing details
                       </button>
@@ -436,7 +436,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 <div className="flex flex-col gap-4 border-b border-border-default bg-surface-subtle px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                   <div className="flex min-w-0 items-center gap-4">
                     <span
-                      className="grid size-14 shrink-0 place-items-center rounded-full text-base font-extrabold text-white"
+                      className="grid size-14 shrink-0 place-items-center rounded-full text-[16px] font-extrabold text-white"
                       style={{ backgroundColor: settings.primaryColor }}
                     >
                       {profile.fullName
@@ -449,29 +449,29 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         <h2
                           id="member-profile-title"
-                          className="truncate text-lg font-extrabold text-text-strong"
+                          className="truncate text-[18px] font-extrabold text-text-strong"
                         >
                           {profile.fullName}
                         </h2>
-                        <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-success">
+                        <span className="rounded-full bg-success-soft px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-success">
                           {profile.status}
                         </span>
                       </div>
-                      <p className="text-xs text-text-muted">
+                      <p className="text-[11.5px] text-text-muted">
                         {settings.memberIdLabel} {profile.controllerId}
                       </p>
                     </div>
                   </div>
                   {!editingProfile &&
                     (profilePending ? (
-                      <span className="rounded-full bg-warning-soft px-3 py-1.5 text-xs font-bold text-warning">
+                      <span className="rounded-full bg-warning-soft px-3 py-1.5 text-[10.5px] font-bold text-warning">
                         Update awaiting review
                       </span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => setEditingProfile(true)}
-                        className="min-h-10 shrink-0 rounded-lg bg-action-primary px-4 text-xs font-bold text-white"
+                        className="min-h-10 shrink-0 rounded-lg bg-action-primary px-4 text-[12px] font-bold text-white"
                       >
                         Request an update
                       </button>
@@ -480,7 +480,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
 
                 <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
                   <div className="px-5 py-5 sm:px-6 lg:border-r lg:border-border-default">
-                    <h3 className="text-base font-bold uppercase tracking-[0.08em] text-text-muted">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
                       Personal and contact details
                     </h3>
                     <dl className="mt-3 divide-y divide-border-default">
@@ -490,11 +490,11 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                         ["Phone number", profile.phone ?? "Not provided"],
                       ].map(([label, value]) => (
                         <div key={label} className="grid gap-1 py-3 sm:grid-cols-[150px_1fr]">
-                          <dt className="text-xs text-text-muted">{label}</dt>
-                          <dd className="wrap-wrap-break-word text-sm font-semibold text-ink">
+                          <dt className="text-[11.5px] text-text-muted">{label}</dt>
+                          <dd className="wrap-wrap-break-word text-[12.5px] font-semibold text-ink">
                             {value}
                             {label === "Phone number" && profile.phoneVerifiedAt && (
-                              <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-bold text-success">
+                              <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-[9px] font-bold text-success">
                                 Verified
                               </span>
                             )}
@@ -504,7 +504,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     </dl>
                   </div>
                   <div className="px-5 py-5 sm:px-6">
-                    <h3 className="text-base font-bold uppercase tracking-[0.08em] text-text-muted">
+                    <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
                       Membership context
                     </h3>
                     <dl className="mt-3 divide-y divide-border-default">
@@ -518,12 +518,12 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                         ],
                       ].map(([label, value]) => (
                         <div key={label} className="py-3">
-                          <dt className="text-xs text-text-muted">{label}</dt>
-                          <dd className="mt-0.5 text-sm font-semibold text-ink">{value}</dd>
+                          <dt className="text-[10.5px] text-text-muted">{label}</dt>
+                          <dd className="mt-0.5 text-[12.5px] font-semibold text-ink">{value}</dd>
                         </div>
                       ))}
                     </dl>
-                    <p className="mt-3 rounded-lg bg-info-soft px-3 py-2 text-xs leading-relaxed text-text-muted">
+                    <p className="mt-3 rounded-lg bg-info-soft px-3 py-2 text-[10.5px] leading-relaxed text-text-muted">
                       Changes to these records are reviewed before they become active.
                     </p>
                   </div>
@@ -578,7 +578,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 role="tab"
                 aria-selected={endorsementsTab === "requests"}
                 onClick={() => setEndorsementsTab("requests")}
-                className={`min-h-9 flex-1 rounded-lg px-3 text-xs font-bold transition focus:outline-none focus-visible:shadow-focus ${endorsementsTab === "requests" ? "bg-(--surface-raised) text-(--brand-primary) shadow-inset-panel" : "text-text-muted hover:text-ink"}`}
+                className={`min-h-9 flex-1 rounded-lg px-3 text-[11.5px] font-bold transition focus:outline-none focus-visible:shadow-focus ${endorsementsTab === "requests" ? "bg-(--surface-raised) text-(--brand-primary) shadow-inset-panel" : "text-text-muted hover:text-ink"}`}
               >
                 Requests history
               </button>
@@ -587,7 +587,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                 role="tab"
                 aria-selected={endorsementsTab === "household"}
                 onClick={() => setEndorsementsTab("household")}
-                className={`min-h-9 flex-1 rounded-lg px-3 text-xs font-bold transition focus:outline-none focus-visible:shadow-focus ${endorsementsTab === "household" ? "bg-(--surface-raised) text-(--brand-primary) shadow-inset-panel" : "text-text-muted hover:text-ink"}`}
+                className={`min-h-9 flex-1 rounded-lg px-3 text-[11.5px] font-bold transition focus:outline-none focus-visible:shadow-focus ${endorsementsTab === "household" ? "bg-(--surface-raised) text-(--brand-primary) shadow-inset-panel" : "text-text-muted hover:text-ink"}`}
               >
                 Household
               </button>
@@ -601,28 +601,28 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             >
               <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <div>
-                  <h2 id="household-title" className="text-lg font-extrabold text-text-strong">
+                  <h2 id="household-title" className="text-[18px] font-extrabold text-text-strong">
                     Your covered lives
                   </h2>
-                  <p className="mt-1 text-xs text-text-muted">
+                  <p className="mt-1 text-[11.5px] text-text-muted">
                     Review the spouse and beneficiaries connected to your membership.
                   </p>
                 </div>
-                <div className="flex gap-5 text-xs text-text-muted">
+                <div className="flex gap-5 text-[11px] text-text-muted">
                   <span>
-                    <strong className="block text-lg text-text-strong">
+                    <strong className="block text-[17px] text-text-strong">
                       {profile.spouse ? 1 : 0}
                     </strong>{" "}
                     spouse
                   </span>
                   <span>
-                    <strong className="block text-lg text-text-strong">
+                    <strong className="block text-[17px] text-text-strong">
                       {profile.beneficiaries.length}
                     </strong>{" "}
                     beneficiaries
                   </span>
                   <span>
-                    <strong className="block text-lg text-text-strong">
+                    <strong className="block text-[17px] text-text-strong">
                       {
                         requests.filter(
                           (request) =>
@@ -644,30 +644,30 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <h2 id="spouse-title" className="text-lg font-bold text-text-strong">
+                  <h2 id="spouse-title" className="text-[15px] font-bold text-text-strong">
                     Spouse
                   </h2>
-                  <p className="mt-0.5 text-xs text-text-muted">
+                  <p className="mt-0.5 text-[10.5px] text-text-muted">
                     {profile.spouse ? "One spouse is recorded" : "No spouse is currently recorded"}
                   </p>
                 </div>
                 {!editingSpouse &&
                   (spousePending ? (
-                    <span className="rounded-full bg-warning-soft px-2.5 py-0.5 text-xs font-semibold text-warning-accent">
+                    <span className="rounded-full bg-warning-soft px-2.5 py-0.5 text-[11px] font-semibold text-warning-accent">
                       Review pending
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setEditingSpouse(true)}
-                      className="min-h-9 rounded-lg border border-border-default px-3 text-xs font-semibold text-action-primary hover:bg-surface-subtle"
+                      className="min-h-9 rounded-lg border border-border-default px-3 text-[11.5px] font-semibold text-action-primary hover:bg-surface-subtle"
                     >
                       {profile.spouse ? "Request update" : "Add spouse"}
                     </button>
                   ))}
               </div>
               {profile.spouse ? (
-                <dl className="mt-4 divide-y divide-border-default text-sm">
+                <dl className="mt-4 divide-y divide-border-default text-[13px]">
                   <div className="py-2.5">
                     <dt className="text-text-muted">Full Name</dt>
                     <dd className="mt-0.5 font-semibold text-ink">{profile.spouse.fullName}</dd>
@@ -680,7 +680,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   </div>
                 </dl>
               ) : (
-                <div className="text-sm text-text-muted">No spouse on record.</div>
+                <div className="text-[13px] text-text-muted">No spouse on record.</div>
               )}
               {editingSpouse && (
                 <SpouseForm
@@ -699,10 +699,10 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <h2 id="beneficiaries-title" className="text-lg font-bold text-text-strong">
+                  <h2 id="beneficiaries-title" className="text-[15px] font-bold text-text-strong">
                     Beneficiaries ({profile.beneficiaries.length}/10)
                   </h2>
-                  <p className="mt-0.5 text-xs text-text-muted">
+                  <p className="mt-0.5 text-[10.5px] text-text-muted">
                     People nominated to receive eligible benefits
                   </p>
                 </div>
@@ -710,7 +710,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   <button
                     type="button"
                     onClick={() => setAddingBeneficiary(true)}
-                    className="min-h-9 rounded-lg bg-action-primary px-3 text-xs font-bold text-white"
+                    className="min-h-9 rounded-lg bg-action-primary px-3 text-[11.5px] font-bold text-white"
                   >
                     Add beneficiary
                   </button>
@@ -718,7 +718,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
               </div>
 
               {removeError && (
-                <div className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger">
+                <div className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-semibold text-danger">
                   {removeError}
                 </div>
               )}
@@ -738,7 +738,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
               )}
 
               {profile.beneficiaries.length === 0 ? (
-                <div className="text-sm text-text-muted">No beneficiaries on record.</div>
+                <div className="text-[13px] text-text-muted">No beneficiaries on record.</div>
               ) : (
                 <ul className="divide-y divide-[#e5e9f0]">
                   {profile.beneficiaries.map((b) => {
@@ -748,22 +748,22 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                       <li key={b.id} className="py-3">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-ink">
+                            <span className="block truncate text-[13px] font-semibold text-ink">
                               {b.fullName}
                             </span>
-                            <span className="mt-0.5 block text-xs text-text-muted">
+                            <span className="mt-0.5 block text-[11px] text-text-muted">
                               {b.relationship.charAt(0) + b.relationship.slice(1).toLowerCase()}
                               {isMinor(b.dateOfBirth) && " · Minor"}
                             </span>
                             {b.trusteeName && (
-                              <span className="mt-0.5 block text-xs text-text-muted">
+                              <span className="mt-0.5 block text-[10.5px] text-text-muted">
                                 Trustee: {b.trusteeName}
                               </span>
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-2.5">
                             {updatePending || removePending ? (
-                              <span className="rounded-full bg-warning-soft px-2.5 py-0.5 text-xs font-semibold text-warning-accent">
+                              <span className="rounded-full bg-warning-soft px-2.5 py-0.5 text-[11px] font-semibold text-warning-accent">
                                 Review pending
                               </span>
                             ) : (
@@ -775,7 +775,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                       editingBeneficiaryId === b.id ? null : b.id,
                                     )
                                   }
-                                  className="min-h-8 rounded-lg border border-border-default px-2.5 text-xs font-semibold text-text-strong"
+                                  className="min-h-8 rounded-lg border border-border-default px-2.5 text-[11px] font-semibold text-text-strong"
                                 >
                                   Edit
                                 </button>
@@ -783,7 +783,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                                   type="button"
                                   onClick={() => setBeneficiaryToRemove(b)}
                                   disabled={removingId === b.id}
-                                  className="min-h-8 rounded-lg px-2.5 text-xs font-semibold text-danger hover:bg-danger-soft disabled:opacity-60"
+                                  className="min-h-8 rounded-lg px-2.5 text-[11px] font-semibold text-danger hover:bg-danger-soft disabled:opacity-60"
                                 >
                                   Remove
                                 </button>
@@ -821,11 +821,14 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             >
               <header className="border-b border-border-default px-4 py-4 sm:px-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 id="coverage-heading" className="text-lg font-bold text-(--brand-primary)">
+                  <h2
+                    id="coverage-heading"
+                    className="text-[15px] font-bold text-(--brand-primary)"
+                  >
                     My benefit plan
                   </h2>
                 </div>
-                <dl className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <dl className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
                   <div>
                     <dt className="text-text-muted">Effective from</dt>
                     <dd className="font-semibold text-ink">
@@ -838,17 +841,17 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   </div>
                 </dl>
                 {benefitPlan.note && (
-                  <p className="mt-3 max-w-[70ch] text-xs leading-relaxed text-text-muted">
+                  <p className="mt-3 max-w-[70ch] text-[12px] leading-relaxed text-text-muted">
                     {benefitPlan.note}
                   </p>
                 )}
               </header>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-180 table-fixed text-left text-sm">
+                <table className="w-full min-w-180 table-fixed text-left text-[12.5px]">
                   <caption className="sr-only">
                     Member and spouse benefit amounts with coverage notes
                   </caption>
-                  <thead className="bg-surface-subtle text-xs font-bold uppercase tracking-[0.05em] text-text-muted">
+                  <thead className="bg-surface-subtle text-[10.5px] font-bold uppercase tracking-[0.05em] text-text-muted">
                     <tr>
                       <th scope="col" className="w-[23%] px-4 py-2.5 sm:px-5">
                         Benefit
@@ -892,7 +895,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                             {benefit.type === "CRITICAL_ILLNESS" &&
                               benefit.namedConditions?.length > 0 && (
                                 <details className="mt-2">
-                                  <summary className="inline-flex cursor-pointer list-none items-center rounded-lg border border-border-default bg-(--surface-raised) px-2.5 py-1.5 text-xs font-bold text-(--brand-primary) hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus">
+                                  <summary className="inline-flex cursor-pointer list-none items-center rounded-lg border border-border-default bg-(--surface-raised) px-2.5 py-1.5 text-[11px] font-bold text-(--brand-primary) hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus">
                                     View {benefit.namedConditions.length} named{" "}
                                     {benefit.namedConditions.length === 1 ? "illness" : "illnesses"}
                                   </summary>
@@ -909,7 +912,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   </tbody>
                 </table>
               </div>
-              <p className="border-t border-border-default px-4 py-3 text-xs text-text-muted sm:px-5">
+              <p className="border-t border-border-default px-4 py-3 text-[11px] text-text-muted sm:px-5">
                 On smaller screens, swipe across the table to view all coverage details.
               </p>
             </section>
@@ -921,10 +924,13 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
               aria-labelledby="new-request-heading"
             >
               <header className="border-b border-border-default px-4 py-4 sm:px-5">
-                <h2 id="new-request-heading" className="text-lg font-bold text-(--brand-primary)">
+                <h2
+                  id="new-request-heading"
+                  className="text-[15px] font-bold text-(--brand-primary)"
+                >
                   Submit a change request
                 </h2>
-                <p className="mt-1 max-w-[70ch] text-xs leading-relaxed text-text-muted">
+                <p className="mt-1 max-w-[70ch] text-[11.5px] leading-relaxed text-text-muted">
                   Choose what you want to update. Your current record stays unchanged until your
                   GNAT staff review and approve the request.
                 </p>
@@ -937,12 +943,12 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     onClick={() => setRequestComposer("MEMBER_DETAILS")}
                     className="group min-h-28 px-4 py-4 text-left hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-inset disabled:cursor-not-allowed disabled:opacity-55 sm:px-5"
                   >
-                    <span className="block text-sm font-bold text-ink">Personal details</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">
+                    <span className="block text-[13px] font-bold text-ink">Personal details</span>
+                    <span className="mt-1 block text-[11.5px] leading-relaxed text-text-muted">
                       Name, Ghana Card, phone number, or school.
                     </span>
                     {profilePending && (
-                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-xs font-bold text-warning">
+                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
                         Request pending
                       </span>
                     )}
@@ -953,14 +959,14 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     onClick={() => setRequestComposer("SPOUSE")}
                     className="group min-h-28 px-4 py-4 text-left hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-inset disabled:cursor-not-allowed disabled:opacity-55 sm:px-5"
                   >
-                    <span className="block text-sm font-bold text-ink">
+                    <span className="block text-[13px] font-bold text-ink">
                       {profile.spouse ? "Spouse details" : "Add spouse"}
                     </span>
-                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">
+                    <span className="mt-1 block text-[11.5px] leading-relaxed text-text-muted">
                       Add or update the spouse covered under your membership.
                     </span>
                     {spousePending && (
-                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-xs font-bold text-warning">
+                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
                         Request pending
                       </span>
                     )}
@@ -971,12 +977,12 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                     onClick={() => setRequestComposer("BENEFICIARY_ADD")}
                     className="group min-h-28 px-4 py-4 text-left hover:bg-surface-subtle focus:outline-none focus-visible:shadow-focus-inset disabled:cursor-not-allowed disabled:opacity-55 sm:px-5"
                   >
-                    <span className="block text-sm font-bold text-ink">Add beneficiary</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">
+                    <span className="block text-[13px] font-bold text-ink">Add beneficiary</span>
+                    <span className="mt-1 block text-[11.5px] leading-relaxed text-text-muted">
                       Nominate another person to receive eligible benefits.
                     </span>
                     {pendingFor("BENEFICIARY_ADD") && (
-                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-xs font-bold text-warning">
+                      <span className="mt-2 inline-block rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
                         Request pending
                       </span>
                     )}
@@ -1008,7 +1014,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
                   />
                 </div>
               )}
-              <footer className="border-t border-border-default px-4 py-3 text-xs text-text-muted sm:px-5">
+              <footer className="border-t border-border-default px-4 py-3 text-[11px] text-text-muted sm:px-5">
                 To update or remove an existing beneficiary, use the{" "}
                 <button
                   type="button"
@@ -1032,7 +1038,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
             />
           )}
           {section === "coverage" && !benefitPlan && (
-            <div className="rounded-2xl border border-border-default bg-(--surface-raised) p-6 text-sm text-text-muted md:col-span-2">
+            <div className="rounded-2xl border border-border-default bg-(--surface-raised) p-6 text-[12.5px] text-text-muted md:col-span-2">
               No active benefit plan is available yet.
             </div>
           )}
@@ -1040,11 +1046,11 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
           {section === "notifications" && <MemberNotifications />}
           {section === "help" && (
             <div className="rounded-2xl border border-border-default bg-(--surface-raised) p-6 md:col-span-2">
-              <h2 className="text-lg font-bold text-text-strong">Help and support</h2>
-              <p className="mt-1 text-sm text-text-muted">
+              <h2 className="text-[15px] font-bold text-text-strong">Help and support</h2>
+              <p className="mt-1 text-[12.5px] text-text-muted">
                 Contact {settings.schemeSponsor} if you need help with your membership record.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              <div className="mt-4 flex flex-wrap gap-2 text-[12px]">
                 {settings.organizationPhone && (
                   <a
                     className="rounded-lg border border-border-default px-3 py-2 font-semibold text-text-strong no-underline"
@@ -1064,8 +1070,8 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
               </div>
               {settings.privacyNotice && (
                 <div className="mt-5 border-t border-border-default pt-4">
-                  <h3 className="text-base font-bold text-text-strong">Privacy notice</h3>
-                  <p className="mt-1 max-w-[75ch] whitespace-pre-wrap text-xs leading-relaxed text-text-muted">
+                  <h3 className="text-[13px] font-bold text-text-strong">Privacy notice</h3>
+                  <p className="mt-1 max-w-[75ch] whitespace-pre-wrap text-[12px] leading-relaxed text-text-muted">
                     {settings.privacyNotice}
                   </p>
                 </div>
@@ -1074,7 +1080,7 @@ export default function MemberHome({ section = "profile" }: { section?: MemberPo
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-border-default bg-white p-6 text-sm text-text-muted">
+        <div className="rounded-2xl border border-border-default bg-white p-6 text-[13px] text-text-muted">
           We couldn't load your profile.
         </div>
       )}

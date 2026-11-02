@@ -30,10 +30,12 @@ export default function ConfirmationPanel({
       : "border-warning-border bg-warning-soft";
   return (
     <section className={`rounded-xl border p-4 ${panelTone}`} aria-labelledby={titleId}>
-      <h2 id={titleId} className="text-lg font-bold text-text-strong">
+      <h2 id={titleId} className="text-[14px] font-bold text-text-strong">
         {title}
       </h2>
-      <p className="mt-1 max-w-[65ch] text-sm leading-relaxed text-text-muted">{description}</p>
+      <p className="mt-1 max-w-[65ch] text-[12.5px] leading-relaxed text-text-muted">
+        {description}
+      </p>
       {children}
       <div className="mt-4 flex flex-wrap gap-2">
         <Button

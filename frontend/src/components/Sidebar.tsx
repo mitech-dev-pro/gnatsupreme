@@ -137,9 +137,9 @@ const adminItems: {
 ];
 
 const navItemBase =
-  "flex items-center gap-2.75 rounded-lg px-3 py-2.5 text-sm font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
+  "flex items-center gap-2.75 rounded-lg px-3 py-2.5 text-[13.5px] font-medium text-[#b7bedd] no-underline transition-colors hover:bg-white/6 hover:text-white";
 const navItemActive = "bg-(--brand-accent) text-white hover:bg-(--brand-accent)";
-const navSoonBadge = "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-xs text-nav-muted";
+const navSoonBadge = "ml-auto rounded-md bg-white/8 px-1.5 py-0.5 text-[9.5px] text-nav-muted";
 
 function NavGroup({
   id,
@@ -197,7 +197,7 @@ function NavGroup({
               onClick={onNavigate}
               className={() => {
                 const isActive = location.pathname + location.search === item.to;
-                return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-sm font-medium no-underline transition-colors ${
+                return `relative my-px flex items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium no-underline transition-colors ${
                   isActive
                     ? "bg-white/8 font-semibold text-white"
                     : "text-nav-muted hover:bg-white/6 hover:text-white"
@@ -210,7 +210,7 @@ function NavGroup({
           ) : (
             <span
               key={item.target}
-              className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-sm font-medium text-nav-muted opacity-60"
+              className="relative my-px flex cursor-not-allowed items-center gap-2.25 rounded-lg py-2 pl-8.25 pr-3 text-[12.5px] font-medium text-nav-muted opacity-60"
             >
               <span className="absolute left-4.75 h-1 w-1 rounded-full bg-current opacity-80" />
               {item.label}
@@ -269,18 +269,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-sm font-extrabold text-text-strong shadow-nav">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-[13px] font-extrabold text-text-strong shadow-nav">
             {settings.sidebarMark}
           </div>
           <div className="leading-[1.15]">
-            <div className="text-base font-bold text-white">{settings.portalName}</div>
-            <div className="text-sm font-medium text-white mb-1">Group Insurance Scheme</div>
-            <div className="text-xs tracking-[0.3px] text-nav-muted">Staff Portal · v1.0</div>
+            <div className="text-[14.5px] font-bold text-white">{settings.portalName}</div>
+            <div className="text-[12.5px] font-medium text-white mb-1">Group Insurance Scheme</div>
+            <div className="text-[10.5px] tracking-[0.3px] text-nav-muted">Staff Portal · v1.0</div>
           </div>
         </div>
 
         <nav className="flex-1 px-2.5">
-          <div className="px-3 pb-1.5 pt-2.5 text-xs font-semibold tracking-[1.2px] text-nav-subtle">
+          <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-nav-subtle">
             MAIN
           </div>
 
@@ -350,7 +350,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </NavLink>
           ))}
 
-          <div className="px-3 pb-1.5 pt-2.5 text-xs font-semibold tracking-[1.2px] text-nav-subtle">
+          <div className="px-3 pb-1.5 pt-2.5 text-[10px] font-semibold tracking-[1.2px] text-nav-subtle">
             ADMINISTRATION
           </div>
 
@@ -384,7 +384,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </nav>
 
-        <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-xs text-nav-subtle">
+        <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-nav-subtle">
           {settings.schemeSponsor} &copy; {new Date().getFullYear()}
           <br />
           Underwritten by {settings.underwriter}

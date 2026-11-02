@@ -7,7 +7,7 @@ import {
 } from "react";
 
 const controlClasses =
-  "w-full min-h-10 rounded-lg border border-border-default bg-(--surface-raised) px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-180 focus:border-action-primary focus:outline-none focus:ring-3 focus:ring-success-soft disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-text-muted";
+  "w-full min-h-10 rounded-lg border border-border-default bg-(--surface-raised) px-3 py-2 text-[12.5px] text-ink transition-[border-color,box-shadow] duration-180 focus:border-action-primary focus:outline-none focus:ring-3 focus:ring-success-soft disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-text-muted";
 
 function Frame({
   id,
@@ -26,7 +26,7 @@ function Frame({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-bold text-text-strong">
+      <label htmlFor={id} className="mb-1.5 block text-[11.5px] font-bold text-text-strong">
         {label}
         {required && (
           <span aria-hidden="true" className="ml-0.5 text-danger">
@@ -38,7 +38,7 @@ function Frame({
       {(hint || error) && (
         <p
           id={`${id}-${error ? "error" : "hint"}`}
-          className={`mt-1.5 text-xs ${error ? "font-semibold text-danger" : "text-text-muted"}`}
+          className={`mt-1.5 text-[11.5px] ${error ? "font-semibold text-danger" : "text-text-muted"}`}
         >
           {error ?? hint}
         </p>

@@ -25,7 +25,7 @@ export default function StatusBadge({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${tones[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone]}`}
     >
       {dot && <span aria-hidden="true" className={`size-1.5 rounded-full ${dots[tone]}`} />}
       {children}

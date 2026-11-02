@@ -144,7 +144,7 @@ const Dropdown: FC<DropdownProps> = ({
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border bg-(--surface-raised) px-3 py-2 text-sm transition-[border-color,box-shadow] duration-180 focus:outline-none focus:ring-3 focus:ring-success-soft ${
+        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border bg-(--surface-raised) px-3 py-2 text-[12.5px] transition-[border-color,box-shadow] duration-180 focus:outline-none focus:ring-3 focus:ring-success-soft ${
           disabled
             ? "cursor-not-allowed border-border-default bg-surface-subtle text-text-muted"
             : error
@@ -182,7 +182,7 @@ const Dropdown: FC<DropdownProps> = ({
           aria-activedescendant={focusedIndex >= 0 ? `option-${focusedIndex}` : undefined}
         >
           {flatOptions.length === 0 ? (
-            <span className="block px-3 py-2 text-sm text-text-muted">
+            <span className="block px-3 py-2 text-[12.5px] text-text-muted">
               No {dropdownCategory} available
             </span>
           ) : (
@@ -205,7 +205,7 @@ const Dropdown: FC<DropdownProps> = ({
                       setIsOpen(false);
                     }}
                     onMouseEnter={() => setFocusedIndex(i)}
-                    className={`w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors focus:outline-none ${
+                    className={`w-full cursor-pointer px-3 py-2 text-left text-[12.5px] transition-colors focus:outline-none ${
                       focusedIndex === i
                         ? "bg-success-soft text-(--action-primary-hover)"
                         : "text-ink hover:bg-surface-subtle"
@@ -223,7 +223,7 @@ const Dropdown: FC<DropdownProps> = ({
                   {(options ?? []).map(renderOption)}
                   {groups.map((group) => (
                     <div key={group.label} role="group" aria-label={group.label}>
-                      <div className="sticky top-0 bg-(--surface-raised) px-3 pt-2 pb-1 text-xs font-bold uppercase tracking-wide text-text-muted">
+                      <div className="sticky top-0 bg-(--surface-raised) px-3 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wide text-text-muted">
                         {group.label}
                       </div>
                       {group.options.map(renderOption)}

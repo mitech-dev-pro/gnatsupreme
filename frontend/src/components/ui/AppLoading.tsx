@@ -7,12 +7,12 @@ export default function AppLoading({ label = "Restoring your session…" }: { la
     >
       <div className="w-full max-w-72">
         <div className="mb-4 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-text-strong text-sm font-extrabold text-text-on-action">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-text-strong text-[13px] font-extrabold text-text-on-action">
             GS
           </div>
           <div>
-            <div className="text-sm font-bold text-text-strong">GNAT Supreme Care</div>
-            <div className="mt-0.5 text-xs text-text-muted">{label}</div>
+            <div className="text-[13px] font-bold text-text-strong">GNAT Supreme Care</div>
+            <div className="mt-0.5 text-[11.5px] text-text-muted">{label}</div>
           </div>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-skeleton">

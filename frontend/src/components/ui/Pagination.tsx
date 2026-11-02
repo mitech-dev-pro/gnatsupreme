@@ -15,7 +15,7 @@ export default function Pagination({
   if (totalPages <= 1) return null;
   return (
     <nav
-      className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm"
+      className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[12.5px]"
       aria-label="Pagination"
     >
       <span className="text-text-muted" aria-live="polite">

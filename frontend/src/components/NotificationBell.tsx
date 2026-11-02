@@ -120,7 +120,7 @@ export default function NotificationBell() {
           <path d="M13.7 21a2 2 0 0 1-3.4 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-xs font-bold text-white">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -131,13 +131,13 @@ export default function NotificationBell() {
           <div className="fixed inset-0 z-59" onClick={() => setOpen(false)} />
           <div className="fixed left-4 right-4 top-16 z-60 overflow-hidden rounded-xl border border-border-default bg-white shadow-popover sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+8px)] sm:w-80">
             <div className="flex items-center justify-between border-b border-border-default px-3.5 py-2.5">
-              <span className="text-sm font-bold text-text-strong">Notifications</span>
+              <span className="text-[12.5px] font-bold text-text-strong">Notifications</span>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => void markRead()}
-                  className="text-xs font-semibold text-action-primary hover:underline"
+                  className="text-[11px] font-semibold text-action-primary hover:underline"
                 >
                   Mark all read
                 </button>
@@ -151,9 +151,9 @@ export default function NotificationBell() {
                 </p>
               )}
               {loading && items.length === 0 ? (
-                <div className="px-3.5 py-6 text-center text-xs text-text-muted">Loading…</div>
+                <div className="px-3.5 py-6 text-center text-[12px] text-text-muted">Loading…</div>
               ) : items.length === 0 && !error ? (
-                <div className="px-3.5 py-6 text-center text-xs text-text-muted">
+                <div className="px-3.5 py-6 text-center text-[12px] text-text-muted">
                   No notifications yet.
                 </div>
               ) : (
@@ -170,13 +170,15 @@ export default function NotificationBell() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-semibold text-ink">{item.title}</span>
+                        <span className="text-[12px] font-semibold text-ink">{item.title}</span>
                         {!item.readAt && (
                           <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-action-primary" />
                         )}
                       </div>
-                      <div className="mt-0.5 text-xs text-text-muted">{item.message}</div>
-                      <div className="mt-1 text-xs text-nav-muted">{timeAgo(item.createdAt)}</div>
+                      <div className="mt-0.5 text-[11.5px] text-text-muted">{item.message}</div>
+                      <div className="mt-1 text-[10.5px] text-nav-muted">
+                        {timeAgo(item.createdAt)}
+                      </div>
                     </button>
                     {claimNotificationLink(item.actionUrl, "staff") && (
                       <Link

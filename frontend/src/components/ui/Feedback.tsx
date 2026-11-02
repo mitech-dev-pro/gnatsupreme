@@ -13,7 +13,7 @@ export function Alert({ tone = "info", children }: { tone?: AlertTone; children:
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${alertStyles[tone]}`}
+      className={`rounded-lg border px-3 py-2.5 text-[12.5px] font-semibold ${alertStyles[tone]}`}
     >
       {children}
     </div>
@@ -37,8 +37,10 @@ export function EmptyState({
       >
         ✓
       </div>
-      <h2 className="text-lg font-bold text-text-strong">{title}</h2>
-      <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-text-muted">{description}</p>
+      <h2 className="text-[14px] font-bold text-text-strong">{title}</h2>
+      <p className="mt-1 max-w-[52ch] text-[12.5px] leading-relaxed text-text-muted">
+        {description}
+      </p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

@@ -46,7 +46,7 @@ export default function ClaimDocumentChecklist({
         PDF, Word (.doc, .docx), JPEG or JPG. Maximum 1 MB per file; one file per category.
       </p>
       {claimType === "DEATH" && (
-        <p className="mb-2 text-xs italic text-text-muted">
+        <p className="mb-2 text-[11.5px] italic text-text-muted">
           Provide any ONE of the death-proof documents below.
         </p>
       )}
@@ -70,7 +70,7 @@ export default function ClaimDocumentChecklist({
               key={slot.key}
               role="group"
               aria-label={slot.label}
-              className={`flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs ${index !== manifest.length - 1 ? "border-b border-border-default" : ""}`}
+              className={`flex flex-wrap items-center gap-2 px-3 py-2.5 text-[12px] ${index !== manifest.length - 1 ? "border-b border-border-default" : ""}`}
             >
               <span className="min-w-0 flex-1 font-semibold text-ink">{slot.label}</span>
               <StatusBadge tone={tone}>{tagLabel}</StatusBadge>
@@ -78,7 +78,7 @@ export default function ClaimDocumentChecklist({
                 uploaded.map((doc) => (
                   <span
                     key={doc.id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2.5 py-0.5 text-xs font-semibold text-text-strong"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-info-soft px-2.5 py-0.5 text-[11px] font-semibold text-text-strong"
                   >
                     {doc.originalName}
                     <button
@@ -122,8 +122,8 @@ export default function ClaimDocumentChecklist({
           {fileError}
         </p>
       )}
-      {error && <p className="mt-1.5 text-xs font-semibold text-danger">{error}</p>}
-      <div className="mt-2 flex justify-between rounded-lg bg-surface-subtle px-3 py-2 text-xs font-bold text-text-strong">
+      {error && <p className="mt-1.5 text-[11.5px] font-semibold text-danger">{error}</p>}
+      <div className="mt-2 flex justify-between rounded-lg bg-surface-subtle px-3 py-2 text-[11.5px] font-bold text-text-strong">
         <span>Documents attached</span>
         <span>
           {numerator} of {denominator} required

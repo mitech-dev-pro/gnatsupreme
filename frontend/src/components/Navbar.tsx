@@ -67,7 +67,7 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
           </div>
           <div className="h-6 w-px bg-border-default" />
           <div className="flex items-center gap-2">
-            <span className="hidden text-xs font-semibold uppercase tracking-[0.08em] text-[#7a8190] lg:inline">
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7a8190] lg:inline">
               Underwritten by
             </span>
             <div className="flex h-9 items-center rounded-lg border border-border-default bg-text-on-action px-2.5">
@@ -95,12 +95,12 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
             aria-label={user ? `Account menu for ${user.fullName}` : "Account menu"}
             className="flex items-center gap-2.5"
           >
-            <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-action-primary text-sm font-bold text-white">
+            <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-action-primary text-[13px] font-bold text-white">
               {user ? initials(user.fullName) : ""}
             </div>
             <div className="hidden text-left leading-[1.2] sm:block">
-              <div className="text-sm font-bold text-ink">{user?.fullName}</div>
-              <div className="text-xs text-text-muted">{user ? formatRole(user.role) : ""}</div>
+              <div className="text-[13px] font-bold text-ink">{user?.fullName}</div>
+              <div className="text-[11px] text-text-muted">{user ? formatRole(user.role) : ""}</div>
             </div>
           </button>
 
@@ -117,7 +117,7 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
                   type="button"
                   role="menuitem"
                   onClick={handleLogout}
-                  className="flex w-full items-center gap-2.25 px-3.5 py-2.5 text-left text-sm font-semibold text-danger transition-colors hover:bg-danger-soft"
+                  className="flex w-full items-center gap-2.25 px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-danger transition-colors hover:bg-danger-soft"
                 >
                   <svg
                     viewBox="0 0 24 24"

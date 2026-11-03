@@ -8,7 +8,7 @@ import { invalidateAllMemberAuth } from "../../lib/auth-cache.js";
 import type { AuditRequestSource } from "../audit/audit.service.js";
 import { normalizeDistrictName, resolveDistrict } from "../geography/district-match.js";
 import { notifyMember } from "../notifications/notification.service.js";
-import { auditLinkChanges, relinkSpousesForMember } from "../members/member.routes.js";
+import { auditLinkChanges, relinkSpousesForMember } from "../members/member.service.js";
 import { cellAt, streamSpreadsheetRows } from "./spreadsheet-stream.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 
@@ -413,7 +413,9 @@ export async function reconcileReport20(
         // matches. The member's own card is unchanged here, only status is, so this re-derives
         // purely from the now-eligible status (see relinkSpousesForMember's eligibility check).
         for (const id of reappearedMemberIds) {
-          linkChanges.push(...(await relinkSpousesForMember(tx, id, activeMembersById.get(id)!.ghanaCardId)));
+          linkChanges.push(
+            ...(await relinkSpousesForMember(tx, id, activeMembersById.get(id)!.ghanaCardId)),
+          );
         }
         await tx.memberWorkflowEvent.createMany({
           data: reappearedMemberIds.map((id) => ({

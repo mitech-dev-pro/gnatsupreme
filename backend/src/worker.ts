@@ -38,11 +38,15 @@ const report20Worker = new Worker(REPORT20_QUEUE_NAME, (job) => processReport20J
   lockDuration: LOCK_DURATION_MS,
 });
 
-const memberImportWorker = new Worker(MEMBER_IMPORT_QUEUE_NAME, (job) => processMemberImportJob(job.data), {
-  connection: createRedisConnection(),
-  concurrency: env.WORKER_CONCURRENCY,
-  lockDuration: LOCK_DURATION_MS,
-});
+const memberImportWorker = new Worker(
+  MEMBER_IMPORT_QUEUE_NAME,
+  (job) => processMemberImportJob(job.data),
+  {
+    connection: createRedisConnection(),
+    concurrency: env.WORKER_CONCURRENCY,
+    lockDuration: LOCK_DURATION_MS,
+  },
+);
 
 for (const worker of [report20Worker, memberImportWorker]) {
   worker.on("failed", (job, error) =>

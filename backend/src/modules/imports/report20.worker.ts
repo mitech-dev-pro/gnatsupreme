@@ -29,7 +29,8 @@ export async function processReport20Job(data: Report20WorkerData) {
       data.actor,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
+    const message =
+      error instanceof Error ? error.message.slice(0, 500) : "Report reconciliation failed";
     await prisma.importJob.update({
       where: { id: data.importJobId },
       data: { status: "FAILED", errorMessage: message, completedAt: new Date() },

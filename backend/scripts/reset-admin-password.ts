@@ -43,7 +43,9 @@ async function resetAdministratorPassword() {
     }),
   ]);
 
-  console.log(`Password reset successfully for ${administrator.email}. Existing sessions were revoked.`);
+  console.log(
+    `Password reset successfully for ${administrator.email}. Existing sessions were revoked.`,
+  );
 }
 
 try {

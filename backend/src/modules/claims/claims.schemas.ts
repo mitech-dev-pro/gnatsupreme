@@ -15,6 +15,16 @@ const criticalIllnessDetailsSchema = z.object({
   illnessOther: z.string().trim().max(200).optional(),
 });
 
+// nightsBetween below assumes both dates land exactly on UTC midnight (true today, since both
+// fields only ever receive a `YYYY-MM-DD` string) and would otherwise round a diff like 9.6
+// nights up to 10, silently passing the hard HOSPITALIZATION_MINIMUM_NIGHTS eligibility gate it
+// shouldn't. This rejects a timestamp-bearing input at the validation boundary instead of
+// trusting every future caller (CSV import, API integration, admin edit) to keep sending
+// date-only values.
+function isUtcMidnight(value: Date) {
+  return value.getTime() % 86_400_000 === 0;
+}
+
 const hospitalizationDetailsSchema = z
   .object({
     hospitalName: z.string().trim().min(2).max(160),
@@ -25,21 +35,36 @@ const hospitalizationDetailsSchema = z
   .refine((value) => value.dischargeDate >= value.admissionDate, {
     message: "Discharge date must be on or after admission date",
     path: ["dischargeDate"],
+  })
+  .refine((value) => isUtcMidnight(value.admissionDate) && isUtcMidnight(value.dischargeDate), {
+    message: "Admission and discharge must be dates only, not timestamps",
+    path: ["admissionDate"],
   });
 
 export function claimSubmissionUnion<T extends z.ZodRawShape>(baseFields: T) {
   return z.discriminatedUnion("claimType", [
     z.object({ claimType: z.literal("DEATH"), claimDetails: deathTpdDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("TOTAL_PERMANENT_DISABILITY"), claimDetails: deathTpdDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("CRITICAL_ILLNESS"), claimDetails: criticalIllnessDetailsSchema, ...baseFields }),
-    z.object({ claimType: z.literal("HOSPITALIZATION"), claimDetails: hospitalizationDetailsSchema, ...baseFields }),
+    z.object({
+      claimType: z.literal("TOTAL_PERMANENT_DISABILITY"),
+      claimDetails: deathTpdDetailsSchema,
+      ...baseFields,
+    }),
+    z.object({
+      claimType: z.literal("CRITICAL_ILLNESS"),
+      claimDetails: criticalIllnessDetailsSchema,
+      ...baseFields,
+    }),
+    z.object({
+      claimType: z.literal("HOSPITALIZATION"),
+      claimDetails: hospitalizationDetailsSchema,
+      ...baseFields,
+    }),
   ]);
 }
 
 // Both admission/discharge are date-only (z.coerce.date() from a `YYYY-MM-DD` input), so both
-// land on UTC midnight and this diff is always a whole number of nights. If a timestamp-bearing
-// date ever flows in here instead, this rounds to the nearest night rather than truncating --
-// normalize both to midnight before diffing if that ever changes.
+// land on UTC midnight and this diff is always a whole number of nights -- enforced by
+// hospitalizationDetailsSchema's isUtcMidnight refinement above, not just this comment.
 export function nightsBetween(admission: Date, discharge: Date) {
   return Math.round((discharge.getTime() - admission.getTime()) / 86_400_000);
 }
@@ -55,25 +80,49 @@ export type ClaimDocumentSlot = { key: string; label: string; tag: ClaimDocument
 // sync by hand -- this comment and its frontend counterpart both flag the pairing.
 export const CLAIM_DOCUMENT_MANIFEST: Record<string, ClaimDocumentSlot[]> = {
   DEATH: [
-    { key: "medicalCertOrDoctorReport", label: "Medical Certificate or Doctor's Report of Cause of Death", tag: "ANY_ONE_REQUIRED" },
-    { key: "deathCertOrMortuary", label: "Death Certificate or Mortuary Documentation", tag: "ANY_ONE_REQUIRED" },
+    {
+      key: "medicalCertOrDoctorReport",
+      label: "Medical Certificate or Doctor's Report of Cause of Death",
+      tag: "ANY_ONE_REQUIRED",
+    },
+    {
+      key: "deathCertOrMortuary",
+      label: "Death Certificate or Mortuary Documentation",
+      tag: "ANY_ONE_REQUIRED",
+    },
     { key: "policeReport", label: "Police Report (in case of accident)", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   TOTAL_PERMANENT_DISABILITY: [
-    { key: "doctorReport", label: "Doctor's Report of Proof of Inability to Perform Duties", tag: "REQUIRED" },
+    {
+      key: "doctorReport",
+      label: "Doctor's Report of Proof of Inability to Perform Duties",
+      tag: "REQUIRED",
+    },
     { key: "policeReport", label: "Police Report (in case of accident)", tag: "OPTIONAL" },
     { key: "marriageCert", label: "Marriage Certificate (spouse claims only)", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   CRITICAL_ILLNESS: [
-    { key: "medicalReport", label: "Medical Report / Specialist Confirmation of Diagnosis", tag: "REQUIRED" },
+    {
+      key: "medicalReport",
+      label: "Medical Report / Specialist Confirmation of Diagnosis",
+      tag: "REQUIRED",
+    },
     { key: "labResults", label: "Laboratory / Diagnostic Test Results", tag: "OPTIONAL" },
-    { key: "dischargeSummary", label: "Hospital Discharge Summary (if applicable)", tag: "OPTIONAL" },
+    {
+      key: "dischargeSummary",
+      label: "Hospital Discharge Summary (if applicable)",
+      tag: "OPTIONAL",
+    },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
   HOSPITALIZATION: [
-    { key: "dischargeSummaryOrBill", label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights", tag: "REQUIRED" },
+    {
+      key: "dischargeSummaryOrBill",
+      label: "Hospital Discharge Summary or Medical Bill Showing Number of Nights",
+      tag: "REQUIRED",
+    },
     { key: "doctorReport", label: "Doctor's Report", tag: "OPTIONAL" },
     { key: "others", label: "Others", tag: "OPTIONAL" },
   ],
@@ -92,13 +141,18 @@ export const CLAIM_DOCUMENT_MANIFEST: Record<string, ClaimDocumentSlot[]> = {
 // copies in sync by hand.
 export function hasRequiredDocuments(claimType: string, uploadedKeys: Set<string>) {
   const manifest = CLAIM_DOCUMENT_MANIFEST[claimType] ?? [];
-  const requiredOk = manifest.filter((d) => d.tag === "REQUIRED").every((d) => uploadedKeys.has(d.key));
+  const requiredOk = manifest
+    .filter((d) => d.tag === "REQUIRED")
+    .every((d) => uploadedKeys.has(d.key));
   const anyOneGroup = manifest.filter((d) => d.tag === "ANY_ONE_REQUIRED");
   const anyOneOk = anyOneGroup.length === 0 || anyOneGroup.some((d) => uploadedKeys.has(d.key));
   return requiredOk && anyOneOk;
 }
 
-export function dateOfEventFromClaimDetails(claimType: string, claimDetails: Record<string, unknown>): Date {
+export function dateOfEventFromClaimDetails(
+  claimType: string,
+  claimDetails: Record<string, unknown>,
+): Date {
   if (claimType === "CRITICAL_ILLNESS") return claimDetails.diagnosisDate as Date;
   if (claimType === "HOSPITALIZATION") return claimDetails.admissionDate as Date;
   return claimDetails.dateOfEvent as Date;

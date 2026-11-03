@@ -1,5 +1,22 @@
+import { memberChangeCorrectionRouter } from "./member-change-requests.routes.js";
+import { notifyChangeRequested } from "../workflows/change-request.notifications.js";
+import { createClaimDraftRouter, commitClaimDraft } from "../claims/claims.drafts.js";
+import { memberClaimSubmissionSchema } from "./member-portal.claims.schemas.js";
+import { refreshClaimAssessment } from "../claims/claims.assessment.js";
+import {
+  activeBenefit,
+  BENEFIT_NOT_CONFIGURED_MESSAGE,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "../claims/claims.service.js";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import {
+  ClaimDocumentError,
+  loadClaimDocuments,
+  validateClaimFile,
+} from "../claims/claims.documents.js";
+import { claimFileUpload } from "../files/file.storage.js";
 import { unlink } from "node:fs/promises";
 
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -10,22 +27,26 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
 import {
+  authenticateMember,
+  type AuthenticatedMember,
+} from "../../middleware/authenticate-member.js";
+import {
   auditLinkChanges,
   memberGhanaCardConflict,
   reconcileSpouseLink,
   relinkSpousesForMember,
   spouseGhanaCardConflict,
-} from "../members/member.routes.js";
-import { authenticateMember, type AuthenticatedMember } from "../../middleware/authenticate-member.js";
+} from "../members/member.service.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { createChangeRequestSchema } from "../workflows/workflow.schemas.js";
 import { onboardingDetailsSchema } from "../member-auth/member-auth.schemas.js";
 import { notifyMember, notifyStaffForMember } from "../notifications/notification.service.js";
+import { claimsProvider } from "../claims/mankrado.provider.js";
+import { ClaimsProviderUnavailableError } from "../claims/claims.provider.js";
 import { getOrganizationSettings, publicBranding } from "../settings/settings.service.js";
 import { getMemberProfileCompletion } from "./profile-completion.service.js";
 import { hasValidFileSignature, memberFileUpload, uploadRoot } from "../files/file.storage.js";
 import {
-  claimSubmissionUnion,
   dateOfEventFromClaimDetails,
   hasRequiredDocuments,
   HOSPITALIZATION_MINIMUM_NIGHTS,
@@ -43,10 +64,19 @@ function asJson(value: unknown) {
 }
 
 memberPortalRouter.use(authenticateMember);
+memberPortalRouter.use("/change-requests", memberChangeCorrectionRouter);
+memberPortalRouter.use("/claims/drafts", createClaimDraftRouter("member"));
 
 memberPortalRouter.get("/settings", async (_request, response) => {
   const settings = await getOrganizationSettings();
-  response.json({ success: true, data: { ...publicBranding(settings), address: settings.address, privacyNotice: settings.privacyNotice } });
+  response.json({
+    success: true,
+    data: {
+      ...publicBranding(settings),
+      address: settings.address,
+      privacyNotice: settings.privacyNotice,
+    },
+  });
 });
 
 memberPortalRouter.get("/profile", async (_request, response) => {
@@ -64,7 +94,9 @@ memberPortalRouter.get("/profile", async (_request, response) => {
         school: true,
         status: true,
         report20Matched: true,
-        district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
+        district: {
+          select: { id: true, name: true, region: { select: { id: true, name: true } } },
+        },
         spouse: { select: { id: true, fullName: true, ghanaCardId: true } },
         beneficiaries: { orderBy: { id: "asc" } },
       },
@@ -109,7 +141,9 @@ memberPortalRouter.patch("/profile-completion/dismiss", async (request, response
 memberPortalRouter.patch("/profile-completion/spouse-declaration", async (request, response) => {
   const parsed = z.object({ hasSpouse: z.literal(false) }).safeParse(request.body);
   if (!parsed.success) {
-    response.status(400).json({ success: false, message: "Confirm that no spouse should be recorded" });
+    response
+      .status(400)
+      .json({ success: false, message: "Confirm that no spouse should be recorded" });
     return;
   }
   const currentMember = member(response);
@@ -121,11 +155,16 @@ memberPortalRouter.patch("/profile-completion/spouse-declaration", async (reques
     }),
   ]);
   if (existingSpouse) {
-    response.status(409).json({ success: false, message: "A spouse is already recorded. Submit a change request if this is incorrect." });
+    response.status(409).json({
+      success: false,
+      message: "A spouse is already recorded. Submit a change request if this is incorrect.",
+    });
     return;
   }
   if (pendingRequest) {
-    response.status(409).json({ success: false, message: "A spouse request is already awaiting review" });
+    response
+      .status(409)
+      .json({ success: false, message: "A spouse request is already awaiting review" });
     return;
   }
   await prisma.member.update({
@@ -154,7 +193,10 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     response.status(400).json({
       success: false,
       message: "Enter valid details to continue",
-      errors: parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+      errors: parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
     });
     return;
   }
@@ -162,13 +204,19 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
   const { ghanaCardId, spouse, beneficiaries } = parsed.data;
 
   if (spouse?.ghanaCardId && spouse.ghanaCardId === ghanaCardId) {
-    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID." });
+    response
+      .status(400)
+      .json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID." });
     return;
   }
 
   const existing = await prisma.member.findUniqueOrThrow({
     where: { id: currentMember.id },
-    select: { ghanaCardId: true, spouse: { select: { id: true } }, _count: { select: { beneficiaries: true } } },
+    select: {
+      ghanaCardId: true,
+      spouse: { select: { id: true } },
+      _count: { select: { beneficiaries: true } },
+    },
   });
   // Only a real conflict if the member is actually trying to (re-)submit one -- the frontend
   // omits this field entirely once it already has a value on file, so ghanaCardId being present
@@ -185,7 +233,10 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
   if (spouse && existing.spouse) {
-    response.status(409).json({ success: false, message: "A spouse is already recorded. Submit a change request to update it." });
+    response.status(409).json({
+      success: false,
+      message: "A spouse is already recorded. Submit a change request to update it.",
+    });
     return;
   }
   // A member enrolled by staff may already have a beneficiary on file -- this endpoint only runs
@@ -196,7 +247,9 @@ memberPortalRouter.post("/onboarding", async (request, response) => {
     return;
   }
   if (existing._count.beneficiaries + beneficiaries.length > 10) {
-    response.status(409).json({ success: false, message: "Up to 10 beneficiaries can be recorded in total." });
+    response
+      .status(409)
+      .json({ success: false, message: "Up to 10 beneficiaries can be recorded in total." });
     return;
   }
 
@@ -291,59 +344,90 @@ function receiveMarriageCertificate(request: Request, response: Response, next: 
   memberFileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      response
+        .status(413)
+        .json({ success: false, message: "File exceeds the configured upload limit" });
       return;
     }
-    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "File upload failed" });
+    response.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "File upload failed",
+    });
   });
 }
 
-memberPortalRouter.post("/spouse/marriage-certificate", receiveMarriageCertificate, async (request, response) => {
-  if (!request.file) {
-    response.status(400).json({ success: false, message: "Attach one file using the 'file' field" });
-    return;
-  }
-  if (!(await hasValidFileSignature(request.file.path, request.file.mimetype))) {
-    await unlink(request.file.path).catch(() => undefined);
-    response.status(400).json({ success: false, message: "File content does not match its declared type" });
-    return;
-  }
+memberPortalRouter.post(
+  "/spouse/marriage-certificate",
+  receiveMarriageCertificate,
+  async (request, response) => {
+    if (!request.file) {
+      response
+        .status(400)
+        .json({ success: false, message: "Attach one file using the 'file' field" });
+      return;
+    }
+    if (!(await hasValidFileSignature(request.file.path, request.file.mimetype))) {
+      await unlink(request.file.path).catch(() => undefined);
+      response
+        .status(400)
+        .json({ success: false, message: "File content does not match its declared type" });
+      return;
+    }
 
-  const currentMember = member(response);
-  const spouse = await prisma.spouse.findUnique({ where: { memberId: currentMember.id }, select: { id: true } });
-  if (!spouse) {
-    await unlink(request.file.path).catch(() => undefined);
-    response.status(409).json({ success: false, message: "Add your spouse's details before uploading a marriage certificate" });
-    return;
-  }
+    const currentMember = member(response);
+    const spouse = await prisma.spouse.findUnique({
+      where: { memberId: currentMember.id },
+      select: { id: true },
+    });
+    if (!spouse) {
+      await unlink(request.file.path).catch(() => undefined);
+      response.status(409).json({
+        success: false,
+        message: "Add your spouse's details before uploading a marriage certificate",
+      });
+      return;
+    }
 
-  const storagePath = path.posix.join("member-files", request.file.filename);
-  const downloadPath = `/api/files/${request.file.filename}`;
-  const file = await prisma.storedFile.create({
-    data: {
-      category: "MARRIAGE_CERTIFICATE",
-      originalName: path.basename(request.file.originalname),
-      storedName: request.file.filename,
-      mimeType: request.file.mimetype,
-      sizeBytes: request.file.size,
-      storagePath,
-      downloadPath,
-      memberId: currentMember.id,
-      spouseId: spouse.id,
-      uploadedByMemberId: currentMember.id,
-    },
-    select: { id: true, category: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
-  });
-  await recordAudit({
-    request,
-    action: "MEMBER_FILE_UPLOADED",
-    entityType: "STORED_FILE",
-    entityId: file.id,
-    description: `Member ${currentMember.controllerId} uploaded a marriage certificate`,
-    afterData: { category: file.category, originalName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes },
-  });
-  response.status(201).json({ success: true, data: file });
-});
+    const storagePath = path.posix.join("member-files", request.file.filename);
+    const downloadPath = `/api/files/${request.file.filename}`;
+    const file = await prisma.storedFile.create({
+      data: {
+        category: "MARRIAGE_CERTIFICATE",
+        originalName: path.basename(request.file.originalname),
+        storedName: request.file.filename,
+        mimeType: request.file.mimetype,
+        sizeBytes: request.file.size,
+        storagePath,
+        downloadPath,
+        memberId: currentMember.id,
+        spouseId: spouse.id,
+        uploadedByMemberId: currentMember.id,
+      },
+      select: {
+        id: true,
+        category: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        createdAt: true,
+      },
+    });
+    await recordAudit({
+      request,
+      action: "MEMBER_FILE_UPLOADED",
+      entityType: "STORED_FILE",
+      entityId: file.id,
+      description: `Member ${currentMember.controllerId} uploaded a marriage certificate`,
+      afterData: {
+        category: file.category,
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+      },
+    });
+    response.status(201).json({ success: true, data: file });
+  },
+);
 
 // A member can never be the one logging in to claim their own death or permanent disability --
 // the UI already hides the "For me" option for these two claim types (MemberClaimNew.tsx locks
@@ -354,39 +438,13 @@ memberPortalRouter.post("/spouse/marriage-certificate", receiveMarriageCertifica
 // claim (claims.routes.ts, a legitimate "filing on behalf of a deceased member" scenario) uses
 // its own submissionSchema built from the same claimSubmissionUnion base and is intentionally not
 // subject to this restriction.
-const memberClaimSubmissionSchema = claimSubmissionUnion({
-  claimantType: z.enum(["MEMBER", "SPOUSE"]),
-  claimantIdType: z.literal("GHANA_CARD"),
-  claimantIdNumber: z.string().trim().min(3, "Enter the claimant ID number").max(80),
-  claimantContact: z.object({
-    fullName: z.string().trim().min(2).max(120),
-    primaryPhone: z.string().trim().min(7).max(30),
-    additionalPhone: z.string().trim().max(30).optional(),
-    email: z.string().trim().email("Enter a valid email address").or(z.literal("")).optional(),
-    gpsAddress: z.string().trim().max(120).optional(),
-    residentialAddress: z.string().trim().max(240).optional(),
-    nationality: z.string().trim().min(2).max(80),
-  }),
-  paymentMethod: z.enum(["MOBILE_MONEY", "BANK_ACCOUNT", "CHEQUE", "NO_PAYMENT"]),
-  paymentDetails: z.record(z.string(), z.string().trim().max(150)).default({}),
-  documentIds: z.array(z.number().int().positive()).max(10).default([]),
-  notes: z.string().trim().max(1000).optional(),
-}).superRefine((value, ctx) => {
-  if (
-    (value.claimType === "DEATH" || value.claimType === "TOTAL_PERMANENT_DISABILITY") &&
-    value.claimantType !== "SPOUSE"
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["claimantType"],
-      message: "Death and Total & Permanent Disability claims can only be filed for a spouse.",
-    });
-  }
-});
 
 const claimSelect = {
   id: true,
   provider: true,
+  deliveryState: true,
+  externalStatus: true,
+  reviewedAt: true,
   externalClaimId: true,
   formUrl: true,
   status: true,
@@ -402,23 +460,6 @@ const claimSelect = {
   createdAt: true,
 } as const;
 
-async function activeClaimBenefit(claimType: "DEATH" | "TOTAL_PERMANENT_DISABILITY" | "CRITICAL_ILLNESS" | "HOSPITALIZATION", claimantType: "MEMBER" | "SPOUSE") {
-  const plan = await getCurrentBenefitPlan();
-  const benefit = plan?.benefits.find((item) => item.type === claimType && item.enabled);
-  const amount = claimantType === "SPOUSE" ? benefit?.spouseAmount : benefit?.memberAmount;
-  return amount ?? null;
-}
-
-async function memberUploadedSlotKeys(documentIds: number[], memberId: number) {
-  if (!documentIds.length) return new Set<string>();
-  const files = await prisma.storedFile.findMany({
-    where: { id: { in: documentIds }, memberId, category: "CLAIM_DOCUMENT", uploadedByMemberId: memberId },
-    select: { id: true, slotKey: true },
-  });
-  if (files.length !== new Set(documentIds).size) return null;
-  return new Set(files.map((file) => file.slotKey).filter((key): key is string => Boolean(key)));
-}
-
 memberPortalRouter.get("/claims", async (_request, response) => {
   const claims = await prisma.externalClaimSubmission.findMany({
     where: { memberId: member(response).id },
@@ -426,6 +467,27 @@ memberPortalRouter.get("/claims", async (_request, response) => {
     orderBy: { createdAt: "desc" },
   });
   response.json({ success: true, data: claims });
+});
+
+// Registered before /claims/:id -- Express matches in declaration order (unlike React Router,
+// it does not rank a static segment over a dynamic one), so this would otherwise be swallowed by
+// the :id route and fail its "must be a positive integer" parse.
+// Mirrors the staff GET /claims/history/:staffId endpoint (claims.routes.ts) but scoped to the
+// authenticated member's own controllerId -- no staffId param, so a member can never look up
+// another member's Mankrado history the way a staff request could deliberately or accidentally do.
+memberPortalRouter.get("/claims/history", async (_request, response) => {
+  const currentMember = member(response);
+  try {
+    const history = await claimsProvider.history(currentMember.controllerId);
+    if (history.some((item) => item.staffId && item.staffId !== currentMember.controllerId))
+      throw new Error("History member mismatch");
+    response.json({ success: true, data: history });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message: "Claims Portal history is unavailable. Local claims remain saved.",
+    });
+  }
 });
 
 memberPortalRouter.get("/claims/:id", async (request, response) => {
@@ -440,6 +502,19 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
     select: {
       ...claimSelect,
       claimantIdType: true,
+      claimantName: true,
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          district: { select: { name: true } },
+        },
+      },
+      submittedBy: { select: { id: true, fullName: true } },
+      submittedByMember: { select: { id: true, fullName: true, controllerId: true } },
+      reviewedBy: { select: { id: true, fullName: true } },
+      externalAssessment: true,
       claimantIdNumber: true,
       claimantContact: true,
       paymentMethod: true,
@@ -453,90 +528,265 @@ memberPortalRouter.get("/claims/:id", async (request, response) => {
     return;
   }
   const documents = claim.documentIds.length
-    ? await prisma.storedFile.findMany({ where: { id: { in: claim.documentIds } }, select: { id: true, slotKey: true, originalName: true } })
+    ? await prisma.storedFile.findMany({
+        where: {
+          id: { in: claim.documentIds },
+          memberId: currentMember.id,
+          category: "CLAIM_DOCUMENT",
+        },
+        select: { id: true, slotKey: true, originalName: true },
+      })
     : [];
   response.json({ success: true, data: { ...claim, documents } });
+});
+
+memberPortalRouter.get("/claims/:id/assessment", async (request, response) => {
+  const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim ID" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id, provider: "Claims System" },
+    select: { id: true, externalClaimId: true },
+  });
+  if (!claim?.externalClaimId) {
+    response.status(404).json({
+      success: false,
+      message: "No Claims Portal assessment is available for this claim yet",
+    });
+    return;
+  }
+  try {
+    const details = await refreshClaimAssessment(
+      claim.id,
+      claim.externalClaimId,
+      currentMember.controllerId,
+    );
+    response.json({ success: true, data: details });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message:
+        "Claims Portal assessment is unavailable. Your saved claim details remain available.",
+    });
+  }
+});
+
+memberPortalRouter.get("/claims/:id/documents/:documentId", async (request, response) => {
+  const params = z
+    .object({
+      id: z.coerce.number().int().positive(),
+      documentId: z.coerce.number().int().positive(),
+    })
+    .safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim document" });
+    return;
+  }
+  const currentMember = member(response);
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: { id: params.data.id, memberId: currentMember.id },
+    select: { documentIds: true },
+  });
+  if (!claim?.documentIds.includes(params.data.documentId)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const file = await prisma.storedFile.findFirst({
+    where: { id: params.data.documentId, memberId: currentMember.id, category: "CLAIM_DOCUMENT" },
+    select: { storagePath: true, originalName: true, mimeType: true },
+  });
+  if (!file) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  const absolute = path.resolve(uploadRoot, file.storagePath);
+  if (!absolute.startsWith(`${uploadRoot}${path.sep}`)) {
+    response.status(404).json({ success: false, message: "Claim document not found" });
+    return;
+  }
+  response.setHeader("Cache-Control", "private, no-store");
+  response.type(file.mimeType);
+  response.attachment(file.originalName);
+  response.sendFile(absolute, (error) => {
+    if (error && !response.headersSent)
+      response
+        .status(404)
+        .json({ success: false, message: "Stored claim document is unavailable" });
+  });
 });
 
 memberPortalRouter.post("/claims", async (request, response) => {
   const parsed = memberClaimSubmissionSchema.safeParse(request.body);
   if (!parsed.success) {
-    response.status(400).json({ success: false, message: "Review the claim details", errors: parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })) });
+    response.status(400).json({
+      success: false,
+      message: "Review the claim details",
+      errors: parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
     return;
   }
   const currentMember = member(response);
+  const token = z.string().uuid().safeParse(request.get("Idempotency-Key"));
+  if (!token.success) {
+    response
+      .status(400)
+      .json({ success: false, message: "Provide a UUID Idempotency-Key header." });
+    return;
+  }
+  const idempotencyKey = `member-portal:${currentMember.id}:${token.data}`;
   const record = await prisma.member.findUnique({
     where: { id: currentMember.id },
-    select: { fullName: true, spouse: { select: { id: true, fullName: true } } },
+    select: {
+      id: true,
+      fullName: true,
+      ghanaCardId: true,
+      spouse: { select: { id: true, fullName: true, ghanaCardId: true, linkedMemberId: true } },
+    },
   });
   if (!record || (parsed.data.claimantType === "SPOUSE" && !record.spouse)) {
     response.status(404).json({ success: false, message: "Covered person not found" });
     return;
   }
-
-  const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
-    CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
-  };
-  const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter((key) => !parsed.data.paymentDetails[key]);
-  if (missing.length) {
-    response.status(400).json({ success: false, message: "Complete the selected payment details" });
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
+    response.status(409).json({
+      success: false,
+      message:
+        "A claim already exists for this benefit type under the linked membership. This needs staff reconciliation before a second claim for the same event can be filed.",
+    });
     return;
   }
 
+  // Payee name and claimant phone are optional at submission -- they can be filled in later,
+  // before the claim is paid -- so nothing here blocks a claim that omits them.
+
   if (parsed.data.claimType === "HOSPITALIZATION") {
-    const nights = nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate);
+    const nights = nightsBetween(
+      parsed.data.claimDetails.admissionDate,
+      parsed.data.claimDetails.dischargeDate,
+    );
     if (nights < HOSPITALIZATION_MINIMUM_NIGHTS) {
-      response.status(400).json({ success: false, message: "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit." });
+      response.status(400).json({
+        success: false,
+        message:
+          "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit.",
+      });
       return;
     }
   }
 
   const uniqueDocumentIds = [...new Set(parsed.data.documentIds)];
-  const slotKeys = await memberUploadedSlotKeys(uniqueDocumentIds, currentMember.id);
+  const slotKeys = await uploadedSlotKeys(uniqueDocumentIds, currentMember.id, "MEMBER_PORTAL");
   if (slotKeys === null) {
-    response.status(400).json({ success: false, message: "One or more claim documents are invalid" });
+    response
+      .status(400)
+      .json({ success: false, message: "One or more claim documents are invalid" });
     return;
   }
   if (!hasRequiredDocuments(parsed.data.claimType, slotKeys)) {
-    response.status(400).json({ success: false, message: "Attach the required documents for this claim type before submitting." });
+    response.status(400).json({
+      success: false,
+      message: "Attach the required documents for this claim type before submitting.",
+    });
     return;
   }
 
-  const amount = await activeClaimBenefit(parsed.data.claimType, parsed.data.claimantType);
+  try {
+    await loadClaimDocuments(
+      parsed.data.claimType,
+      uniqueDocumentIds,
+      currentMember.id,
+      currentMember.id,
+    );
+  } catch (error) {
+    if (!(error instanceof ClaimDocumentError)) throw error;
+    response.status(400).json({ success: false, message: error.message });
+    return;
+  }
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
+  if (estimate.amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
-      ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
+      ? {
+          ...parsed.data.claimDetails,
+          nights: nightsBetween(
+            parsed.data.claimDetails.admissionDate,
+            parsed.data.claimDetails.dischargeDate,
+          ),
+        }
       : parsed.data.claimDetails;
 
-  const claim = await prisma.externalClaimSubmission.create({
-    data: {
-      memberId: currentMember.id,
-      submittedByMemberId: currentMember.id,
-      source: "MEMBER_PORTAL",
-      status: "PENDING",
-      provider: "SIMULATION",
-      idempotencyKey: `member-portal:${randomUUID()}`,
-      claimType: parsed.data.claimType,
-      claimantType: parsed.data.claimantType,
-      claimantName: parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
-      claimantIdType: parsed.data.claimantIdType,
-      claimantIdNumber: parsed.data.claimantIdNumber,
-      claimantContact: parsed.data.claimantContact,
-      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
-      claimDetails,
-      estimatedAmount: amount,
-      paymentMethod: parsed.data.paymentMethod,
-      paymentDetails: parsed.data.paymentDetails,
-      documentIds: uniqueDocumentIds,
-      notes: parsed.data.notes || null,
-    },
-    select: claimSelect,
+  const claim = await commitClaimDraft(
+    parsed.data,
+    { member: currentMember },
+    currentMember.id,
+    (transaction, draftKey) =>
+      transaction.externalClaimSubmission.upsert({
+        where: { idempotencyKey: draftKey ?? idempotencyKey },
+        update: {},
+        create: {
+          memberId: currentMember.id,
+          submittedByMemberId: currentMember.id,
+          source: "MEMBER_PORTAL",
+          status: "PENDING",
+          provider: "Claims System",
+          idempotencyKey: draftKey ?? idempotencyKey,
+          claimType: parsed.data.claimType,
+          claimantType: parsed.data.claimantType,
+          claimantName:
+            parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
+          claimantIdType: parsed.data.claimantIdType,
+          claimantIdNumber: parsed.data.claimantIdNumber,
+          claimantContact: parsed.data.claimantContact,
+          incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+          claimDetails,
+          estimatedAmount: estimate.amount,
+          benefitAmountId: estimate.benefit?.id ?? null,
+          paymentMethod: parsed.data.paymentMethod,
+          paymentDetails: parsed.data.paymentDetails,
+          documentIds: uniqueDocumentIds,
+          notes: parsed.data.notes || null,
+        },
+        select: claimSelect,
+      }),
+  );
+  await recordAudit({
+    request,
+    action: "MEMBER_CLAIM_SUBMITTED",
+    entityType: "EXTERNAL_CLAIM_SUBMISSION",
+    entityId: claim.id,
+    description: `Member ${currentMember.controllerId} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review`,
+    afterData: { claimType: parsed.data.claimType, claimantType: parsed.data.claimantType },
   });
-  await recordAudit({ request, action: "MEMBER_CLAIM_SUBMITTED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id, description: `Member ${currentMember.controllerId} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review`, afterData: { claimType: parsed.data.claimType, claimantType: parsed.data.claimantType } });
-  await notifyStaffForMember({ memberId: currentMember.id, type: "MEMBER_CLAIM_SUBMITTED", title: "New claim submitted", message: `${currentMember.fullName} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`, idempotencyKey: `claim-submitted:${claim.id}` });
+  await notifyStaffForMember({
+    memberId: currentMember.id,
+    type: "MEMBER_CLAIM_SUBMITTED",
+    title: "New claim submitted",
+    message: `${currentMember.fullName} submitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
+    idempotencyKey: `claim-submitted:${claim.id}`,
+    actionUrl: `/claims/${claim.id}`,
+  });
   response.status(201).json({ success: true, data: claim });
 });
 
@@ -544,12 +794,26 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
   const parsed = memberClaimSubmissionSchema.safeParse(request.body);
   if (!params.success || !parsed.success) {
-    response.status(400).json({ success: false, message: "Review the claim details", errors: parsed.success ? undefined : parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })) });
+    response.status(400).json({
+      success: false,
+      message: "Review the claim details",
+      errors: parsed.success
+        ? undefined
+        : parsed.error.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
+    });
     return;
   }
   const currentMember = member(response);
   const existing = await prisma.externalClaimSubmission.findFirst({
-    where: { id: params.data.id, submittedByMemberId: currentMember.id, status: "RETURNED" },
+    where: {
+      id: params.data.id,
+      submittedByMemberId: currentMember.id,
+      status: "RETURNED",
+      deliveryState: "NOT_SENT",
+    },
     select: { id: true },
   });
   if (!existing) {
@@ -558,63 +822,116 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
   }
   const record = await prisma.member.findUnique({
     where: { id: currentMember.id },
-    select: { fullName: true, spouse: { select: { id: true, fullName: true } } },
+    select: {
+      id: true,
+      fullName: true,
+      ghanaCardId: true,
+      spouse: { select: { id: true, fullName: true, ghanaCardId: true, linkedMemberId: true } },
+    },
   });
   if (!record || (parsed.data.claimantType === "SPOUSE" && !record.spouse)) {
     response.status(404).json({ success: false, message: "Covered person not found" });
     return;
   }
-
-  const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
-    CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
-  };
-  const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter((key) => !parsed.data.paymentDetails[key]);
-  if (missing.length) {
-    response.status(400).json({ success: false, message: "Complete the selected payment details" });
+  const linkedMemberId =
+    parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(record.spouse) : null;
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      record,
+      linkedMemberId,
+    )
+  ) {
+    response.status(409).json({
+      success: false,
+      message:
+        "A claim already exists for this benefit type under the linked membership. This needs staff reconciliation before a second claim for the same event can be filed.",
+    });
     return;
   }
 
+  // Payee name and claimant phone are optional at submission -- they can be filled in later,
+  // before the claim is paid -- so nothing here blocks a claim that omits them.
+
   if (parsed.data.claimType === "HOSPITALIZATION") {
-    const nights = nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate);
+    const nights = nightsBetween(
+      parsed.data.claimDetails.admissionDate,
+      parsed.data.claimDetails.dischargeDate,
+    );
     if (nights < HOSPITALIZATION_MINIMUM_NIGHTS) {
-      response.status(400).json({ success: false, message: "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit." });
+      response.status(400).json({
+        success: false,
+        message:
+          "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit.",
+      });
       return;
     }
   }
 
   const uniqueDocumentIds = [...new Set(parsed.data.documentIds)];
-  const slotKeys = await memberUploadedSlotKeys(uniqueDocumentIds, currentMember.id);
+  const slotKeys = await uploadedSlotKeys(uniqueDocumentIds, currentMember.id, "MEMBER_PORTAL");
   if (slotKeys === null) {
-    response.status(400).json({ success: false, message: "One or more claim documents are invalid" });
+    response
+      .status(400)
+      .json({ success: false, message: "One or more claim documents are invalid" });
     return;
   }
   if (!hasRequiredDocuments(parsed.data.claimType, slotKeys)) {
-    response.status(400).json({ success: false, message: "Attach the required documents for this claim type before submitting." });
+    response.status(400).json({
+      success: false,
+      message: "Attach the required documents for this claim type before submitting.",
+    });
     return;
   }
 
-  const amount = await activeClaimBenefit(parsed.data.claimType, parsed.data.claimantType);
+  try {
+    await loadClaimDocuments(
+      parsed.data.claimType,
+      uniqueDocumentIds,
+      currentMember.id,
+      currentMember.id,
+    );
+  } catch (error) {
+    if (!(error instanceof ClaimDocumentError)) throw error;
+    response.status(400).json({ success: false, message: error.message });
+    return;
+  }
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
+  if (estimate.amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
-      ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
+      ? {
+          ...parsed.data.claimDetails,
+          nights: nightsBetween(
+            parsed.data.claimDetails.admissionDate,
+            parsed.data.claimDetails.dischargeDate,
+          ),
+        }
       : parsed.data.claimDetails;
 
   const updated = await prisma.externalClaimSubmission.update({
-    where: { id: existing.id },
+    where: { id: existing.id, status: "RETURNED", deliveryState: "NOT_SENT" },
     data: {
       status: "PENDING",
       claimType: parsed.data.claimType,
       claimantType: parsed.data.claimantType,
-      claimantName: parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
+      claimantName:
+        parsed.data.claimantType === "SPOUSE" ? record.spouse?.fullName : record.fullName,
       claimantIdType: parsed.data.claimantIdType,
       claimantIdNumber: parsed.data.claimantIdNumber,
       claimantContact: parsed.data.claimantContact,
       incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
       claimDetails,
-      estimatedAmount: amount,
+      estimatedAmount: estimate.amount,
+      benefitAmountId: estimate.benefit?.id ?? null,
       paymentMethod: parsed.data.paymentMethod,
       paymentDetails: parsed.data.paymentDetails,
       documentIds: uniqueDocumentIds,
@@ -625,34 +942,71 @@ memberPortalRouter.patch("/claims/:id/resubmit", async (request, response) => {
     },
     select: claimSelect,
   });
-  await recordAudit({ request, action: "MEMBER_CLAIM_RESUBMITTED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: existing.id, description: `Member ${currentMember.controllerId} edited and resubmitted a returned claim`, afterData: { claimType: parsed.data.claimType, claimantType: parsed.data.claimantType } });
-  await notifyStaffForMember({ memberId: currentMember.id, type: "MEMBER_CLAIM_SUBMITTED", title: "Claim resubmitted", message: `${currentMember.fullName} resubmitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`, idempotencyKey: `claim-resubmitted:${existing.id}:${Date.now()}` });
+  await recordAudit({
+    request,
+    action: "MEMBER_CLAIM_RESUBMITTED",
+    entityType: "EXTERNAL_CLAIM_SUBMISSION",
+    entityId: existing.id,
+    description: `Member ${currentMember.controllerId} edited and resubmitted a returned claim`,
+    afterData: { claimType: parsed.data.claimType, claimantType: parsed.data.claimantType },
+  });
+  await notifyStaffForMember({
+    memberId: currentMember.id,
+    type: "MEMBER_CLAIM_SUBMITTED",
+    title: "Claim resubmitted",
+    message: `${currentMember.fullName} resubmitted a ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for review.`,
+    idempotencyKey: `claim-resubmitted:${existing.id}:${Date.now()}`,
+    actionUrl: `/claims/${existing.id}`,
+  });
   response.json({ success: true, data: updated });
 });
 
 function receiveClaimDocument(request: Request, response: Response, next: NextFunction) {
-  memberFileUpload.single("file")(request, response, (error) => {
+  claimFileUpload.single("file")(request, response, (error) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      response.status(413).json({ success: false, message: "File exceeds the configured upload limit" });
+      response
+        .status(413)
+        .json({ success: false, message: "File exceeds the configured upload limit" });
       return;
     }
-    response.status(400).json({ success: false, message: error instanceof Error ? error.message : "File upload failed" });
+    response.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "File upload failed",
+    });
   });
 }
 
 memberPortalRouter.post("/claims/documents", receiveClaimDocument, async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ success: false, message: "Attach one file using the 'file' field" });
+    response
+      .status(400)
+      .json({ success: false, message: "Attach one file using the 'file' field" });
     return;
   }
   if (!(await hasValidFileSignature(request.file.path, request.file.mimetype))) {
     await unlink(request.file.path).catch(() => undefined);
-    response.status(400).json({ success: false, message: "File content does not match its declared type" });
+    response
+      .status(400)
+      .json({ success: false, message: "File content does not match its declared type" });
     return;
   }
   const currentMember = member(response);
-  const slotKey = typeof request.body.slotKey === "string" && request.body.slotKey.trim() ? request.body.slotKey.trim().slice(0, 80) : null;
+  try {
+    validateClaimFile({
+      originalName: request.file.originalname,
+      mimeType: request.file.mimetype,
+      sizeBytes: request.file.size,
+    });
+  } catch (error) {
+    await unlink(request.file.path).catch(() => undefined);
+    response.status(400).json({ success: false, message: (error as Error).message });
+    return;
+  }
+  const slotKey =
+    typeof request.body.slotKey === "string" && request.body.slotKey.trim()
+      ? request.body.slotKey.trim().slice(0, 80)
+      : null;
   const storagePath = path.posix.join("member-files", request.file.filename);
   const downloadPath = `/api/files/${request.file.filename}`;
   const file = await prisma.storedFile.create({
@@ -668,9 +1022,30 @@ memberPortalRouter.post("/claims/documents", receiveClaimDocument, async (reques
       uploadedByMemberId: currentMember.id,
       slotKey,
     },
-    select: { id: true, category: true, originalName: true, mimeType: true, sizeBytes: true, slotKey: true, createdAt: true },
+    select: {
+      id: true,
+      category: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      slotKey: true,
+      createdAt: true,
+    },
   });
-  await recordAudit({ request, action: "MEMBER_FILE_UPLOADED", entityType: "STORED_FILE", entityId: file.id, description: `Member ${currentMember.controllerId} uploaded a claim document`, afterData: { category: file.category, slotKey: file.slotKey, originalName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes } });
+  await recordAudit({
+    request,
+    action: "MEMBER_FILE_UPLOADED",
+    entityType: "STORED_FILE",
+    entityId: file.id,
+    description: `Member ${currentMember.controllerId} uploaded a claim document`,
+    afterData: {
+      category: file.category,
+      slotKey: file.slotKey,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+    },
+  });
   response.status(201).json({ success: true, data: file });
 });
 
@@ -689,17 +1064,62 @@ memberPortalRouter.delete("/claims/documents/:id", async (request, response) => 
     response.status(404).json({ success: false, message: "Document not found" });
     return;
   }
+  const attached = await prisma.externalClaimSubmission.findFirst({
+    where: {
+      documentIds: { has: file.id },
+      NOT: { status: "RETURNED", deliveryState: "NOT_SENT" },
+    },
+    select: { id: true },
+  });
+  if (attached) {
+    response.status(409).json({
+      success: false,
+      message:
+        "Documents on a filed claim cannot be deleted. Request a return for correction first.",
+    });
+    return;
+  }
+  if (
+    await prisma.claimDraft.findFirst({
+      where: { documentIds: { has: file.id }, submittedClaimId: null },
+      select: { id: true },
+    })
+  ) {
+    response.status(409).json({
+      success: false,
+      message:
+        "This attachment belongs to a saved draft. Remove it from the saved draft before deleting it.",
+    });
+    return;
+  }
   await prisma.storedFile.delete({ where: { id: file.id } });
   await unlink(path.resolve(uploadRoot, file.storagePath)).catch(() => undefined);
-  await recordAudit({ request, action: "MEMBER_FILE_REMOVED", entityType: "STORED_FILE", entityId: file.id, description: `Member ${currentMember.controllerId} removed a claim document` });
+  await recordAudit({
+    request,
+    action: "MEMBER_FILE_REMOVED",
+    entityType: "STORED_FILE",
+    entityId: file.id,
+    description: `Member ${currentMember.controllerId} removed a claim document`,
+  });
   response.json({ success: true, data: { id: file.id } });
 });
 
 memberPortalRouter.get("/change-requests", async (_request, response) => {
   const requests = await prisma.memberChangeRequest.findMany({
     where: { memberId: member(response).id },
-    select: { id: true, type: true, status: true, targetBeneficiaryId: true, proposedData: true, requestNote: true, reviewNote: true, requestedAt: true, reviewedAt: true },
-    orderBy: { requestedAt: "desc" },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      targetBeneficiaryId: true,
+      proposedData: true,
+      requestNote: true,
+      reviewNote: true,
+      requestedAt: true,
+      reviewedAt: true,
+      updatedAt: true,
+    },
+    orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
   });
   response.json({ success: true, data: requests });
 });
@@ -707,21 +1127,43 @@ memberPortalRouter.get("/change-requests", async (_request, response) => {
 memberPortalRouter.post("/change-requests", async (request, response) => {
   const parsed = createChangeRequestSchema.safeParse(request.body);
   if (!parsed.success) {
-    response.status(400).json({ success: false, message: "Invalid change request", errors: parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })) });
+    response.status(400).json({
+      success: false,
+      message: "Invalid change request",
+      errors: parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
     return;
   }
   const currentMember = member(response);
   const targetId = "targetBeneficiaryId" in parsed.data ? parsed.data.targetBeneficiaryId : null;
   if (targetId) {
-    const target = await prisma.beneficiary.findFirst({ where: { id: targetId, memberId: currentMember.id }, select: { id: true } });
+    const target = await prisma.beneficiary.findFirst({
+      where: { id: targetId, memberId: currentMember.id },
+      select: { id: true },
+    });
     if (!target) {
       response.status(404).json({ success: false, message: "Beneficiary not found" });
       return;
     }
   }
-  const duplicate = await prisma.memberChangeRequest.findFirst({ where: { memberId: currentMember.id, type: parsed.data.type, targetBeneficiaryId: targetId, status: "PENDING" }, select: { id: true } });
+  const duplicate = await prisma.memberChangeRequest.findFirst({
+    where: {
+      memberId: currentMember.id,
+      type: parsed.data.type,
+      targetBeneficiaryId: targetId,
+      status: "PENDING",
+    },
+    select: { id: true },
+  });
   if (duplicate) {
-    response.status(409).json({ success: false, message: "A matching change request is already pending", existingRequestId: duplicate.id });
+    response.status(409).json({
+      success: false,
+      message: "A matching change request is already pending",
+      existingRequestId: duplicate.id,
+    });
     return;
   }
   const item = await prisma.memberChangeRequest.create({
@@ -733,8 +1175,15 @@ memberPortalRouter.post("/change-requests", async (request, response) => {
       requestNote: parsed.data.requestNote,
     },
   });
-  await recordAudit({ request, action: "MEMBER_SELF_SERVICE_CHANGE_REQUESTED", entityType: "MEMBER_CHANGE_REQUEST", entityId: item.id, description: `Member ${currentMember.controllerId} requested a ${item.type} change`, afterData: { memberId: currentMember.id, type: item.type } });
-  await notifyStaffForMember({ memberId: currentMember.id, type: "MEMBER_CHANGE_REQUESTED", title: "Member change request", message: `${currentMember.fullName} submitted a ${item.type.toLowerCase().replaceAll("_", " ")} request for review.`, idempotencyKey: `change-request:${item.id}` });
+  await recordAudit({
+    request,
+    action: "MEMBER_SELF_SERVICE_CHANGE_REQUESTED",
+    entityType: "MEMBER_CHANGE_REQUEST",
+    entityId: item.id,
+    description: `Member ${currentMember.controllerId} requested a ${item.type} change`,
+    afterData: { memberId: currentMember.id, type: item.type },
+  });
+  await notifyChangeRequested(item);
   response.status(201).json({ success: true, data: item });
 });
 
@@ -745,22 +1194,45 @@ memberPortalRouter.patch("/change-requests/:id/cancel", async (request, response
     return;
   }
 
+  const version = z
+    .object({ expectedUpdatedAt: z.iso.datetime().optional() })
+    .safeParse(request.body ?? {});
+  if (!version.success) {
+    response.status(400).json({ success: false, message: "Invalid request version" });
+    return;
+  }
   const currentMember = member(response);
   const item = await prisma.memberChangeRequest.findFirst({
     where: { id: params.data.id, memberId: currentMember.id },
-    select: { id: true, type: true, status: true },
+    select: { id: true, type: true, status: true, updatedAt: true },
   });
   if (!item) {
     response.status(404).json({ success: false, message: "Change request not found" });
     return;
   }
+  if (
+    version.data.expectedUpdatedAt &&
+    item.updatedAt.toISOString() !== version.data.expectedUpdatedAt
+  ) {
+    response
+      .status(409)
+      .json({ success: false, message: "This request changed. Refresh it before cancelling." });
+    return;
+  }
   if (item.status !== "PENDING") {
-    response.status(409).json({ success: false, message: "Only pending requests can be cancelled" });
+    response
+      .status(409)
+      .json({ success: false, message: "Only pending requests can be cancelled" });
     return;
   }
 
   const updated = await prisma.memberChangeRequest.updateMany({
-    where: { id: item.id, memberId: currentMember.id, status: "PENDING" },
+    where: {
+      id: item.id,
+      memberId: currentMember.id,
+      status: "PENDING",
+      updatedAt: item.updatedAt,
+    },
     data: { status: "CANCELLED", reviewedAt: new Date() },
   });
   if (updated.count === 0) {

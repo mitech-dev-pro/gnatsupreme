@@ -1,0 +1,25 @@
+{
+  "level": 30,
+  "time": 1789378665221,
+  "service": "gnatsupreme-backend",
+  "environment": "development",
+  "url": "https://mankradotest.milifeghana.com:8443/gnatsupreme/claim/submit",
+  "payload": {
+    "claimType": "tpd",
+    "claimantIdType": "GHANA_CARD",
+    "ghanaCardNumber": "GHA-123534565-8",
+    "claimant": "Mr. Philip Kofi Aboigyi",
+    "paymentMethod": "CHEQUE",
+    "submissionReference": "staff:9:d8b0ce88-7eb1-498a-a76e-200619d1268e",
+    "memberName": "Mr. Philip Kofi Aboigyi",
+    "claimantType": "MEMBER",
+    "contactName": "Mr. Philip Kofi Aboigyi",
+    "nationality": "Ghanaian",
+    "cause": "ASD",
+    "dateOfEvent": "2026-09-14",
+    "subjectName": "Mr. Philip Kofi Aboigyi",
+    "relationship": "Self",
+    "tpd_doc": "[file: 20260814132407.pdf, 98894 bytes]"
+  },
+  "msg": "Mankrado outbound submission payload"
+}

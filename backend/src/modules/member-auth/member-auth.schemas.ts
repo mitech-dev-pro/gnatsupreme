@@ -28,6 +28,11 @@ export const resetPasswordSchema = z.object({
   password: memberPasswordSchema,
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password"),
+  password: memberPasswordSchema,
+});
+
 export const setupAccountSchema = z.object({
   controllerId: controllerIdSchema,
   fullName: z.string().trim().min(2).max(200),

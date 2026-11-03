@@ -31,7 +31,8 @@ type ChangeRequestRow = {
 };
 
 function isPhoneOnly(proposedData: unknown): proposedData is { phone: string | null } {
-  if (!proposedData || typeof proposedData !== "object" || Array.isArray(proposedData)) return false;
+  if (!proposedData || typeof proposedData !== "object" || Array.isArray(proposedData))
+    return false;
   const keys = Object.keys(proposedData as Record<string, unknown>);
   return keys.length === 1 && keys[0] === "phone";
 }
@@ -72,7 +73,9 @@ async function main() {
     return;
   }
 
-  const email = (await input({ message: "Your admin email (recorded as the reviewer for every approval):" }))
+  const email = (
+    await input({ message: "Your admin email (recorded as the reviewer for every approval):" })
+  )
     .trim()
     .toLowerCase();
   const actor = await prisma.user.findUnique({ where: { email } });
@@ -98,12 +101,18 @@ async function main() {
       continue;
     }
     const body = (await response.json()) as {
-      data: { succeeded: number; failed: number; results: Array<{ id: number; success: boolean; message?: string }> };
+      data: {
+        succeeded: number;
+        failed: number;
+        results: Array<{ id: number; success: boolean; message?: string }>;
+      };
     };
     succeeded += body.data.succeeded;
     failed += body.data.failed;
     for (const result of body.data.results) if (!result.success) failures.push(result);
-    console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${body.data.succeeded} approved, ${body.data.failed} failed.`);
+    console.log(
+      `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${body.data.succeeded} approved, ${body.data.failed} failed.`,
+    );
   }
 
   console.log(`\nDone. ${succeeded} approved, ${failed} failed.`);

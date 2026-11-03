@@ -1,17 +1,35 @@
+import { createClaimDraftRouter, commitClaimDraft } from "./claims.drafts.js";
+import {
+  activeBenefit,
+  BENEFIT_NOT_CONFIGURED_MESSAGE,
+  linkedClaimConflict,
+  resolveSpouseLinkedMemberId,
+  uploadedSlotKeys,
+} from "./claims.service.js";
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
+import { notifyClaimReview } from "./claims.notifications.js";
+import { refreshClaimAssessment } from "./claims.assessment.js";
 import { z } from "zod";
+import {
+  querySchema,
+  idSchema,
+  lookupSchema,
+  estimateSchema,
+  submissionSchema,
+  reviewSchema,
+} from "./claims.http-schemas.js";
 
 import { prisma } from "../../lib/prisma.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
-import { findMemberByGhanaCard } from "../members/member.routes.js";
+import { ClaimDocumentError, loadClaimDocuments } from "./claims.documents.js";
+import { deliverClaim, expireStaleDeliveries } from "./claims.delivery.js";
+import { ClaimsProviderUnavailableError } from "./claims.provider.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { getCurrentBenefitPlan } from "../benefits/benefit.service.js";
 import {
-  claimSubmissionUnion,
   dateOfEventFromClaimDetails,
   hasRequiredDocuments,
   HOSPITALIZATION_MINIMUM_NIGHTS,
@@ -20,51 +38,18 @@ import {
 
 export const claimsRouter = Router();
 
-const querySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-  status: z
-    .enum(["PENDING", "REDIRECT_READY", "SUBMITTED", "RETURNED", "FAILED", "SYNCHRONIZED"])
-    .optional(),
-  source: z.enum(["STAFF", "MEMBER_PORTAL"]).optional(),
-});
-const idSchema = z.object({ id: z.coerce.number().int().positive() });
-const lookupSchema = z.object({
-  staffId: z.string().trim().regex(/^\d{4,7}$/, "Staff ID must contain 4 to 7 digits"),
-});
-const estimateSchema = z.object({
-  memberId: z.coerce.number().int().positive(),
-  claimType: z.enum(["DEATH", "TOTAL_PERMANENT_DISABILITY", "CRITICAL_ILLNESS", "HOSPITALIZATION"]),
-  claimantType: z.enum(["MEMBER", "SPOUSE"]),
-});
-const submissionSchema = claimSubmissionUnion({
-  memberId: z.coerce.number().int().positive(),
-  claimantType: z.enum(["MEMBER", "SPOUSE"]),
-  claimantIdType: z.literal("GHANA_CARD"),
-  claimantIdNumber: z.string().trim().min(3, "Enter the claimant ID number").max(80),
-  claimantContact: z.object({
-    fullName: z.string().trim().min(2).max(120),
-    primaryPhone: z.string().trim().min(7).max(30),
-    additionalPhone: z.string().trim().max(30).optional(),
-    email: z.string().trim().email("Enter a valid email address").or(z.literal("")).optional(),
-    gpsAddress: z.string().trim().max(120).optional(),
-    residentialAddress: z.string().trim().max(240).optional(),
-    nationality: z.string().trim().min(2).max(80),
-  }),
-  paymentMethod: z.enum(["MOBILE_MONEY", "BANK_ACCOUNT", "CHEQUE", "NO_PAYMENT"]),
-  paymentDetails: z.record(z.string(), z.string().trim().max(150)).default({}),
-  documentIds: z.array(z.number().int().positive()).max(10).default([]),
-  notes: z.string().trim().max(1000).optional(),
-});
-const reviewSchema = z
-  .object({
-    action: z.enum(["APPROVE", "RETURN", "REJECT"]),
-    note: z.string().trim().max(500).nullable().optional(),
-  })
-  .refine((value) => value.action === "APPROVE" || Boolean(value.note), {
-    message: "A review note is required",
-    path: ["note"],
-  });
+// Mirrors the vocabulary frontend/src/lib/claimStatus.ts already treats as a dead-end status --
+// a history entry matching this was rejected/cancelled/failed, so it can never be the live
+// duplicate an UNKNOWN-state retry needs to worry about.
+const INACTIVE_HISTORY_STATUS = /reject|declin|denied|fail|cancel|void/i;
+
+function namesLikelyMatch(a: string, b: string) {
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+  const left = normalize(a);
+  const right = normalize(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
 
 const claimMemberInclude = {
   district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
@@ -72,100 +57,12 @@ const claimMemberInclude = {
   beneficiaries: { select: { id: true, fullName: true, relationship: true, dateOfBirth: true } },
 } as const;
 
-// Resolves a SPOUSE claimant to the independently-enrolled Member they are, if any -- the
-// stored link first (fast path, maintained by every member/spouse write elsewhere), falling
-// back to a live Ghana Card lookup if the link is unset (e.g. a spouse record that predates
-// this feature and hasn't been touched since). Computed once per request and reused by both
-// activeBenefit() and the double-payment safeguard below, rather than re-derived twice.
-async function resolveSpouseLinkedMemberId(
-  spouse: { linkedMemberId: number | null; ghanaCardId: string | null } | null,
-): Promise<number | null> {
-  if (!spouse) return null;
-  if (spouse.linkedMemberId) return spouse.linkedMemberId;
-  if (!spouse.ghanaCardId) return null;
-  const match = await findMemberByGhanaCard(spouse.ghanaCardId);
-  return match?.id ?? null;
-}
-
-// KNOWN LIMITATION: this only fixes what THIS APP displays and stores (estimatedAmount below).
-// The real Mankrado submission contract (mankrado.contract.ts, on the branch that has it wired
-// up) sends claimantType + the claimant's own Ghana Card ID but no amount field at all --
-// Mankrado determines the actual payout on its own side, with no concept of a linked spouse.
-// This does NOT guarantee Mankrado itself pays the member rate for a linked spouse once that
-// integration goes live; a member could see one figure here and be paid another. Needs a
-// separate, owned follow-up (confirm with Mankrado how a linked spouse should be submitted)
-// before this can be considered complete in a Mankrado-live environment.
-async function activeBenefit(
-  claimType: z.infer<typeof estimateSchema>["claimType"],
-  claimantType: "MEMBER" | "SPOUSE",
-  linkedMemberId: number | null,
-) {
-  const plan = await getCurrentBenefitPlan();
-  const benefit = plan?.benefits.find((item) => item.type === claimType && item.enabled);
-  const payAsMember = claimantType === "MEMBER" || linkedMemberId !== null;
-  const amount = payAsMember ? benefit?.memberAmount : benefit?.spouseAmount;
-  return { plan, benefit, amount };
-}
-
-// Only DEATH and TOTAL_PERMANENT_DISABILITY genuinely mean "this can only happen once per
-// person" -- CRITICAL_ILLNESS and HOSPITALIZATION can legitimately recur, so the
-// double-payment safeguard below is scoped to just these two.
-const ONE_OFF_CLAIM_TYPES = new Set(["DEATH", "TOTAL_PERMANENT_DISABILITY"]);
-
-// Guards against the same real-world event (e.g. a death) being paid out twice: once as a
-// SPOUSE claim at the member rate (because the spouse is independently linked to another
-// Member), and again as that linked Member's own claim. Checked in both directions. Known,
-// accepted limitation: this reads then creates, so two submissions arriving at the same moment
-// could both pass -- not solved with additional locking, since this only applies to two claim
-// types and is not a high-frequency path.
-async function linkedClaimConflict(
-  claimType: z.infer<typeof estimateSchema>["claimType"],
-  claimantType: "MEMBER" | "SPOUSE",
-  member: { id: number; ghanaCardId?: string | null },
-  linkedMemberId: number | null,
-): Promise<boolean> {
-  if (!ONE_OFF_CLAIM_TYPES.has(claimType)) return false;
-  if (claimantType === "SPOUSE") {
-    if (linkedMemberId === null) return false;
-    const existing = await prisma.externalClaimSubmission.findFirst({
-      where: { claimType, claimantType: "MEMBER", memberId: linkedMemberId, status: { not: "FAILED" } },
-      select: { id: true },
-    });
-    return Boolean(existing);
-  }
-  // claimantType === "MEMBER": is this member independently linked as someone else's spouse,
-  // either via a stored link or a card match (matches both an already-linked spouse row and
-  // one that would resolve via the live fallback)?
-  const existing = await prisma.externalClaimSubmission.findFirst({
-    where: {
-      claimType,
-      claimantType: "SPOUSE",
-      status: { not: "FAILED" },
-      member: {
-        spouse: {
-          OR: [{ linkedMemberId: member.id }, ...(member.ghanaCardId ? [{ ghanaCardId: member.ghanaCardId }] : [])],
-        },
-      },
-    },
-    select: { id: true },
-  });
-  return Boolean(existing);
-}
-
-async function uploadedSlotKeys(documentIds: number[], memberId: number) {
-  if (!documentIds.length) return new Set<string>();
-  const files = await prisma.storedFile.findMany({
-    where: { id: { in: documentIds }, memberId, category: "CLAIM_DOCUMENT" },
-    select: { id: true, slotKey: true },
-  });
-  if (files.length !== new Set(documentIds).size) return null;
-  return new Set(files.map((file) => file.slotKey).filter((key): key is string => Boolean(key)));
-}
-
 const submissionSelect = {
   id: true,
   externalClaimId: true,
   provider: true,
+  deliveryState: true,
+  externalStatus: true,
   status: true,
   source: true,
   claimType: true,
@@ -184,6 +81,7 @@ const submissionSelect = {
 } as const;
 
 claimsRouter.use(authenticate);
+claimsRouter.use("/drafts", createClaimDraftRouter("staff"));
 
 claimsRouter.get("/provider", (_request, response) => {
   response.json({
@@ -192,8 +90,8 @@ claimsRouter.get("/provider", (_request, response) => {
       provider: claimsProvider.name,
       mode: claimsProvider.mode,
       configured: claimsProvider.isConfigured(),
-      submissionsEnabled: true,
-      simulation: true,
+      submissionsEnabled: claimsProvider.isConfigured(),
+      simulation: false,
     },
   });
 });
@@ -215,10 +113,22 @@ claimsRouter.get("/member-lookup", async (request, response) => {
     // Staff IDs are numeric and normalized by validation, so exact equality can use
     // the existing unique B-tree index instead of an ILIKE scan.
     where: { controllerId: parsed.data.staffId, ...memberScope(user) },
-    select: { id: true, controllerId: true, fullName: true, phone: true, email: true, ghanaCardId: true, school: true, status: true, ...claimMemberInclude },
+    select: {
+      id: true,
+      controllerId: true,
+      fullName: true,
+      phone: true,
+      email: true,
+      ghanaCardId: true,
+      school: true,
+      status: true,
+      ...claimMemberInclude,
+    },
   });
   if (!member) {
-    response.status(404).json({ success: false, message: "No accessible member matches that Staff ID" });
+    response
+      .status(404)
+      .json({ success: false, message: "No accessible member matches that Staff ID" });
     return;
   }
   response.json({ success: true, data: member });
@@ -227,7 +137,9 @@ claimsRouter.get("/member-lookup", async (request, response) => {
 claimsRouter.get("/estimate", async (request, response) => {
   const parsed = estimateSchema.safeParse(request.query);
   if (!parsed.success) {
-    response.status(400).json({ success: false, message: "Choose a claim type and covered person" });
+    response
+      .status(400)
+      .json({ success: false, message: "Choose a claim type and covered person" });
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
@@ -241,7 +153,11 @@ claimsRouter.get("/estimate", async (request, response) => {
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
   response.json({
     success: true,
     data: {
@@ -256,7 +172,14 @@ claimsRouter.get("/estimate", async (request, response) => {
 claimsRouter.post("/submissions", async (request, response) => {
   const parsed = submissionSchema.safeParse(request.body);
   if (!parsed.success) {
-    response.status(400).json({ success: false, message: "Review the claim details", errors: parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })) });
+    response.status(400).json({
+      success: false,
+      message: "Review the claim details",
+      errors: parsed.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })),
+    });
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
@@ -273,12 +196,21 @@ claimsRouter.post("/submissions", async (request, response) => {
     },
   });
   if (!member || (parsed.data.claimantType === "SPOUSE" && !member.spouse)) {
-    response.status(404).json({ success: false, message: "Member or covered person was not found" });
+    response
+      .status(404)
+      .json({ success: false, message: "Member or covered person was not found" });
     return;
   }
   const linkedMemberId =
     parsed.data.claimantType === "SPOUSE" ? await resolveSpouseLinkedMemberId(member.spouse) : null;
-  if (await linkedClaimConflict(parsed.data.claimType, parsed.data.claimantType, member, linkedMemberId)) {
+  if (
+    await linkedClaimConflict(
+      parsed.data.claimType,
+      parsed.data.claimantType,
+      member,
+      linkedMemberId,
+    )
+  ) {
     response.status(409).json({
       success: false,
       message:
@@ -286,24 +218,20 @@ claimsRouter.post("/submissions", async (request, response) => {
     });
     return;
   }
-  const requiredPaymentFields: Record<string, string[]> = {
-    MOBILE_MONEY: ["network", "mobileNumber", "accountName"],
-    BANK_ACCOUNT: ["bankName", "accountNumber", "accountName"],
-    CHEQUE: ["payeeName"],
-    NO_PAYMENT: [],
-  };
-  const missing = (requiredPaymentFields[parsed.data.paymentMethod] ?? []).filter(
-    (key) => !parsed.data.paymentDetails[key],
-  );
-  if (missing.length) {
-    response.status(400).json({ success: false, message: "Complete the selected payment details" });
-    return;
-  }
+  // Payee name and claimant phone are optional at submission -- they can be filled in later,
+  // before the claim is paid -- so nothing here blocks a claim that omits them.
 
   if (parsed.data.claimType === "HOSPITALIZATION") {
-    const nights = nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate);
+    const nights = nightsBetween(
+      parsed.data.claimDetails.admissionDate,
+      parsed.data.claimDetails.dischargeDate,
+    );
     if (nights < HOSPITALIZATION_MINIMUM_NIGHTS) {
-      response.status(400).json({ success: false, message: "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit." });
+      response.status(400).json({
+        success: false,
+        message:
+          "This admission does not meet the minimum 10-night eligibility requirement for the hospitalization benefit.",
+      });
       return;
     }
   }
@@ -311,47 +239,112 @@ claimsRouter.post("/submissions", async (request, response) => {
   const uniqueDocumentIds = [...new Set(parsed.data.documentIds)];
   const slotKeys = await uploadedSlotKeys(uniqueDocumentIds, member.id);
   if (slotKeys === null) {
-    response.status(400).json({ success: false, message: "One or more claim documents are invalid" });
+    response
+      .status(400)
+      .json({ success: false, message: "One or more claim documents are invalid" });
     return;
   }
   if (!hasRequiredDocuments(parsed.data.claimType, slotKeys)) {
-    response.status(400).json({ success: false, message: "Attach the required documents for this claim type before submitting." });
+    response.status(400).json({
+      success: false,
+      message: "Attach the required documents for this claim type before submitting.",
+    });
     return;
   }
 
-  const estimate = await activeBenefit(parsed.data.claimType, parsed.data.claimantType, linkedMemberId);
-  const simulationId = `SIM-${new Date().getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const estimate = await activeBenefit(
+    parsed.data.claimType,
+    parsed.data.claimantType,
+    linkedMemberId,
+  );
+  // /estimate already surfaces this as an informational `available: false` flag -- enforce it
+  // here too, or a claim type with no seeded benefit (or one an admin disabled) still gets
+  // filed and sent to Claims Portal with a null estimatedAmount.
+  if (estimate.amount == null) {
+    response.status(409).json({ success: false, message: BENEFIT_NOT_CONFIGURED_MESSAGE });
+    return;
+  }
+  if (!claimsProvider.isConfigured()) {
+    response
+      .status(503)
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
+    return;
+  }
+  try {
+    await loadClaimDocuments(parsed.data.claimType, uniqueDocumentIds, member.id);
+  } catch (error) {
+    if (!(error instanceof ClaimDocumentError)) throw error;
+    response.status(400).json({ success: false, message: error.message });
+    return;
+  }
+  const token = z.string().uuid().safeParse(request.get("Idempotency-Key"));
+  if (!token.success) {
+    response
+      .status(400)
+      .json({ success: false, message: "Provide a UUID Idempotency-Key header." });
+    return;
+  }
+  const idempotencyKey = `staff:${user.id}:${token.data}`;
   const claimDetails =
     parsed.data.claimType === "HOSPITALIZATION"
-      ? { ...parsed.data.claimDetails, nights: nightsBetween(parsed.data.claimDetails.admissionDate, parsed.data.claimDetails.dischargeDate) }
+      ? {
+          ...parsed.data.claimDetails,
+          nights: nightsBetween(
+            parsed.data.claimDetails.admissionDate,
+            parsed.data.claimDetails.dischargeDate,
+          ),
+        }
       : parsed.data.claimDetails;
-  const claim = await prisma.externalClaimSubmission.create({
-    data: {
-      memberId: member.id,
-      submittedById: user.id,
-      source: "STAFF",
-      provider: "SIMULATION",
-      idempotencyKey: `simulation:${randomUUID()}`,
-      externalClaimId: simulationId,
-      status: "SUBMITTED",
-      submittedAt: new Date(),
-      claimType: parsed.data.claimType,
-      claimantType: parsed.data.claimantType,
-      claimantName: parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
-      claimantIdType: parsed.data.claimantIdType,
-      claimantIdNumber: parsed.data.claimantIdNumber,
-      claimantContact: parsed.data.claimantContact,
-      incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
-      claimDetails,
-      estimatedAmount: estimate.amount ?? null,
-      paymentMethod: parsed.data.paymentMethod,
-      paymentDetails: parsed.data.paymentDetails,
-      documentIds: uniqueDocumentIds,
-      notes: parsed.data.notes || null,
-    },
+  const claim = await commitClaimDraft(parsed.data, { user }, member.id, (transaction, draftKey) =>
+    transaction.externalClaimSubmission.upsert({
+      where: { idempotencyKey: draftKey ?? idempotencyKey },
+      update: {},
+      create: {
+        memberId: member.id,
+        submittedById: user.id,
+        source: "STAFF",
+        provider: "Claims System",
+        idempotencyKey: draftKey ?? idempotencyKey,
+        status: "PENDING",
+        claimType: parsed.data.claimType,
+        claimantType: parsed.data.claimantType,
+        claimantName:
+          parsed.data.claimantType === "SPOUSE" ? member.spouse?.fullName : member.fullName,
+        claimantIdType: parsed.data.claimantIdType,
+        claimantIdNumber: parsed.data.claimantIdNumber,
+        claimantContact: parsed.data.claimantContact,
+        incidentDate: dateOfEventFromClaimDetails(parsed.data.claimType, claimDetails),
+        claimDetails,
+        estimatedAmount: estimate.amount ?? null,
+        benefitAmountId: estimate.benefit?.id ?? null,
+        paymentMethod: parsed.data.paymentMethod,
+        paymentDetails: parsed.data.paymentDetails,
+        documentIds: uniqueDocumentIds,
+        notes: parsed.data.notes || null,
+      },
+    }),
+  );
+  if (claim.memberId !== member.id) {
+    response
+      .status(409)
+      .json({ success: false, message: "This submission key belongs to another claim." });
+    return;
+  }
+  const delivered = await deliverClaim(claim.id);
+  await recordAudit({
+    request,
+    actor: user,
+    action: "CLAIM_DELIVERY_RECORDED",
+    entityType: "EXTERNAL_CLAIM_SUBMISSION",
+    entityId: claim.id,
+    description: "Recorded Claims Portal claim delivery outcome",
+    afterData: { deliveryState: delivered.deliveryState },
+    regionId: member.district?.regionId,
+    districtId: member.districtId,
   });
-  await recordAudit({ request, actor: user, action: "CLAIM_SIMULATION_SUBMITTED", entityType: "EXTERNAL_CLAIM_SUBMISSION", entityId: claim.id, description: `Submitted simulated ${parsed.data.claimType.toLowerCase().replaceAll("_", " ")} claim for ${member.fullName}`, afterData: { reference: simulationId, claimType: parsed.data.claimType, claimantType: parsed.data.claimantType, estimatedAmount: estimate.amount?.toString() ?? null }, regionId: member.district?.regionId, districtId: member.districtId });
-  response.status(201).json({ success: true, data: claim });
+  response
+    .status(delivered.deliveryState === "ACCEPTED" ? 201 : 202)
+    .json({ success: true, data: delivered });
 });
 
 claimsRouter.patch("/submissions/:id/review", async (request, response) => {
@@ -363,36 +356,88 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
   }
   const user = response.locals.user as AuthenticatedUser;
   const claim = await prisma.externalClaimSubmission.findFirst({
-    where: { id: params.data.id, source: "MEMBER_PORTAL", status: "PENDING", member: { is: memberScope(user) } },
-    select: { id: true, claimType: true, memberId: true, member: { select: { fullName: true, districtId: true, district: { select: { regionId: true } } } } },
+    where: {
+      id: params.data.id,
+      source: "MEMBER_PORTAL",
+      status: "PENDING",
+      member: { is: memberScope(user) },
+    },
+    select: {
+      id: true,
+      claimType: true,
+      memberId: true,
+      member: {
+        select: { fullName: true, districtId: true, district: { select: { regionId: true } } },
+      },
+    },
   });
   if (!claim) {
-    response.status(404).json({ success: false, message: "No pending member claim matches that ID" });
+    response
+      .status(404)
+      .json({ success: false, message: "No pending member claim matches that ID" });
     return;
   }
 
   const { action, note } = body.data;
   const reviewedAt = new Date();
-  const data =
-    action === "APPROVE"
-      ? {
-          status: "SUBMITTED" as const,
-          submittedAt: reviewedAt,
-          externalClaimId: `SIM-${reviewedAt.getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
-        }
-      : action === "RETURN"
-        ? { status: "RETURNED" as const, errorMessage: null }
-        : { status: "FAILED" as const, errorMessage: note ?? null };
-
-  const updated = await prisma.externalClaimSubmission.update({
+  if (action === "APPROVE") {
+    const record = await prisma.externalClaimSubmission.findUniqueOrThrow({
+      where: { id: claim.id },
+    });
+    if (record.provider !== "Claims System") {
+      response.status(409).json({
+        success: false,
+        message: "Historical simulated claims cannot be sent to Claims Portal. File a new claim.",
+      });
+      return;
+    }
+    if (!claimsProvider.isConfigured()) {
+      response
+        .status(503)
+        .json({ success: false, message: "Claims Portal submissions are not configured." });
+      return;
+    }
+    try {
+      await loadClaimDocuments(
+        record.claimType!,
+        record.documentIds,
+        record.memberId,
+        record.submittedByMemberId ?? undefined,
+      );
+    } catch (error) {
+      if (!(error instanceof ClaimDocumentError)) throw error;
+      response.status(400).json({ success: false, message: error.message });
+      return;
+    }
+  }
+  const changed = await prisma.externalClaimSubmission.updateMany({
+    where: { id: claim.id, status: "PENDING", reviewedAt: null, deliveryState: "NOT_SENT" },
+    data: {
+      status: action === "RETURN" ? "RETURNED" : action === "REJECT" ? "FAILED" : "PENDING",
+      reviewedById: user.id,
+      reviewNote: note ?? null,
+      reviewedAt,
+      errorMessage: action === "REJECT" ? note : null,
+    },
+  });
+  if (!changed.count) {
+    response.status(409).json({
+      success: false,
+      message: "This claim has already been reviewed. Refresh to see its status.",
+    });
+    return;
+  }
+  if (action === "APPROVE") await deliverClaim(claim.id);
+  const updated = await prisma.externalClaimSubmission.findUniqueOrThrow({
     where: { id: claim.id },
-    data: { ...data, reviewedById: user.id, reviewNote: note ?? null, reviewedAt },
     select: submissionSelect,
   });
   await recordAudit({
     request,
     actor: user,
-    action: `CLAIM_${action}D`,
+    action: { APPROVE: "CLAIM_APPROVED", RETURN: "CLAIM_RETURNED", REJECT: "CLAIM_REJECTED" }[
+      action
+    ],
     entityType: "EXTERNAL_CLAIM_SUBMISSION",
     entityId: claim.id,
     description: `${action === "APPROVE" ? "Approved" : action === "RETURN" ? "Returned" : "Rejected"} a member-submitted ${claim.claimType?.toLowerCase().replaceAll("_", " ")} claim for ${claim.member.fullName}`,
@@ -400,21 +445,185 @@ claimsRouter.patch("/submissions/:id/review", async (request, response) => {
     regionId: claim.member.district?.regionId,
     districtId: claim.member.districtId,
   });
+  await notifyClaimReview({
+    claimId: claim.id,
+    memberId: claim.memberId,
+    action,
+    reviewedAt,
+    note,
+    deliveryState: updated.deliveryState,
+  });
   response.json({ success: true, data: updated });
 });
 
+claimsRouter.post("/submissions/:id/send", async (request, response) => {
+  const params = idSchema.safeParse(request.params);
+  if (!params.success) {
+    response.status(400).json({ success: false, message: "Invalid claim ID" });
+    return;
+  }
+  const user = response.locals.user as AuthenticatedUser;
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: {
+      id: params.data.id,
+      provider: "Claims System",
+      status: "PENDING",
+      deliveryState: { in: ["NOT_SENT", "FAILED", "UNKNOWN"] },
+      member: { is: memberScope(user) },
+      OR: [{ source: "STAFF" }, { source: "MEMBER_PORTAL", reviewedAt: { not: null } }],
+    },
+    select: {
+      id: true,
+      memberId: true,
+      source: true,
+      reviewedAt: true,
+      reviewNote: true,
+      deliveryState: true,
+      claimantName: true,
+      member: { select: { controllerId: true } },
+    },
+  });
+  if (!claim) {
+    response.status(409).json({
+      success: false,
+      message: "No accessible claim is ready for delivery. Refresh its status.",
+    });
+    return;
+  }
+  if (!claimsProvider.isConfigured()) {
+    response
+      .status(503)
+      .json({ success: false, message: "Claims Portal submissions are not configured." });
+    return;
+  }
+  const wasRetry = claim.deliveryState !== "NOT_SENT";
+  const historyChecked = claim.deliveryState === "UNKNOWN";
+  if (historyChecked) {
+    if (request.body?.historyChecked !== true) {
+      response.status(409).json({
+        success: false,
+        message:
+          "Check Claims Portal history and confirm there is no matching claim before retrying.",
+      });
+      return;
+    }
+    let history: Awaited<ReturnType<typeof claimsProvider.history>>;
+    try {
+      history = await claimsProvider.history(claim.member.controllerId);
+      if (history.some((item) => item.staffId && item.staffId !== claim.member.controllerId))
+        throw new Error("History member mismatch");
+    } catch {
+      await recordAudit({
+        request,
+        actor: user,
+        action: "CLAIM_RETRY_BLOCKED",
+        entityType: "EXTERNAL_CLAIM_SUBMISSION",
+        entityId: claim.id,
+        description: "Unconfirmed delivery retry blocked because history could not be checked",
+        afterData: { historyChecked: true, historyCheckOutcome: "UNAVAILABLE" },
+      });
+      response.status(503).json({
+        success: false,
+        message:
+          "Claims Portal history is unavailable. Retry is blocked until history can be checked.",
+      });
+      return;
+    }
+    // A reachable, correctly-scoped history on its own only proves the caller COULD have looked
+    // -- it doesn't prove this specific claim isn't already in it, since Mankrado's history
+    // response never echoes back our own submissionReference/idempotencyKey for us to match on.
+    // This is the best available signal instead: a still-active history entry for the same
+    // claimant name. It can't replace the staff member's own check, but it stops a confirmed
+    // "historyChecked: true" from sailing through unexamined when the data in hand already shows
+    // a likely duplicate.
+    const possibleDuplicate = claim.claimantName
+      ? history.find(
+          (item) =>
+            !INACTIVE_HISTORY_STATUS.test(item.status ?? "") &&
+            namesLikelyMatch(item.name ?? "", claim.claimantName!),
+        )
+      : undefined;
+    if (possibleDuplicate) {
+      await recordAudit({
+        request,
+        actor: user,
+        action: "CLAIM_RETRY_BLOCKED",
+        entityType: "EXTERNAL_CLAIM_SUBMISSION",
+        entityId: claim.id,
+        description:
+          "Unconfirmed delivery retry blocked -- history already shows a likely-matching active claim",
+        afterData: {
+          historyChecked: true,
+          historyCheckOutcome: "POSSIBLE_DUPLICATE",
+          matchedClaimNumber: possibleDuplicate.claimNumber,
+        },
+      });
+      response.status(409).json({
+        success: false,
+        message: `Claims Portal history already shows an active claim for ${possibleDuplicate.name} (claim ${possibleDuplicate.claimNumber}). Confirm with the insurer whether this is the same claim before retrying.`,
+      });
+      return;
+    }
+  }
+  const delivered = await deliverClaim(claim.id, undefined, {
+    allowUnknown: historyChecked,
+    expectedDeliveryState: claim.deliveryState,
+  });
+  if (
+    claim.source === "MEMBER_PORTAL" &&
+    claim.reviewedAt &&
+    delivered.deliveryState === "ACCEPTED"
+  ) {
+    await notifyClaimReview({
+      claimId: claim.id,
+      memberId: claim.memberId,
+      action: "APPROVE",
+      reviewedAt: claim.reviewedAt,
+      note: claim.reviewNote,
+      deliveryState: delivered.deliveryState,
+    });
+  }
+  await recordAudit({
+    request,
+    actor: user,
+    action: "CLAIM_DELIVERY_RECORDED",
+    entityType: "EXTERNAL_CLAIM_SUBMISSION",
+    entityId: claim.id,
+    description: wasRetry
+      ? "Retried delivery of a claim after a previous failed or unconfirmed attempt"
+      : "Recorded delivery of a previously unsent claim",
+    afterData: {
+      deliveryState: delivered.deliveryState,
+      historyChecked,
+      historyCheckOutcome: historyChecked ? "SUCCESS" : "NOT_REQUIRED",
+    },
+  });
+  response.json({ success: true, data: delivered });
+});
+
 claimsRouter.get("/submissions", async (request, response) => {
+  await expireStaleDeliveries();
   const parsed = querySchema.safeParse(request.query);
   if (!parsed.success) {
     response.status(400).json({ success: false, message: "Invalid request" });
     return;
   }
   const user = response.locals.user as AuthenticatedUser;
-  const { page, limit, status, source } = parsed.data;
+  const { page, limit, status, source, deliveryState, awaitingReview } = parsed.data;
   const where = {
     member: { is: memberScope(user) },
-    ...(status ? { status } : {}),
-    ...(source ? { source } : {}),
+    ...(awaitingReview
+      ? {
+          status: "PENDING" as const,
+          source: "MEMBER_PORTAL" as const,
+          reviewedAt: null,
+          deliveryState: "NOT_SENT" as const,
+        }
+      : {
+          ...(status ? { status } : {}),
+          ...(source ? { source } : {}),
+          ...(deliveryState ? { deliveryState } : {}),
+        }),
   };
   const [submissions, total] = await Promise.all([
     prisma.externalClaimSubmission.findMany({
@@ -424,7 +633,16 @@ claimsRouter.get("/submissions", async (request, response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("claims", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, status: parsed.data.status, source: parsed.data.source }, () => prisma.externalClaimSubmission.count({ where })),
+    cachedCount(
+      "claims",
+      {
+        scope: { role: user.role, regionId: user.regionId, districtId: user.districtId },
+        status: parsed.data.status,
+        source: parsed.data.source,
+        awaitingReview,
+      },
+      () => prisma.externalClaimSubmission.count({ where }),
+    ),
   ]);
   response.json({
     success: true,
@@ -434,6 +652,7 @@ claimsRouter.get("/submissions", async (request, response) => {
 });
 
 claimsRouter.get("/submissions/:id", async (request, response) => {
+  await expireStaleDeliveries();
   const params = idSchema.safeParse(request.params);
   if (!params.success) {
     response.status(400).json({ success: false, message: "Invalid submission ID" });
@@ -444,6 +663,14 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
     where: { id: params.data.id, member: { is: memberScope(user) } },
     select: {
       ...submissionSelect,
+      member: {
+        select: {
+          id: true,
+          controllerId: true,
+          fullName: true,
+          district: { select: { name: true } },
+        },
+      },
       claimantType: true,
       claimantIdType: true,
       claimantIdNumber: true,
@@ -454,6 +681,7 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
       paymentDetails: true,
       documentIds: true,
       notes: true,
+      externalAssessment: true,
     },
   });
   if (!submission) {
@@ -461,7 +689,73 @@ claimsRouter.get("/submissions/:id", async (request, response) => {
     return;
   }
   const documents = submission.documentIds.length
-    ? await prisma.storedFile.findMany({ where: { id: { in: submission.documentIds } }, select: { id: true, slotKey: true, originalName: true, storedName: true } })
+    ? await prisma.storedFile.findMany({
+        where: { id: { in: submission.documentIds } },
+        select: { id: true, slotKey: true, originalName: true, storedName: true },
+      })
     : [];
   response.json({ success: true, data: { ...submission, documents } });
+});
+
+// Proxy reads are scoped to locally accessible members before any external request.
+claimsRouter.get("/history/:staffId", async (request, response) => {
+  const parsed = lookupSchema.safeParse({ staffId: request.params.staffId });
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Invalid Staff ID" });
+    return;
+  }
+  const user = response.locals.user as AuthenticatedUser;
+  const member = await prisma.member.findFirst({
+    where: { controllerId: parsed.data.staffId, ...memberScope(user) },
+    select: { id: true },
+  });
+  if (!member) {
+    response.status(404).json({ success: false, message: "Member not found" });
+    return;
+  }
+  try {
+    const history = await claimsProvider.history(parsed.data.staffId);
+    if (history.some((item) => item.staffId && item.staffId !== parsed.data.staffId))
+      throw new Error("History member mismatch");
+    response.json({ success: true, data: history });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message: "Claims Portal history is unavailable. Local claims remain saved.",
+    });
+  }
+});
+
+claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
+  const externalId = z.string().trim().min(1).max(200).safeParse(request.params.externalId);
+  if (!externalId.success) {
+    response.status(400).json({ success: false, message: "Invalid claim reference" });
+    return;
+  }
+  const user = response.locals.user as AuthenticatedUser;
+  const claim = await prisma.externalClaimSubmission.findFirst({
+    where: {
+      externalClaimId: externalId.data,
+      provider: "Claims System",
+      member: { is: memberScope(user) },
+    },
+    select: { id: true, member: { select: { controllerId: true } } },
+  });
+  if (!claim) {
+    response.status(404).json({ success: false, message: "Claim not found" });
+    return;
+  }
+  try {
+    const details = await refreshClaimAssessment(
+      claim.id,
+      externalId.data,
+      claim.member.controllerId,
+    );
+    response.json({ success: true, data: details });
+  } catch (error) {
+    response.status(error instanceof ClaimsProviderUnavailableError ? 503 : 502).json({
+      success: false,
+      message: "Claims Portal claim details are unavailable. Local details remain saved.",
+    });
+  }
 });

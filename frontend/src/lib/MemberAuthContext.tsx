@@ -36,13 +36,19 @@ type MemberAuthContextType = {
   logout: () => Promise<void>;
 };
 
-const MemberAuthContext = createContext<MemberAuthContextType | undefined>(
-  undefined,
-);
+const MemberAuthContext = createContext<MemberAuthContextType | undefined>(undefined);
 
 // How long before the access token's real expiry to proactively refresh it, so an active
 // session never gets caught by surprise mid-request.
 const REFRESH_BUFFER_MS = 2 * 60 * 1_000;
+
+// Same rationale as AuthContext.tsx's logoutChannel -- tokens live only in a per-tab JS
+// variable, so logging out in one tab otherwise leaves every other open tab rendering as
+// authenticated until its next API call 401s. A separate channel from the staff one, since the
+// two sessions are independent.
+const LOGOUT_CHANNEL_NAME = "gnat-member-logout";
+const logoutChannel =
+  typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(LOGOUT_CHANNEL_NAME) : null;
 
 export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberUser | null>(null);
@@ -50,6 +56,8 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
   const refreshStarted = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const memberId = member?.id;
 
   const scheduleRefresh = useCallback((token: string) => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
@@ -78,10 +86,21 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!logoutChannel) return;
+    const onMessage = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      setMemberAccessToken(null);
+      setMember(null);
+    };
+    logoutChannel.addEventListener("message", onMessage);
+    return () => logoutChannel.removeEventListener("message", onMessage);
+  }, []);
+
   // Runs once per new member session (login, setup, or a page-load refresh) — not on every
   // render — so a stale re-check can't undo the optimistic markProfileComplete() below.
   useEffect(() => {
-    if (!member) {
+    if (!memberId) {
       setProfileComplete(null);
       return;
     }
@@ -89,7 +108,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
       .get("/member-portal/profile")
       .then((res) => setProfileComplete(Boolean(res.data.data.profileCompletion?.complete)))
       .catch(() => setProfileComplete(null));
-  }, [member?.id]);
+  }, [memberId]);
 
   const markProfileComplete = useCallback(() => setProfileComplete(true), []);
 
@@ -162,6 +181,7 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setMemberAccessToken(null);
       setMember(null);
+      logoutChannel?.postMessage("logout");
     }
   }, []);
 
@@ -186,7 +206,6 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
 
 export function useMemberAuth() {
   const ctx = useContext(MemberAuthContext);
-  if (!ctx)
-    throw new Error("useMemberAuth must be used within a MemberAuthProvider");
+  if (!ctx) throw new Error("useMemberAuth must be used within a MemberAuthProvider");
   return ctx;
 }

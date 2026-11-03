@@ -34,7 +34,9 @@ async function main() {
 
   console.log(`${removedWithCard.length} removed member(s) still hold a Ghana Card ID:\n`);
   for (const item of removedWithCard) {
-    const spouseNote = item.spouse?.ghanaCardId ? ` (spouse card ${item.spouse.ghanaCardId} too)` : "";
+    const spouseNote = item.spouse?.ghanaCardId
+      ? ` (spouse card ${item.spouse.ghanaCardId} too)`
+      : "";
     console.log(`  ${item.controllerId}  ${item.fullName}  ${item.ghanaCardId}${spouseNote}`);
   }
 
@@ -50,7 +52,10 @@ async function main() {
   const memberIds = removedWithCard.map((item) => item.id);
   const [members, spouses] = await prisma.$transaction([
     prisma.member.updateMany({ where: { id: { in: memberIds } }, data: { ghanaCardId: null } }),
-    prisma.spouse.updateMany({ where: { memberId: { in: memberIds } }, data: { ghanaCardId: null } }),
+    prisma.spouse.updateMany({
+      where: { memberId: { in: memberIds } },
+      data: { ghanaCardId: null },
+    }),
   ]);
 
   console.log(`\nCleared ${members.count} member card(s) and ${spouses.count} spouse card(s).`);

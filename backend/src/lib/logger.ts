@@ -15,31 +15,35 @@ const logStreams = pino.multistream([
   { stream: pino.destination({ dest: logFilePath, sync: false }) },
 ]);
 
-export const logger = pino({
-  level: env.LOG_LEVEL ?? (env.NODE_ENV === "production" ? "info" : "debug"),
-  redact: {
-    paths: [
-      "req.headers.authorization",
-      "req.headers.cookie",
-      "res.headers.set-cookie",
-      "password",
-      "otp",
-      "accessToken",
-      "refreshToken",
-      "err.body",
-    ],
-    censor: "[REDACTED]",
+export const logger = pino(
+  {
+    level: env.LOG_LEVEL ?? (env.NODE_ENV === "production" ? "info" : "debug"),
+    redact: {
+      paths: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "res.headers.set-cookie",
+        "password",
+        "otp",
+        "accessToken",
+        "refreshToken",
+        "err.body",
+      ],
+      censor: "[REDACTED]",
+    },
+    base: { service: "gnatsupreme-backend", environment: env.NODE_ENV },
   },
-  base: { service: "gnatsupreme-backend", environment: env.NODE_ENV },
-}, logStreams);
+  logStreams,
+);
 
 export const requestLogger = pinoHttp({
   logger,
   genReqId(request, response) {
     const supplied = request.headers["x-request-id"];
-    const requestId = typeof supplied === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(supplied)
-      ? supplied
-      : randomUUID();
+    const requestId =
+      typeof supplied === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(supplied)
+        ? supplied
+        : randomUUID();
     response.setHeader("X-Request-ID", requestId);
     return requestId;
   },
@@ -50,7 +54,12 @@ export const requestLogger = pinoHttp({
   },
   serializers: {
     req(request) {
-      return { id: request.id, method: request.method, url: request.url, remoteAddress: request.remoteAddress };
+      return {
+        id: request.id,
+        method: request.method,
+        url: request.url,
+        remoteAddress: request.remoteAddress,
+      };
     },
     res(response) {
       return { statusCode: response.statusCode };

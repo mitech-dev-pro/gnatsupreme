@@ -23,12 +23,14 @@ export function getCurrencySymbol(code: string): string {
   return currency?.symbol ?? code;
 }
 
+// Not the only money formatter in the app -- features/administration/Setup.shared.ts's
+// formatMoney() is deliberately separate: benefit amounts need a null to render as "not
+// applicable" (an em dash), not a real zero, which this function's 0.00 fallback would imply.
 export function formatCurrency(
   amount: number | string | null | undefined,
   currency: string = DEFAULT_CURRENCY,
 ): string {
-  const num =
-    typeof amount === "string" ? Number.parseFloat(amount) : (amount ?? 0);
+  const num = typeof amount === "string" ? Number.parseFloat(amount) : (amount ?? 0);
 
   if (!Number.isFinite(num)) {
     return `${getCurrencySymbol(currency)}0.00`;

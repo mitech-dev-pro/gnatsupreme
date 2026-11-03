@@ -5,8 +5,6 @@ import { jwtVerify, SignJWT } from "jose";
 
 import { env } from "../../config/env.js";
 
-const accessTokenSecret = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
-
 // Same argon2id parameters used elsewhere for staff passwords (user.routes.ts) -- kept
 // identical so there's one password-hashing policy to reason about, not two.
 export async function hashPassword(password: string) {
@@ -17,6 +15,8 @@ export async function hashPassword(password: string) {
     parallelism: 1,
   });
 }
+
+const accessTokenSecret = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
 
 export async function createAccessToken(userId: number) {
   return new SignJWT({})

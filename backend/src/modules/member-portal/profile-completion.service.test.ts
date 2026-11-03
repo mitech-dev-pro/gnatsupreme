@@ -17,7 +17,10 @@ test("reports all required details missing for a new Report 20 member", () => {
   assert.equal(result.complete, false);
   assert.equal(result.percentage, 0);
   assert.equal(result.showExpandedPrompt, true);
-  assert.deepEqual(result.items.map((item) => item.status), ["MISSING", "MISSING", "MISSING"]);
+  assert.deepEqual(
+    result.items.map((item) => item.status),
+    ["MISSING", "MISSING", "MISSING"],
+  );
 });
 
 test("distinguishes submitted details from approved details", () => {
@@ -29,7 +32,10 @@ test("distinguishes submitted details from approved details", () => {
       { type: "BENEFICIARY_ADD", proposedData: {} },
     ],
   });
-  assert.deepEqual(result.items.map((item) => item.status), ["PENDING", "PENDING", "PENDING"]);
+  assert.deepEqual(
+    result.items.map((item) => item.status),
+    ["PENDING", "PENDING", "PENDING"],
+  );
   assert.equal(result.percentage, 0);
 });
 

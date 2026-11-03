@@ -1,16 +1,22 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./index.css";
 import App from "./App";
 import { OrganizationSettingsProvider } from "@/lib/OrganizationSettingsContext";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <BrowserRouter>
+const router = createBrowserRouter([
+  {
+    path: "*",
+    element: (
       <OrganizationSettingsProvider>
         <App />
       </OrganizationSettingsProvider>
-    </BrowserRouter>
+    ),
+  },
+]);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
   </StrictMode>,
 );

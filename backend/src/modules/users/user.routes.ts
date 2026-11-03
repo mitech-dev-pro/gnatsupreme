@@ -62,7 +62,9 @@ async function resolveGeographicScope(
 ) {
   if (role === "SUPER_ADMIN" || role === "NATIONAL_ADMIN") {
     if (regionId != null || districtId != null) {
-      throw new UserInputError("National and super administrators cannot have geographic assignments");
+      throw new UserInputError(
+        "National and super administrators cannot have geographic assignments",
+      );
     }
     return { regionId: null, districtId: null };
   }
@@ -187,7 +189,9 @@ userRouter.post("/", async (request, response) => {
 
   const currentUser = actor(response);
   if (!canManageRole(currentUser, parsed.data.role)) {
-    response.status(403).json({ success: false, message: "You cannot create a super administrator" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot create a super administrator" });
     return;
   }
 
@@ -250,7 +254,9 @@ userRouter.patch("/:id", async (request, response) => {
 
   const nextRole = body.data.role ?? existing.role;
   if (!canManageRole(actor(response), nextRole)) {
-    response.status(403).json({ success: false, message: "You cannot assign the super administrator role" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot assign the super administrator role" });
     return;
   }
 
@@ -262,7 +268,9 @@ userRouter.patch("/:id", async (request, response) => {
       },
     });
     if (duplicate) {
-      response.status(409).json({ success: false, message: "A user with this email already exists" });
+      response
+        .status(409)
+        .json({ success: false, message: "A user with this email already exists" });
       return;
     }
   }
@@ -323,7 +331,9 @@ userRouter.patch("/:id/status", async (request, response) => {
 
   const currentUser = actor(response);
   if (params.data.id === currentUser.id && !body.data.isActive) {
-    response.status(400).json({ success: false, message: "You cannot deactivate your own account" });
+    response
+      .status(400)
+      .json({ success: false, message: "You cannot deactivate your own account" });
     return;
   }
 
@@ -338,7 +348,9 @@ userRouter.patch("/:id/status", async (request, response) => {
       where: { role: "SUPER_ADMIN", isActive: true },
     });
     if (activeSuperAdministrators <= 1) {
-      response.status(409).json({ success: false, message: "The final super administrator cannot be deactivated" });
+      response
+        .status(409)
+        .json({ success: false, message: "The final super administrator cannot be deactivated" });
       return;
     }
   }

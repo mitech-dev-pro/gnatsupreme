@@ -15,10 +15,12 @@ export const districtCreateSchema = z.object({
   regionId: z.coerce.number().int().positive(),
 });
 
-export const districtUpdateSchema = districtCreateSchema.partial().refine(
-  (value) => value.name !== undefined || value.regionId !== undefined,
-  "Provide at least one field to update",
-);
+export const districtUpdateSchema = districtCreateSchema
+  .partial()
+  .refine(
+    (value) => value.name !== undefined || value.regionId !== undefined,
+    "Provide at least one field to update",
+  );
 
 export const districtQuerySchema = z.object({
   regionId: z.coerce.number().int().positive().optional(),

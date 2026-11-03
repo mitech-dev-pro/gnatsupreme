@@ -5,6 +5,7 @@ import { stageMemberImport } from "./member-import.service.js";
 
 export type MemberImportWorkerData = {
   importJobId: number;
+  attemptStartedAt?: string;
   filePath: string;
   mimeType: string;
   originalName: string;
@@ -17,13 +18,36 @@ export type MemberImportWorkerData = {
 // is CPU-bound and would otherwise block the main API server for the whole time a large file is
 // being staged.
 export async function processMemberImportJob(data: MemberImportWorkerData) {
+  const attempt = await prisma.importJob.findUnique({
+    where: { id: data.importJobId },
+    select: { startedAt: true, status: true },
+  });
+  if (
+    !attempt ||
+    attempt.status !== "PROCESSING" ||
+    (data.attemptStartedAt && attempt.startedAt?.toISOString() !== data.attemptStartedAt)
+  )
+    return;
+  const startedAt = attempt.startedAt!;
+  // A delayed validation message must not re-stage an import already in enrollment.
+  if (await prisma.memberBulkImportRow.count({ where: { importJobId: data.importJobId } })) return;
   try {
-    await stageMemberImport(data.importJobId, data.filePath, data.mimeType, data.actorUser);
+    await stageMemberImport(
+      data.importJobId,
+      data.filePath,
+      data.mimeType,
+      data.actorUser,
+      startedAt,
+    );
   } catch (error) {
     await prisma.importJob
-      .update({
-        where: { id: data.importJobId },
-        data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed", completedAt: new Date() },
+      .updateMany({
+        where: { id: data.importJobId, status: "PROCESSING", startedAt },
+        data: {
+          status: "FAILED",
+          errorMessage: error instanceof Error ? error.message.slice(0, 500) : "Validation failed",
+          completedAt: new Date(),
+        },
       })
       .catch(() => undefined);
     return;
@@ -37,7 +61,12 @@ export async function processMemberImportJob(data: MemberImportWorkerData) {
     entityId: data.importJobId,
     description: `Validated bulk member import ${data.originalName}`,
     afterData: completed
-      ? { totalRows: completed.totalRows, readyRows: completed.readyRows, invalidRows: completed.invalidRows, duplicateRows: completed.duplicateRows }
+      ? {
+          totalRows: completed.totalRows,
+          readyRows: completed.readyRows,
+          invalidRows: completed.invalidRows,
+          duplicateRows: completed.duplicateRows,
+        }
       : undefined,
   });
 }

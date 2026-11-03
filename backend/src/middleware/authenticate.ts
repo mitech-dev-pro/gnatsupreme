@@ -51,5 +51,4 @@ export async function authenticate(request: Request, response: Response, next: N
   }
 }
 
-
 //this middleware function checks if the user is authenticated by verifying the access token provided in the "Authorization" header. If the token is valid and corresponds to an active user, it attaches the user information to `response.locals.user` and calls the next middleware function. If the token is invalid or the user is not found, it returns a 401 Unauthorized response.

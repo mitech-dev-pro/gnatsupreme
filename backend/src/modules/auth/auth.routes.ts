@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import argon2 from "argon2";
 import { Router, type Request, type Response } from "express";
 
@@ -5,6 +7,7 @@ import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
 import {
   forgotPasswordRateLimiter,
   loginRateLimiter,
@@ -65,7 +68,18 @@ function clientMetadata(request: Request) {
   };
 }
 
+// A placeholder hash, verified against on every lookup miss so a nonexistent email still pays
+// argon2's cost — without this, response latency alone reveals which staff emails exist (the
+// lookup-miss branch below would otherwise skip argon2.verify entirely).
+const DECOY_PASSWORD_HASH = await argon2.hash(randomBytes(32).toString("hex"), {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+});
+
 authRouter.post("/login", loginRateLimiter, async (request, response) => {
+  const startedAt = Date.now();
   const parsed = loginSchema.safeParse(request.body);
 
   if (!parsed.success) {
@@ -80,14 +94,23 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
     return;
   }
 
+  // Floors every response (success or failure) to the same minimum latency, so timing alone
+  // can't distinguish "no such email" from "wrong password" from "signed in" — see
+  // DECOY_PASSWORD_HASH above for the matching argon2-cost equalization.
+  const pad = async () => {
+    const remaining = 300 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  };
+
   try {
     const user = await prisma.user.findUnique({
       where: { email: parsed.data.email },
       omit: { passwordHash: false },
     });
-    const passwordMatches = user
-      ? await argon2.verify(user.passwordHash, parsed.data.password)
-      : false;
+    const passwordMatches = await argon2.verify(
+      user?.passwordHash ?? DECOY_PASSWORD_HASH,
+      parsed.data.password,
+    );
 
     if (!user || !user.isActive || !passwordMatches) {
       await recordAudit({
@@ -97,6 +120,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
         entityType: "AUTH",
         description: `Failed login attempt for ${parsed.data.email}`,
       });
+      await pad();
       response.status(401).json({ success: false, message: "Invalid email or password" });
       return;
     }
@@ -120,6 +144,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
       entityId: user.id,
       description: `${user.fullName} signed in`,
     });
+    await pad();
     response.status(200).json({
       success: true,
       accessToken: await createAccessToken(user.id),
@@ -138,48 +163,46 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
   }
 });
 
-authRouter.post(
-  "/forgot-password",
-  forgotPasswordRateLimiter,
-  async (request, response) => {
-    const startedAt = Date.now();
-    const parsed = forgotPasswordSchema.safeParse(request.body);
-    if (!parsed.success) {
-      response.status(400).json({ success: false, message: "Enter a valid email address" });
-      return;
-    }
-    const user = await prisma.user.findFirst({
-      where: { email: parsed.data.email, isActive: true },
-      select: { id: true, email: true },
+authRouter.post("/forgot-password", forgotPasswordRateLimiter, async (request, response) => {
+  const startedAt = Date.now();
+  const parsed = forgotPasswordSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter a valid email address" });
+    return;
+  }
+  const user = await prisma.user.findFirst({
+    where: { email: parsed.data.email, isActive: true },
+    select: { id: true, email: true },
+  });
+  // Always the same response regardless of whether the account exists or is active --
+  // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
+  // below, and the email itself is never awaited (an SMTP round trip is both much slower than
+  // that floor and would turn a provider rejection into a request failure here).
+  if (user) {
+    const token = createPasswordResetToken();
+    await prisma.userPasswordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashPasswordResetToken(token),
+        expiresAt: passwordResetTokenExpiresAt(),
+        ipAddress: request.ip?.slice(0, 64),
+      },
     });
-    // Always the same response regardless of whether the account exists or is active --
-    // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
-    // below, and the email itself is never awaited (an SMTP round trip is both much slower than
-    // that floor and would turn a provider rejection into a request failure here).
-    if (user) {
-      const token = createPasswordResetToken();
-      await prisma.userPasswordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: hashPasswordResetToken(token),
-          expiresAt: passwordResetTokenExpiresAt(),
-          ipAddress: request.ip?.slice(0, 64),
-        },
-      });
-      const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}&audience=staff`;
-      sendStaffPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
-        logger.error({ err: error, userId: user.id }, "Failed to send staff password reset email");
-      });
-    }
-    const remaining = 200 - (Date.now() - startedAt);
-    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-    response.json({
-      success: true,
-      message:
-        "If an account exists for that email, password reset instructions have been sent to it.",
+    // The shared /reset-password page also serves member reset links (same token shape,
+    // same URL path) -- audience=staff is how it knows which backend endpoint to call.
+    const resetUrl = `${env.FRONTEND_ORIGIN}/reset-password?token=${token}&audience=staff`;
+    sendStaffPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
+      logger.error({ err: error, userId: user.id }, "Failed to send staff password reset email");
     });
-  },
-);
+  }
+  const remaining = 200 - (Date.now() - startedAt);
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  response.json({
+    success: true,
+    message:
+      "If an account exists for that email, password reset instructions have been sent to it.",
+  });
+});
 
 authRouter.post("/reset-password", async (request, response) => {
   const parsed = resetPasswordSchema.safeParse(request.body);
@@ -239,7 +262,7 @@ authRouter.post("/reset-password", async (request, response) => {
   response.json({ success: true, message: "Password updated. You can now sign in." });
 });
 
-authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
+authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request, response) => {
   const currentToken = request.cookies[env.REFRESH_COOKIE_NAME] as string | undefined;
 
   if (!currentToken) {
@@ -255,7 +278,12 @@ authRouter.post("/refresh", refreshRateLimiter, async (request, response) => {
       include: { user: { select: { ...publicUserSelect, isActive: true } } },
     });
 
-    if (!session || session.revokedAt || session.expiresAt <= new Date() || !session.user.isActive) {
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      !session.user.isActive
+    ) {
       response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
       response.status(401).json({ success: false, message: "Refresh session is invalid" });
       return;

@@ -18,6 +18,7 @@ type NotifyMemberInput = {
   message: string;
   idempotencyKey: string;
   sendSms?: boolean;
+  actionUrl?: string;
 };
 
 export async function queueSmsNotification(input: QueueSmsInput) {
@@ -39,10 +40,13 @@ export async function queueSmsNotification(input: QueueSmsInput) {
 }
 
 export async function notifyMember(input: NotifyMemberInput) {
-  const member = await prisma.member.findUnique({
-    where: { id: input.memberId },
-    select: { phone: true, phoneVerifiedAt: true },
-  });
+  const member =
+    input.sendSms === false
+      ? null
+      : await prisma.member.findUnique({
+          where: { id: input.memberId },
+          select: { phone: true, phoneVerifiedAt: true },
+        });
   const inApp = await prisma.notification.upsert({
     where: { idempotencyKey: `${input.idempotencyKey}:in-app` },
     update: {},
@@ -52,6 +56,7 @@ export async function notifyMember(input: NotifyMemberInput) {
       type: input.type,
       title: input.title,
       message: input.message,
+      actionUrl: input.actionUrl,
       idempotencyKey: `${input.idempotencyKey}:in-app`,
       memberId: input.memberId,
       sentAt: new Date(),
@@ -77,6 +82,7 @@ export async function notifyStaffForMember(input: {
   title: string;
   message: string;
   idempotencyKey: string;
+  actionUrl?: string;
 }) {
   const member = await prisma.member.findUnique({
     where: { id: input.memberId },
@@ -113,6 +119,7 @@ export async function notifyStaffForMember(input: {
           type: input.type,
           title: input.title,
           message: input.message,
+          actionUrl: input.actionUrl,
           idempotencyKey: `${input.idempotencyKey}:user:${recipient.id}`,
           userId: recipient.id,
           sentAt: new Date(),
@@ -124,31 +131,59 @@ export async function notifyStaffForMember(input: {
 
 export async function processNotificationById(id: number) {
   const notification = await prisma.notification.findUnique({ where: { id } });
-  if (!notification || notification.channel !== "SMS" || !notification.destination || notification.status === "SENT" || notification.status === "CANCELLED" || notification.attempts >= notification.maxAttempts) return notification;
+  if (
+    !notification ||
+    notification.channel !== "SMS" ||
+    !notification.destination ||
+    notification.status === "SENT" ||
+    notification.status === "CANCELLED" ||
+    notification.attempts >= notification.maxAttempts
+  )
+    return notification;
   const claimed = await prisma.notification.updateMany({
     where: { id, status: { in: ["QUEUED", "FAILED"] }, attempts: { lt: notification.maxAttempts } },
     data: { status: "PROCESSING" },
   });
   if (claimed.count !== 1) return notification;
   try {
-    const result = await smsProvider.send({ to: notification.destination, message: notification.message, type: notification.type });
+    const result = await smsProvider.send({
+      to: notification.destination,
+      message: notification.message,
+      type: notification.type,
+    });
     return prisma.notification.update({
       where: { id },
-      data: { status: "SENT", attempts: { increment: 1 }, providerMessageId: result.providerMessageId, lastError: null, sentAt: new Date() },
+      data: {
+        status: "SENT",
+        attempts: { increment: 1 },
+        providerMessageId: result.providerMessageId,
+        lastError: null,
+        sentAt: new Date(),
+      },
     });
   } catch (error) {
     const attempts = notification.attempts + 1;
     const delayMinutes = Math.min(2 ** attempts, 60);
     return prisma.notification.update({
       where: { id },
-      data: { status: "FAILED", attempts, lastError: error instanceof Error ? error.message.slice(0, 500) : "SMS delivery failed", nextAttemptAt: new Date(Date.now() + delayMinutes * 60_000) },
+      data: {
+        status: "FAILED",
+        attempts,
+        lastError: error instanceof Error ? error.message.slice(0, 500) : "SMS delivery failed",
+        nextAttemptAt: new Date(Date.now() + delayMinutes * 60_000),
+      },
     });
   }
 }
 
 export async function processNotificationBatch(limit = 20) {
   const due = await prisma.notification.findMany({
-    where: { channel: "SMS", status: { in: ["QUEUED", "FAILED"] }, nextAttemptAt: { lte: new Date() }, attempts: { lt: 5 } },
+    where: {
+      channel: "SMS",
+      status: { in: ["QUEUED", "FAILED"] },
+      nextAttemptAt: { lte: new Date() },
+      attempts: { lt: 5 },
+    },
     select: { id: true },
     orderBy: { createdAt: "asc" },
     take: limit,
@@ -160,6 +195,10 @@ export async function processNotificationBatch(limit = 20) {
 export async function recoverStaleNotifications() {
   await prisma.notification.updateMany({
     where: { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - 5 * 60_000) } },
-    data: { status: "FAILED", lastError: "Delivery worker was interrupted", nextAttemptAt: new Date() },
+    data: {
+      status: "FAILED",
+      lastError: "Delivery worker was interrupted",
+      nextAttemptAt: new Date(),
+    },
   });
 }

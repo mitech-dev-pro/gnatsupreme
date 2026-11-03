@@ -52,10 +52,18 @@ enum MemberGender {
 
 enum BeneficiaryRelationship {
   CHILD
+  // Deprecated: kept so existing rows saved before the HUSBAND/WIFE split still read back
+  // correctly. New beneficiaries should use HUSBAND or WIFE instead.
   SPOUSE
   PARENT
+  // Deprecated: kept so existing rows saved before the BROTHER/SISTER split still read back
+  // correctly. New beneficiaries should use BROTHER or SISTER instead.
   SIBLING
   OTHER
+  HUSBAND
+  WIFE
+  BROTHER
+  SISTER
 
   @@map("beneficiary_relationship")
 }
@@ -89,20 +97,9 @@ enum TransferStatus {
 }
 
 enum ExternalClaimStatus {
-  // PENDING is reused as "awaiting staff review" for a member-submitted claim (source =
-  // MEMBER_PORTAL). Two other things already touch PENDING and must stay disjoint from that
-  // meaning by `source`, not by status alone:
-  //   1. The real Mankrado provider integration is a stub that always throws (see
-  //      claims/mankrado.provider.ts) — no live path uses PENDING/REDIRECT_READY as "awaiting
-  //      provider sync" today.
-  //   2. workflows/workflow.routes.ts's POST /:id/remove creates a claim stub with
-  //      status: PENDING (source defaults to STAFF) when removing a member for DEATH/DISABILITY
-  //      — a pre-existing, unrelated use. The staff review queue filters on
-  //      `source: MEMBER_PORTAL AND status: PENDING`, so this STAFF-sourced row is correctly
-  //      excluded, but any future code that creates a claim must set `source` deliberately
-  //      rather than relying on the STAFF default to stay out of the review queue.
-  // If real Mankrado sync is ever wired up, or that removal workflow changes, re-check this
-  // invariant before reusing PENDING for anything else.
+  // PENDING includes both unreviewed member claims and claims awaiting confirmed delivery.
+  // Staff review requires source MEMBER_PORTAL, reviewedAt null, and deliveryState NOT_SENT.
+  // Delivery state and externalStatus are separate from the review workflow.
   PENDING
   REDIRECT_READY
   SUBMITTED
@@ -295,6 +292,7 @@ model User {
   requestedTransfers          MemberTransfer[]              @relation("TransferRequestedBy")
   reviewedTransfers           MemberTransfer[]              @relation("TransferReviewedBy")
   claimSubmissions            ExternalClaimSubmission[]
+  claimDrafts                 ClaimDraft[]
   reviewedClaimSubmissions    ExternalClaimSubmission[]     @relation("ClaimReviewedBy")
   importJobs                  ImportJob[]
   benefitPlans                BenefitPlanVersion[]
@@ -358,6 +356,8 @@ model Member {
   transfers                    MemberTransfer[]
   claimSubmissions             ExternalClaimSubmission[]
   claimSubmissionsFiled        ExternalClaimSubmission[]  @relation("ClaimSubmittedByMember")
+  claimDrafts                  ClaimDraft[]               @relation("DraftPolicyMember")
+  preparedClaimDrafts          ClaimDraft[]               @relation("DraftPreparedByMember")
   importRows                   Report20Row[]
   bulkImportRows               MemberBulkImportRow[]
   workflowEvents               MemberWorkflowEvent[]
@@ -388,12 +388,12 @@ model Member {
 }
 
 model Spouse {
-  id          Int          @id @default(autoincrement())
-  memberId    Int          @unique @map("member_id")
-  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  fullName    String       @map("full_name")
-  dateOfBirth DateTime?    @map("date_of_birth") @db.Date
-  ghanaCardId String?      @unique @map("ghana_card_id")
+  id             Int          @id @default(autoincrement())
+  memberId       Int          @unique @map("member_id")
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  fullName       String       @map("full_name")
+  dateOfBirth    DateTime?    @map("date_of_birth") @db.Date
+  ghanaCardId    String?      @unique @map("ghana_card_id")
   // Set when this spouse's Ghana Card ID matches an independently-enrolled Member -- i.e. this
   // person is themselves a GNAT member, not just a dependent. Drives activeBenefit() paying the
   // full member rate instead of the spousal rate for a SPOUSE claim. Reconciled by
@@ -401,11 +401,11 @@ model Spouse {
   // onDelete: SetNull, not Cascade or Restrict: this is an informational cross-reference, not an
   // ownership relation, so deleting the linked Member must never cascade-delete or block deleting
   // this Spouse row.
-  linkedMemberId Int?      @map("linked_member_id")
-  linkedMember   Member?   @relation("SpouseLinkedMember", fields: [linkedMemberId], references: [id], onDelete: SetNull)
-  files       StoredFile[]
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  linkedMemberId Int?         @map("linked_member_id")
+  linkedMember   Member?      @relation("SpouseLinkedMember", fields: [linkedMemberId], references: [id], onDelete: SetNull)
+  files          StoredFile[]
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   @@index([linkedMemberId])
   @@map("spouses")
@@ -503,6 +503,7 @@ model Notification {
   type              String
   title             String
   message           String
+  actionUrl         String?             @map("action_url")
   idempotencyKey    String              @unique @map("idempotency_key")
   userId            Int?                @map("user_id")
   user              User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -795,6 +796,7 @@ model BenefitAmount {
   spouseAmount    Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
   note            String?
   namedConditions String[]           @default([]) @map("named_conditions")
+  claimSubmissions ExternalClaimSubmission[]
 
   @@unique([planVersionId, type])
   @@index([type])
@@ -863,7 +865,18 @@ model MemberTransfer {
   @@map("member_transfers")
 }
 
+enum ClaimDeliveryState {
+  NOT_SENT
+  SENDING
+  ACCEPTED
+  FAILED
+  UNKNOWN
+
+  @@map("claim_delivery_state")
+}
+
 model ExternalClaimSubmission {
+  consumedDraft       ClaimDraft?
   id                  Int                   @id @default(autoincrement())
   memberId            Int                   @map("member_id")
   member              Member                @relation(fields: [memberId], references: [id], onDelete: Restrict)
@@ -876,10 +889,14 @@ model ExternalClaimSubmission {
   submittedByMemberId Int?                  @map("submitted_by_member_id")
   submittedByMember   Member?               @relation("ClaimSubmittedByMember", fields: [submittedByMemberId], references: [id], onDelete: SetNull)
   source              ClaimSubmissionSource @default(STAFF)
-  provider            String                @default("MANKRADO")
+  provider            String                @default("Claims System")
   idempotencyKey      String                @unique @map("idempotency_key")
   externalClaimId     String?               @unique @map("external_claim_id")
   formUrl             String?               @map("form_url")
+  deliveryState       ClaimDeliveryState    @default(NOT_SENT) @map("delivery_state")
+  deliveryStartedAt   DateTime?             @map("delivery_started_at")
+  externalStatus      String?               @map("external_status")
+  externalAssessment  Json?                 @map("external_assessment")
   status              ExternalClaimStatus   @default(PENDING)
   claimType           BenefitType?          @map("claim_type")
   claimantType        String?               @map("claimant_type")
@@ -895,6 +912,13 @@ model ExternalClaimSubmission {
   // nights is always server-computed and stored, never trusted from the client.
   claimDetails        Json?                 @map("claim_details")
   estimatedAmount     Decimal?              @map("estimated_amount") @db.Decimal(12, 2)
+  // The BenefitAmount row activeBenefit() matched when estimatedAmount was computed, kept as a
+  // traceability link back to the plan/rate that priced this claim -- nullable since older rows
+  // predate this column and some claim types have no benefit configured at all. SetNull rather
+  // than Restrict/Cascade: a priced claim must survive its benefit row being superseded or
+  // removed, it just loses this traceability link.
+  benefitAmountId     Int?                  @map("benefit_amount_id")
+  benefitAmount       BenefitAmount?        @relation(fields: [benefitAmountId], references: [id], onDelete: SetNull)
   paymentMethod       String?               @map("payment_method")
   paymentDetails      Json?                 @map("payment_details")
   documentIds         Int[]                 @default([]) @map("document_ids")
@@ -914,10 +938,36 @@ model ExternalClaimSubmission {
   @@index([memberId])
   @@index([submittedById])
   @@index([submittedByMemberId])
+  @@index([benefitAmountId])
   @@index([status])
   @@index([source, status])
+  @@index([deliveryState, deliveryStartedAt])
   @@index([createdAt])
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([memberId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("external_claim_submissions")
+}
+
+model ClaimDraft {
+  id                 Int                      @id @default(autoincrement())
+  memberId           Int                      @map("member_id")
+  member             Member                   @relation("DraftPolicyMember", fields: [memberId], references: [id], onDelete: Cascade)
+  preparedById       Int?                     @map("prepared_by_id")
+  preparedBy         User?                    @relation(fields: [preparedById], references: [id], onDelete: Cascade)
+  preparedByMemberId Int?                     @map("prepared_by_member_id")
+  preparedByMember   Member?                  @relation("DraftPreparedByMember", fields: [preparedByMemberId], references: [id], onDelete: Cascade)
+  submissionKey      String                   @unique @default(uuid()) @map("submission_key")
+  payload            Json
+  documentIds        Int[]                    @default([]) @map("document_ids")
+  revision           Int                      @default(1)
+  submittedClaimId   Int?                     @unique @map("submitted_claim_id")
+  submittedClaim     ExternalClaimSubmission? @relation(fields: [submittedClaimId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([preparedById, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([preparedByMemberId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([memberId])
+  @@index([documentIds], type: Gin)
+  @@map("claim_drafts")
 }

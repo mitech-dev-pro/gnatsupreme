@@ -6,7 +6,7 @@ CREATE TABLE "ExternalClaimSubmission" (
     "id" SERIAL NOT NULL,
     "memberId" INTEGER NOT NULL,
     "submittedById" INTEGER NOT NULL,
-    "provider" TEXT NOT NULL DEFAULT 'MANKRADO',
+    "provider" TEXT NOT NULL DEFAULT 'Claims System',
     "idempotencyKey" TEXT NOT NULL,
     "externalClaimId" TEXT,
     "formUrl" TEXT,

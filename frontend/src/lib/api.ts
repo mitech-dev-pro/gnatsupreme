@@ -1,3 +1,4 @@
+import { getApiErrorStatus, getNestedApiErrorCode } from "@/lib/errorExtract";
 import axios from "axios";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
@@ -14,6 +15,12 @@ const isPublicPath = (pathname: string) =>
 const api = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
+  // A plain cross-site <form> POST or a credentialed cross-origin fetch with no custom headers
+  // counts as a CORS "simple request" -- sent (with cookies) without a preflight, even though
+  // our CORS policy would reject the response. This header forces a preflight on every request,
+  // which the exact-origin CORS policy then blocks for anyone but this frontend -- closing the
+  // gap on cookie-only endpoints like /refresh that have no other proof of same-origin intent.
+  headers: { "X-Requested-With": "XMLHttpRequest" },
 });
 
 let staffAccessToken: string | null = null;
@@ -108,10 +115,10 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error?.config;
-    const code = error?.response?.data?.error?.code;
+    const code = getNestedApiErrorCode(error);
     const requestUrl = config?.url ?? "";
     const isRefreshProbe = REFRESH_PROBE_PATHS.some((path) => requestUrl.endsWith(path));
-    const isAuthFailure = code === "UNAUTHENTICATED" || error?.response?.status === 401;
+    const isAuthFailure = code === "UNAUTHENTICATED" || getApiErrorStatus(error) === 401;
 
     // One retry per request: refresh the relevant token family and replay the original call
     // with it before giving up. config._retried guards against looping if the retried request

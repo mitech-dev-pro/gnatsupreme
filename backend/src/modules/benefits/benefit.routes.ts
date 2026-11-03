@@ -4,7 +4,12 @@ import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { benefitPlanInclude, getBenefitSchedule, getCurrentBenefitPlan, invalidateBenefitPlans } from "./benefit.service.js";
+import {
+  benefitPlanInclude,
+  getBenefitSchedule,
+  getCurrentBenefitPlan,
+  invalidateBenefitPlans,
+} from "./benefit.service.js";
 import {
   benefitHistoryQuerySchema,
   benefitPlanIdSchema,
@@ -151,12 +156,20 @@ benefitRouter.patch(
       response.status(400).json({
         success: false,
         message: "Invalid request",
-        errors: parsed.success ? undefined : parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+        errors: parsed.success
+          ? undefined
+          : parsed.error.issues.map((issue) => ({
+              field: issue.path.join("."),
+              message: issue.message,
+            })),
       });
       return;
     }
 
-    const before = await prisma.benefitPlanVersion.findUnique({ where: { id: params.data.id }, include: planInclude });
+    const before = await prisma.benefitPlanVersion.findUnique({
+      where: { id: params.data.id },
+      include: planInclude,
+    });
     if (!before) {
       response.status(404).json({ success: false, message: "Benefit plan not found" });
       return;
@@ -166,7 +179,11 @@ benefitRouter.patch(
       select: { id: true },
     });
     if (dateCollision) {
-      response.status(409).json({ success: false, message: "Another benefit plan already uses this effective date", existingPlanId: dateCollision.id });
+      response.status(409).json({
+        success: false,
+        message: "Another benefit plan already uses this effective date",
+        existingPlanId: dateCollision.id,
+      });
       return;
     }
 

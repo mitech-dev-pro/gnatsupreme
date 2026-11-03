@@ -1,20 +1,29 @@
+import { memberSearchWhere } from "./member.search.js";
 import { Router, type Response } from "express";
 import type { ZodError } from "zod";
+import {
+  auditLinkChanges,
+  findAccessibleMember,
+  memberGhanaCardConflict,
+  memberInclude,
+  memberListInclude,
+  monthStart,
+  reasonLabel,
+  reconcileSpouseLink,
+  relinkSpousesForMember,
+  spouseGhanaCardConflict,
+} from "./member.service.js";
 
-import type { Prisma } from "../../generated/prisma/client.js";
-import { prisma } from "../../lib/prisma.js";
-import { cachedCount } from "../../lib/cached-count.js";
 import { invalidateMemberAuth } from "../../lib/auth-cache.js";
+import { cachedCount } from "../../lib/cached-count.js";
+import { prisma } from "../../lib/prisma.js";
+import { uniqueFieldLabel, uniqueViolationField } from "../../lib/prisma-errors.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
-import { recordAudit, type AuditRequestSource } from "../audit/audit.service.js";
-import { notifyMember } from "../notifications/notification.service.js";
-import { canAccessDistrict, memberScope, resolveMemberScope } from "./member.access.js";
+import { recordAudit } from "../audit/audit.service.js";
+import { generateTempPassword, hashMemberPassword } from "../member-auth/member-auth.tokens.js";
+import { canAccessDistrict, resolveMemberScope } from "./member.access.js";
 import { resolveMemberRegionId } from "./member-region.js";
-import {
-  generateTempPassword,
-  hashMemberPassword,
-} from "../member-auth/member-auth.tokens.js";
 import {
   beneficiaryBaseSchema,
   beneficiaryIdParamsSchema,
@@ -24,57 +33,14 @@ import {
   memberQuerySchema,
   memberSchoolsQuerySchema,
   memberStatsQuerySchema,
-  memberStatusSchema,
   spouseSchema,
   updateMemberSchema,
 } from "./member.schemas.js";
 
 export const memberRouter = Router();
 
-const memberInclude = {
-  district: { select: { id: true, name: true, regionId: true, region: { select: { id: true, name: true } } } },
-  // Only meaningful when there's no district (a NON_TEACHING member's regionId is set directly) --
-  // when a district exists, its own region already covers this and this relation is redundant.
-  region: { select: { id: true, name: true } },
-  spouse: {
-    select: {
-      id: true,
-      fullName: true,
-      ghanaCardId: true,
-      linkedMember: { select: { id: true, controllerId: true, fullName: true } },
-    },
-  },
-  beneficiaries: {
-    orderBy: { id: "asc" as const },
-    select: { id: true, fullName: true, relationship: true, dateOfBirth: true, trusteeName: true, trusteeGhanaCardId: true },
-  },
-  createdBy: { select: { id: true, fullName: true } },
-} as const;
-
-const memberListInclude = {
-  district: { select: { id: true, name: true, region: { select: { id: true, name: true } } } },
-  spouse: { select: { fullName: true } },
-  createdBy: { select: { id: true, fullName: true } },
-  _count: { select: { beneficiaries: true } },
-} as const;
-
 function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
-}
-
-function monthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function reasonLabel(reason: string) {
-  const labels: Record<string, string> = {
-    DEATH: "death",
-    DISABILITY: "disability",
-    RETIREMENT: "retirement",
-    RESIGNATION: "resignation",
-    OTHER: "other",
-  };
-  return labels[reason] ?? reason.toLowerCase();
 }
 
 function validationFailure(response: Response, error: ZodError) {
@@ -99,213 +65,6 @@ async function districtAdminOwnRegionId(user: AuthenticatedUser) {
     select: { regionId: true },
   });
   return district?.regionId ?? null;
-}
-
-async function findAccessibleMember(id: number, user: AuthenticatedUser) {
-  return prisma.member.findFirst({
-    where: { id, ...memberScope(user) },
-    include: memberInclude,
-  });
-}
-
-type Db = typeof prisma | Prisma.TransactionClient;
-// ownerMemberId is the member whose Spouse row this is (the one who made the declaration) --
-// used to notify the OTHER side (`after`) when a new link is established, see auditLinkChanges.
-type LinkChange = {
-  spouseId: number;
-  spouseFullName: string;
-  before: number | null;
-  after: number | null;
-  ownerMemberId: number;
-};
-
-// Real identity duplication: same card belongs to a DIFFERENT Member row. Stays blocking, no
-// status filter -- a removed member's card is already cleared by the removal workflow (see
-// workflow.routes.ts POST /:id/remove and scripts/free-removed-members-ghana-cards.ts), so this
-// never permanently locks a card away from someone else.
-export async function memberGhanaCardConflict(
-  ghanaCardId: string | null | undefined,
-  exclusions: { memberId?: number } = {},
-  db: Db = prisma,
-) {
-  if (!ghanaCardId) return null;
-  return db.member.findFirst({
-    where: { ghanaCardId, ...(exclusions.memberId ? { id: { not: exclusions.memberId } } : {}) },
-    select: { id: true },
-  });
-}
-
-// Real duplicate-spouse-claim: same card belongs to a DIFFERENT Spouse row -- two families can't
-// both claim the same person as their spouse. Stays blocking.
-export async function spouseGhanaCardConflict(
-  ghanaCardId: string | null | undefined,
-  exclusions: { spouseId?: number } = {},
-  db: Db = prisma,
-) {
-  if (!ghanaCardId) return null;
-  return db.spouse.findFirst({
-    where: { ghanaCardId, ...(exclusions.spouseId ? { id: { not: exclusions.spouseId } } : {}) },
-    select: { id: true },
-  });
-}
-
-// Cross-table lookup used for LINKING a Spouse to an independently-enrolled Member, and for
-// claims.routes.ts's activeBenefit() live fallback. Status-gated to ACTIVE/FLAGGED -- a
-// confirmed, approved membership is required before anyone is paid the member rate on account of
-// it. Never used to re-validate an already-stored link (see reconcileSpouseLink) -- a stored
-// link survives the linked member's later status changes (e.g. removal) by design.
-export async function findMemberByGhanaCard(
-  ghanaCardId: string | null | undefined,
-  exclusions: { memberId?: number } = {},
-  db: Db = prisma,
-) {
-  if (!ghanaCardId) return null;
-  return db.member.findFirst({
-    where: {
-      ghanaCardId,
-      status: { in: ["ACTIVE", "FLAGGED"] },
-      ...(exclusions.memberId ? { id: { not: exclusions.memberId } } : {}),
-    },
-    select: { id: true },
-  });
-}
-
-// Called whenever a Spouse row is created or edited. Preserves an existing link as long as the
-// spouse's OWN card is unchanged from its previous value, regardless of what has happened to the
-// linked member since (e.g. removal nulls their card -- re-deriving from their current card
-// would wrongly drop the link on the next unrelated spouse edit). Pass the card as written (the
-// row the caller's own create/update actually produced), not a raw request field that might be
-// omitted on a partial edit.
-export async function reconcileSpouseLink(
-  db: Db,
-  spouseId: number,
-  ghanaCardId: string | null | undefined,
-  owningMemberId: number,
-  previousGhanaCardId: string | null | undefined,
-): Promise<LinkChange | null> {
-  const spouse = await db.spouse.findUnique({
-    where: { id: spouseId },
-    select: { fullName: true, linkedMemberId: true },
-  });
-  if (!spouse) return null;
-
-  if (spouse.linkedMemberId && ghanaCardId && ghanaCardId === previousGhanaCardId) return null;
-
-  const match = ghanaCardId ? await findMemberByGhanaCard(ghanaCardId, { memberId: owningMemberId }, db) : null;
-  const after = match?.id ?? null;
-  if (spouse.linkedMemberId === after) return null;
-  await db.spouse.update({ where: { id: spouseId }, data: { linkedMemberId: after } });
-  return {
-    spouseId,
-    spouseFullName: spouse.fullName,
-    before: spouse.linkedMemberId,
-    after,
-    ownerMemberId: owningMemberId,
-  };
-}
-
-// Called whenever a Member is created, their ghanaCardId changes, or their status transitions
-// into ACTIVE/FLAGGED. Clears any stale link pointing AT this member (their old card no longer
-// matches) and links the Spouse row (if any, elsewhere) whose card matches the member's new
-// card -- Spouse.ghanaCardId is @unique, so at most one row can match.
-//
-// Must NEVER be called from the member-removal path: removal clears the removed member's own
-// ghanaCardId, and running this against that now-null card would unlink every spouse record
-// pointing at them, which directly contradicts the decision that an existing link survives
-// removal. Removal's existing links are correctly left alone simply by never calling this there.
-export async function relinkSpousesForMember(
-  db: Db,
-  memberId: number,
-  newGhanaCardId: string | null | undefined,
-): Promise<LinkChange[]> {
-  const changes: LinkChange[] = [];
-  const member = await db.member.findUnique({ where: { id: memberId }, select: { status: true } });
-  const eligible = member?.status === "ACTIVE" || member?.status === "FLAGGED";
-
-  // Explicit OR, not a negated filter -- Prisma's `not` against a nullable column follows SQL
-  // three-valued logic and silently excludes NULL rows, which would skip exactly the unlinked
-  // spouse rows this is meant to catch.
-  const stale = await db.spouse.findMany({
-    where: {
-      linkedMemberId: memberId,
-      ...(newGhanaCardId ? { OR: [{ ghanaCardId: null }, { ghanaCardId: { not: newGhanaCardId } }] } : {}),
-    },
-    select: { id: true, fullName: true, linkedMemberId: true, memberId: true },
-  });
-  for (const spouse of stale) {
-    await db.spouse.update({ where: { id: spouse.id }, data: { linkedMemberId: null } });
-    changes.push({
-      spouseId: spouse.id,
-      spouseFullName: spouse.fullName,
-      before: spouse.linkedMemberId,
-      after: null,
-      ownerMemberId: spouse.memberId,
-    });
-  }
-
-  if (newGhanaCardId && eligible) {
-    const match = await db.spouse.findFirst({
-      where: { ghanaCardId: newGhanaCardId, memberId: { not: memberId } },
-      select: { id: true, fullName: true, linkedMemberId: true, memberId: true },
-    });
-    if (match && match.linkedMemberId !== memberId) {
-      await db.spouse.update({ where: { id: match.id }, data: { linkedMemberId: memberId } });
-      changes.push({
-        spouseId: match.id,
-        spouseFullName: match.fullName,
-        before: match.linkedMemberId,
-        after: memberId,
-        ownerMemberId: match.memberId,
-      });
-    }
-  }
-  return changes;
-}
-
-// Audits link/unlink changes after the caller's transaction has already committed -- never
-// called from inside a transaction, since recordAudit writes via the global prisma client (not
-// a transaction client) and an audit row written mid-transaction would survive a rollback as an
-// orphan. Also notifies the member on the OTHER side of a newly-established link (never on an
-// unlink -- losing a link isn't something that member needs to act on) that they've been named
-// as a spouse, so they can confirm it on their own record rather than it being written for them
-// unverified. One member's declaration should never silently become the other member's data.
-export async function auditLinkChanges(
-  request: AuditRequestSource,
-  actor: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null,
-  changes: LinkChange[],
-) {
-  for (const change of changes) {
-    await recordAudit({
-      request,
-      actor,
-      action: change.after ? "SPOUSE_MEMBER_LINKED" : "SPOUSE_MEMBER_UNLINKED",
-      entityType: "SPOUSE",
-      entityId: change.spouseId,
-      description: `${change.after ? "Linked" : "Unlinked"} spouse record for ${change.spouseFullName}`,
-      beforeData: { linkedMemberId: change.before },
-      afterData: { linkedMemberId: change.after },
-    });
-  }
-
-  const newLinks = changes.filter(
-    (change): change is LinkChange & { after: number } => change.after !== null,
-  );
-  if (newLinks.length === 0) return;
-  const owners = await prisma.member.findMany({
-    where: { id: { in: [...new Set(newLinks.map((change) => change.ownerMemberId))] } },
-    select: { id: true, fullName: true },
-  });
-  const ownerNameById = new Map(owners.map((owner) => [owner.id, owner.fullName]));
-  for (const change of newLinks) {
-    const ownerName = ownerNameById.get(change.ownerMemberId) ?? "Another GNAT member";
-    await notifyMember({
-      memberId: change.after,
-      type: "SPOUSE_LINK_SUGGESTED",
-      title: "You may have been named as a spouse",
-      message: `${ownerName} has named you as their spouse on their GNAT Supreme Care profile. If this is correct, add them as your spouse too to keep your own record complete.`,
-      idempotencyKey: `spouse-link-suggested:${change.spouseId}:${change.after}`,
-    });
-  }
 }
 
 memberRouter.use(authenticate);
@@ -341,27 +100,22 @@ memberRouter.get("/", async (request, response) => {
       : registered === "false"
         ? { passwordHash: null }
         : {}),
-    ...(search
-      ? {
-          OR: [
-            { fullName: { contains: search, mode: "insensitive" as const } },
-            { controllerId: { contains: search } },
-            { ghanaCardId: { contains: search, mode: "insensitive" as const } },
-            { school: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
+    ...(await memberSearchWhere(search, requestedScope)),
   };
 
   const [members, total] = await Promise.all([
     prisma.member.findMany({
       where,
       include: memberListInclude,
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
-    cachedCount("members", { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where }, () => prisma.member.count({ where })),
+    cachedCount(
+      "members",
+      { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where },
+      () => prisma.member.count({ where }),
+    ),
   ]);
   response.json({
     success: true,
@@ -383,21 +137,26 @@ memberRouter.get("/stats", async (request, response) => {
   };
   const firstOfMonth = monthStart(new Date());
 
-  const [statusGroups, missingFromReport20Count, newThisMonth, removalsThisMonth, registeredMembers] =
-    await Promise.all([
-      prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
-      prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
-      prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
-      prisma.memberWorkflowEvent.groupBy({
-        by: ["reason"],
-        where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
-        _count: { _all: true },
-      }),
-      // "Registered" means the member has completed self-service account setup (set a
-      // password via /member-auth/setup-account) -- distinct from totalMembers, which counts
-      // every member record regardless of whether they've ever activated a portal account.
-      prisma.member.count({ where: { ...scope, passwordHash: { not: null } } }),
-    ]);
+  const [
+    statusGroups,
+    missingFromReport20Count,
+    newThisMonth,
+    removalsThisMonth,
+    registeredMembers,
+  ] = await Promise.all([
+    prisma.member.groupBy({ by: ["status"], where: scope, _count: { _all: true } }),
+    prisma.member.count({ where: { ...scope, missingFromReport20At: { not: null } } }),
+    prisma.member.count({ where: { ...scope, createdAt: { gte: firstOfMonth } } }),
+    prisma.memberWorkflowEvent.groupBy({
+      by: ["reason"],
+      where: { toStatus: "REMOVED", createdAt: { gte: firstOfMonth }, member: { is: scope } },
+      _count: { _all: true },
+    }),
+    // "Registered" means the member has completed self-service account setup (set a
+    // password via /member-auth/setup-account) -- distinct from totalMembers, which counts
+    // every member record regardless of whether they've ever activated a portal account.
+    prisma.member.count({ where: { ...scope, passwordHash: { not: null } } }),
+  ]);
 
   const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
   const totalMembers = statusGroups.reduce((total, g) => total + g._count._all, 0);
@@ -435,7 +194,9 @@ memberRouter.get("/schools", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
-  const districtId = query.data.districtId ?? (user.role === "DISTRICT_ADMIN" ? user.districtId ?? undefined : undefined);
+  const districtId =
+    query.data.districtId ??
+    (user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : undefined);
   if (!districtId) {
     response.status(400).json({
       success: false,
@@ -478,7 +239,9 @@ memberRouter.post("/", async (request, response) => {
     user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : parsed.data.districtId;
 
   if (districtId && !(await canAccessDistrict(user, districtId))) {
-    response.status(403).json({ success: false, message: "You cannot enroll members in this district" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot enroll members in this district" });
     return;
   }
 
@@ -505,7 +268,9 @@ memberRouter.post("/", async (request, response) => {
     where: { controllerId: parsed.data.controllerId },
   });
   if (duplicateController) {
-    response.status(409).json({ success: false, message: "This Controller ID is already enrolled" });
+    response
+      .status(409)
+      .json({ success: false, message: "This Controller ID is already enrolled" });
     return;
   }
   if (await memberGhanaCardConflict(parsed.data.ghanaCardId)) {
@@ -513,7 +278,9 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
   if (parsed.data.spouse && (await spouseGhanaCardConflict(parsed.data.spouse.ghanaCardId))) {
-    response.status(409).json({ success: false, message: "The spouse Ghana Card ID is already in use" });
+    response
+      .status(409)
+      .json({ success: false, message: "The spouse Ghana Card ID is already in use" });
     return;
   }
   if (
@@ -521,38 +288,67 @@ memberRouter.post("/", async (request, response) => {
     parsed.data.spouse?.ghanaCardId &&
     parsed.data.ghanaCardId === parsed.data.spouse.ghanaCardId
   ) {
-    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
+    response
+      .status(400)
+      .json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
     return;
   }
 
-  const { spouse, beneficiaries, districtId: _districtId, regionId: _regionId, ...memberData } =
-    parsed.data;
-  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
-    const created = await transaction.member.create({
-      data: {
-        ...memberData,
-        districtId: districtId ?? null,
-        regionId: resolvedRegion.regionId,
-        createdById: user.id,
-        spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
-        ...(spouse ? { spouse: { create: spouse } } : {}),
-        beneficiaries: { create: beneficiaries },
-      },
-      include: memberInclude,
-    });
-    const changes = await relinkSpousesForMember(transaction, created.id, created.ghanaCardId);
-    if (created.spouse) {
-      const change = await reconcileSpouseLink(
+  const {
+    spouse,
+    beneficiaries,
+    districtId: _districtId,
+    regionId: _regionId,
+    ...memberData
+  } = parsed.data;
+  const createMember = () =>
+    prisma.$transaction(async (transaction) => {
+      const createdMember = await transaction.member.create({
+        data: {
+          ...memberData,
+          districtId: districtId ?? null,
+          regionId: resolvedRegion.regionId,
+          createdById: user.id,
+          spouseDeclarationStatus: spouse ? "HAS_SPOUSE" : "UNKNOWN",
+          ...(spouse ? { spouse: { create: spouse } } : {}),
+          beneficiaries: { create: beneficiaries },
+        },
+        include: memberInclude,
+      });
+      const changes = await relinkSpousesForMember(
         transaction,
-        created.spouse.id,
-        created.spouse.ghanaCardId,
-        created.id,
-        undefined,
+        createdMember.id,
+        createdMember.ghanaCardId,
       );
-      if (change) changes.push(change);
-    }
-    return { member: created, linkChanges: changes };
-  });
+      if (createdMember.spouse) {
+        const change = await reconcileSpouseLink(
+          transaction,
+          createdMember.spouse.id,
+          createdMember.spouse.ghanaCardId,
+          createdMember.id,
+          undefined,
+        );
+        if (change) changes.push(change);
+      }
+      return { member: createdMember, linkChanges: changes };
+    });
+  let created: Awaited<ReturnType<typeof createMember>>;
+  try {
+    created = await createMember();
+  } catch (error) {
+    // The pre-checks above close the common case, but two concurrent requests enrolling the
+    // same new controllerId/ghanaCardId/phone/email can both pass them and race on the DB's
+    // unique index -- map that to the same clean 409 the pre-check would have given, rather
+    // than an uncaught 500.
+    const violatedField = uniqueViolationField(error);
+    if (violatedField === null) throw error;
+    response.status(409).json({
+      success: false,
+      message: `${uniqueFieldLabel(violatedField)} is already in use by another record`,
+    });
+    return;
+  }
+  const { member, linkChanges } = created;
   await auditLinkChanges(request, user, linkChanges);
   await recordAudit({
     request,
@@ -589,7 +385,9 @@ memberRouter.patch("/:id", async (request, response) => {
     return;
   }
   if (body.data.districtId && !(await canAccessDistrict(user, body.data.districtId))) {
-    response.status(403).json({ success: false, message: "You cannot move this member to that district" });
+    response
+      .status(403)
+      .json({ success: false, message: "You cannot move this member to that district" });
     return;
   }
   let patchedDistrictRegionId: number | null | undefined;
@@ -602,16 +400,22 @@ memberRouter.patch("/:id", async (request, response) => {
     patchedDistrictRegionId = district.regionId;
   }
   if (body.data.controllerId && body.data.controllerId !== existing.controllerId) {
-    const duplicate = await prisma.member.findUnique({ where: { controllerId: body.data.controllerId } });
+    const duplicate = await prisma.member.findUnique({
+      where: { controllerId: body.data.controllerId },
+    });
     if (duplicate) {
-      response.status(409).json({ success: false, message: "This Controller ID is already enrolled" });
+      response
+        .status(409)
+        .json({ success: false, message: "This Controller ID is already enrolled" });
       return;
     }
   }
   if (body.data.email && body.data.email !== existing.email) {
     const duplicateEmail = await prisma.member.findUnique({ where: { email: body.data.email } });
     if (duplicateEmail) {
-      response.status(409).json({ success: false, message: "This email is already in use by another membership" });
+      response
+        .status(409)
+        .json({ success: false, message: "This email is already in use by another membership" });
       return;
     }
   }
@@ -642,6 +446,17 @@ memberRouter.patch("/:id", async (request, response) => {
   if (nextCategory === "TEACHING" && !body.data.districtId && !existing.districtId) {
     return simpleFailure(response, "districtId", "Select a district");
   }
+  // Mirrors createMemberSchema's beneficiaries.length < 1 refinement for TEACHING -- this PATCH
+  // has no beneficiaries field at all (see updateMemberSchema), so a NON_TEACHING member with
+  // zero beneficiaries switched to TEACHING here would otherwise silently keep violating the
+  // same invariant creation enforces, with no way to satisfy it in this same request.
+  if (nextCategory === "TEACHING" && existing.beneficiaries.length < 1) {
+    return simpleFailure(
+      response,
+      "employmentCategory",
+      "Add at least one beneficiary before switching this member to teaching staff",
+    );
+  }
   if (nextCategory === "NON_TEACHING") {
     const nextPlaceOfWork =
       body.data.placeOfWork !== undefined ? body.data.placeOfWork : existing.placeOfWork;
@@ -669,7 +484,9 @@ memberRouter.patch("/:id", async (request, response) => {
       user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
     const districtRegionId = body.data.districtId
       ? (patchedDistrictRegionId ?? null)
-      : (existing.districtId ? (existing.district?.regionId ?? null) : null);
+      : existing.districtId
+        ? (existing.district?.regionId ?? null)
+        : null;
     const resolvedRegion = resolveMemberRegionId(user, {
       districtRegionId,
       explicitRegionId: body.data.regionId ?? null,
@@ -681,25 +498,42 @@ memberRouter.patch("/:id", async (request, response) => {
     regionUpdate = { regionId: resolvedRegion.regionId };
   }
 
-  const { member, linkChanges } = await prisma.$transaction(async (transaction) => {
-    const updated = await transaction.member.update({
-      where: { id: existing.id },
-      data: {
-        ...body.data,
-        ...(Object.prototype.hasOwnProperty.call(body.data, "phone") && body.data.phone !== existing.phone
-          ? { phoneVerifiedAt: null }
-          : {}),
-        ...clearingUpdate,
-        ...placeOfWorkClearingUpdate,
-        ...regionUpdate,
-      },
-      include: memberInclude,
+  const updateMember = () =>
+    prisma.$transaction(async (transaction) => {
+      const updated = await transaction.member.update({
+        where: { id: existing.id },
+        data: {
+          ...body.data,
+          ...(Object.prototype.hasOwnProperty.call(body.data, "phone") &&
+          body.data.phone !== existing.phone
+            ? { phoneVerifiedAt: null }
+            : {}),
+          ...clearingUpdate,
+          ...placeOfWorkClearingUpdate,
+          ...regionUpdate,
+        },
+        include: memberInclude,
+      });
+      const changes = Object.prototype.hasOwnProperty.call(body.data, "ghanaCardId")
+        ? await relinkSpousesForMember(transaction, existing.id, updated.ghanaCardId)
+        : [];
+      return { member: updated, linkChanges: changes };
     });
-    const changes = Object.prototype.hasOwnProperty.call(body.data, "ghanaCardId")
-      ? await relinkSpousesForMember(transaction, existing.id, updated.ghanaCardId)
-      : [];
-    return { member: updated, linkChanges: changes };
-  });
+  let updateResult: Awaited<ReturnType<typeof updateMember>>;
+  try {
+    updateResult = await updateMember();
+  } catch (error) {
+    // Same rationale as the POST / handler above -- the pre-checks close the common case, but
+    // a concurrent request can still race on the unique index between the check and this write.
+    const violatedField = uniqueViolationField(error);
+    if (violatedField === null) throw error;
+    response.status(409).json({
+      success: false,
+      message: `${uniqueFieldLabel(violatedField)} is already in use by another record`,
+    });
+    return;
+  }
+  const { member, linkChanges } = updateResult;
   await auditLinkChanges(request, user, linkChanges);
   await invalidateMemberAuth(member.id);
   await recordAudit({
@@ -772,7 +606,8 @@ memberRouter.post(
     response.json({
       success: true,
       password,
-      message: "Password generated. Share it with the member through a secure channel — it will not be shown again.",
+      message:
+        "Password generated. Share it with the member through a secure channel — it will not be shown again.",
     });
   },
 );
@@ -804,7 +639,9 @@ memberRouter.put("/:id/spouse", async (request, response) => {
     return;
   }
   if (body.data.ghanaCardId && body.data.ghanaCardId === member.ghanaCardId) {
-    response.status(400).json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
+    response
+      .status(400)
+      .json({ success: false, message: "Member and spouse cannot use the same Ghana Card ID" });
     return;
   }
 
@@ -888,7 +725,9 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
     return;
   }
   if (member.beneficiaries.length >= 10) {
-    response.status(409).json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
+    response
+      .status(409)
+      .json({ success: false, message: "A member cannot have more than 10 beneficiaries" });
     return;
   }
   const beneficiary = await prisma.beneficiary.create({
@@ -910,7 +749,10 @@ memberRouter.post("/:id/beneficiaries", async (request, response) => {
 
 memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response) => {
   const params = beneficiaryIdParamsSchema.safeParse(request.params);
-  const body = beneficiaryBaseSchema.partial().refine((value) => Object.keys(value).length > 0).safeParse(request.body);
+  const body = beneficiaryBaseSchema
+    .partial()
+    .refine((value) => Object.keys(value).length > 0)
+    .safeParse(request.body);
   if (!params.success) return validationFailure(response, params.error);
   if (!body.success) return validationFailure(response, body.error);
   const member = await findAccessibleMember(params.data.id, currentUser(response));
@@ -930,7 +772,9 @@ memberRouter.patch("/:id/beneficiaries/:beneficiaryId", async (request, response
     entityType: "BENEFICIARY",
     entityId: beneficiary.id,
     description: `Updated beneficiary for ${member.fullName}`,
-    beforeData: previous ? { fullName: previous.fullName, relationship: previous.relationship } : undefined,
+    beforeData: previous
+      ? { fullName: previous.fullName, relationship: previous.relationship }
+      : undefined,
     afterData: { fullName: beneficiary.fullName, relationship: beneficiary.relationship },
     regionId: member.district?.regionId,
     districtId: member.districtId,
@@ -947,7 +791,9 @@ memberRouter.delete("/:id/beneficiaries/:beneficiaryId", async (request, respons
     return;
   }
   if (member.beneficiaries.length === 1) {
-    response.status(409).json({ success: false, message: "A member must retain at least one beneficiary" });
+    response
+      .status(409)
+      .json({ success: false, message: "A member must retain at least one beneficiary" });
     return;
   }
   const beneficiary = member.beneficiaries.find((item) => item.id === params.data.beneficiaryId);

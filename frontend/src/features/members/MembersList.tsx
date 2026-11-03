@@ -576,9 +576,9 @@ export default function MembersList() {
         </label>
       </section>
 
-      <p id="member-search-help" className="-mt-2 mb-4 text-xs text-text-muted">
+      {/* <p id="member-search-help" className="-mt-2 mb-4 text-xs text-text-muted">
         Search by name, staff or Controller ID, Ghana Card, phone number or school.
-      </p>
+      </p> */}
       {listReturn.missing && (
         <div className="mb-4">
           <Alert tone="info">
@@ -888,15 +888,15 @@ export default function MembersList() {
               <table className="members-table">
                 <thead>
                   <tr>
-                    <th className="members-check">
+                    {/* <th className="members-check">
                       <input
                         type="checkbox"
                         checked={allSelected}
                         onChange={toggleAll}
                         aria-label="Select all members on this page"
                       />
-                    </th>
-                    <th className="members-number">No.</th>
+                    </th> */}
+                    {/* <th className="members-number">No.</th> */}
                     <th>Member</th>
                     <th>Controller ID</th>
                     <th>School</th>
@@ -907,22 +907,22 @@ export default function MembersList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((member, index) => (
+                  {rows.map((member) => (
                     <tr
                       key={member.id}
                       data-member-row={member.id}
                       tabIndex={listReturn.targetId === member.id ? -1 : undefined}
                       className={`${selected.includes(member.id) ? "is-selected" : ""} ${listReturn.targetId === member.id ? "is-returned" : ""}`}
                     >
-                      <td className="members-check">
-                        <input
+                      {/* <td className="members-check"> */}
+                      {/* <input
                           type="checkbox"
                           checked={selected.includes(member.id)}
                           onChange={() => toggleOne(member.id)}
                           aria-label={`Select ${member.fullName}`}
-                        />
-                      </td>
-                      <td className="members-number">{(page - 1) * limit + index + 1}</td>
+                        /> */}
+                      {/* </td> */}
+                      {/* <td className="members-number">{(page - 1) * limit + index + 1}</td> */}
                       <td>
                         <Link
                           to={memberProfileLink(member.id, listReturn.path)}

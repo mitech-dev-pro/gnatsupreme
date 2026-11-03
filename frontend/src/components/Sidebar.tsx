@@ -269,9 +269,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         }`}
       >
         <div className="mb-4 flex items-center gap-2.5 border-b border-white/8 px-5 pb-5.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-[13px] font-extrabold text-text-strong shadow-nav">
+          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 text-[13px] font-extrabold text-text-strong shadow-nav">
             {settings.sidebarMark}
-          </div>
+          </div> */}
           <div className="leading-[1.15]">
             <div className="text-[14.5px] font-bold text-white">{settings.portalName}</div>
             <div className="text-[12.5px] font-medium text-white mb-1">Group Insurance Scheme</div>
@@ -386,8 +386,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-nav-subtle">
           {settings.schemeSponsor} &copy; {new Date().getFullYear()}
-          <br />
-          Underwritten by {settings.underwriter}
+          {/* <br /> */}
+          {/* Underwritten by {settings.underwriter} */}
         </div>
       </aside>
     </>

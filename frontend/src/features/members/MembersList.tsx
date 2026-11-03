@@ -491,13 +491,13 @@ export default function MembersList() {
     setSearchInput("");
     setParams({});
   };
-  const allSelected = rows.length > 0 && rows.every((member) => selected.includes(member.id));
-  const toggleAll = () =>
-    setSelected(
-      allSelected
-        ? selected.filter((id) => !rows.some((member) => member.id === id))
-        : Array.from(new Set([...selected, ...rows.map((member) => member.id)])),
-    );
+  // const allSelected = rows.length > 0 && rows.every((member) => selected.includes(member.id));
+  // const toggleAll = () =>
+  //   setSelected(
+  //     allSelected
+  //       ? selected.filter((id) => !rows.some((member) => member.id === id))
+  //       : Array.from(new Set([...selected, ...rows.map((member) => member.id)])),
+  //   );
   const toggleOne = (id: number) =>
     setSelected((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],

@@ -6,15 +6,28 @@ import { Router, type Request, type Response } from "express";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
-import { authenticate } from "../../middleware/authenticate.js";
+import { invalidateStaffAuth } from "../../lib/auth-cache.js";
+import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
+import { isExpired } from "../../lib/account-setup.js";
+import { authenticateAllowPendingSetup } from "../../middleware/authenticate.js";
 import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
 import {
+  completeSetupIpRateLimiter,
+  completeSetupRateLimiter,
   forgotPasswordRateLimiter,
   loginRateLimiter,
   refreshRateLimiter,
 } from "../../middleware/rate-limit.js";
+import { AppError } from "../../middleware/error-handler.js";
 import { sendStaffPasswordResetEmail } from "./auth.profile.js";
-import { forgotPasswordSchema, loginSchema, resetPasswordSchema } from "./auth.schemas.js";
+import { issuePendingEmail, sendPendingEmailVerification } from "./auth.service.js";
+import {
+  completeSetupSchema,
+  confirmEmailSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  resetPasswordSchema,
+} from "./auth.schemas.js";
 import { recordAudit } from "../audit/audit.service.js";
 import {
   createAccessToken,
@@ -33,6 +46,7 @@ const publicUserSelect = {
   id: true,
   fullName: true,
   email: true,
+  setupRequired: true,
   role: true,
   regionIds: true,
   districtIds: true,
@@ -68,9 +82,9 @@ function clientMetadata(request: Request) {
   };
 }
 
-// A placeholder hash, verified against on every lookup miss so a nonexistent email still pays
-// argon2's cost — without this, response latency alone reveals which staff emails exist (the
-// lookup-miss branch below would otherwise skip argon2.verify entirely).
+// A placeholder hash, verified against on every lookup miss so a nonexistent email/phone still
+// pays argon2's cost — without this, response latency alone reveals which staff accounts exist
+// (the lookup-miss branch below would otherwise skip argon2.verify entirely).
 const DECOY_PASSWORD_HASH = await argon2.hash(randomBytes(32).toString("hex"), {
   type: argon2.argon2id,
   memoryCost: 19_456,
@@ -95,18 +109,43 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
   }
 
   // Floors every response (success or failure) to the same minimum latency, so timing alone
-  // can't distinguish "no such email" from "wrong password" from "signed in" — see
-  // DECOY_PASSWORD_HASH above for the matching argon2-cost equalization.
+  // can't distinguish "no such account" from "wrong password" from "signed in" — see
+  // DECOY_PASSWORD_HASH above for the matching argon2-cost equalization. One shared path for
+  // both identifiers and every account state below.
   const pad = async () => {
     const remaining = 300 - (Date.now() - startedAt);
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   };
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
-      omit: { passwordHash: false },
-    });
+    let user = parsed.data.email
+      ? await prisma.user.findUnique({
+          where: { email: parsed.data.email },
+          omit: { passwordHash: false },
+        })
+      : await prisma.user.findFirst({
+          // email: null closes phone login permanently the moment an email is confirmed --
+          // phone is a bootstrap credential, never a standing second login door.
+          where: { phone: parsed.data.phone ?? "__invalid__", email: null },
+          omit: { passwordHash: false },
+        });
+
+    // A still-temp password (setupRequired) expires after TEMP_PASSWORD_TTL_DAYS unclaimed; an
+    // already-replaced-but-unconfirmed password (pendingEmailExpiresAt) expires on the same
+    // schedule, refreshed on every complete-setup/admin pending-email write. Either closes the
+    // account to login exactly like a lookup miss -- the decoy-hash verify below still runs
+    // regardless, so expiry state is never observable via timing.
+    if (user?.setupRequired && isExpired(user.tempPasswordExpiresAt)) user = null;
+    if (
+      user &&
+      !user.setupRequired &&
+      user.email === null &&
+      isExpired(user.pendingEmailExpiresAt)
+    ) {
+      user = null;
+    }
+
+    const identifier = parsed.data.email ?? parsed.data.phone ?? "";
     const passwordMatches = await argon2.verify(
       user?.passwordHash ?? DECOY_PASSWORD_HASH,
       parsed.data.password,
@@ -115,13 +154,13 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
     if (!user || !user.isActive || !passwordMatches) {
       await recordAudit({
         request,
-        actorEmail: parsed.data.email,
+        actorEmail: parsed.data.email ?? null,
         action: "LOGIN_FAILED",
         entityType: "AUTH",
-        description: `Failed login attempt for ${parsed.data.email}`,
+        description: `Failed login attempt for ${identifier}`,
       });
       await pad();
-      response.status(401).json({ success: false, message: "Invalid email or password" });
+      response.status(401).json({ success: false, message: "Invalid credentials" });
       return;
     }
 
@@ -152,6 +191,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
+        setupRequired: user.setupRequired,
         role: user.role,
         regionIds: user.regionIds,
         districtIds: user.districtIds,
@@ -177,8 +217,10 @@ authRouter.post("/forgot-password", forgotPasswordRateLimiter, async (request, r
   // Always the same response regardless of whether the account exists or is active --
   // otherwise this endpoint could be used to enumerate valid staff emails. Padded to a floor
   // below, and the email itself is never awaited (an SMTP round trip is both much slower than
-  // that floor and would turn a provider rejection into a request failure here).
-  if (user) {
+  // that floor and would turn a provider rejection into a request failure here). A pending
+  // (phone-only) account has email: null, so it can never match the where clause above and this
+  // path is already safe for it without any extra guard.
+  if (user?.email) {
     const token = createPasswordResetToken();
     await prisma.userPasswordResetToken.create({
       data: {
@@ -252,6 +294,7 @@ authRouter.post("/reset-password", async (request, response) => {
     return;
   }
 
+  await invalidateStaffAuth(resetToken.userId);
   await recordAudit({
     request,
     action: "USER_PASSWORD_RESET_SELF_SERVICE",
@@ -275,7 +318,7 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
   try {
     const session = await prisma.refreshToken.findUnique({
       where: { tokenHash: currentTokenHash },
-      include: { user: { select: { ...publicUserSelect, isActive: true } } },
+      include: { user: { select: { ...publicUserSelect, isActive: true, pendingEmailExpiresAt: true, tempPasswordExpiresAt: true } } },
     });
 
     if (
@@ -284,6 +327,29 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
       session.expiresAt <= new Date() ||
       !session.user.isActive
     ) {
+      response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
+      response.status(401).json({ success: false, message: "Refresh session is invalid" });
+      return;
+    }
+
+    // /refresh is a second path into a live session, not just login -- refresh tokens rotate to
+    // a brand-new full TTL on every call (see refreshTokenExpiresAt), so without this check a
+    // session could slide forever past an account's own expiry. This is a backstop, not the
+    // primary defense -- the primary defense is that every write extending an expiry window also
+    // revokes every refresh token for that user (see account-setup.ts's callers in
+    // user.routes.ts). Revoking the one token presented here still matters: it kills the
+    // specific token that gets caught actively trying to refresh past expiry, immediately,
+    // rather than leaving it live until some later write happens to sweep it up.
+    if (
+      (session.user.setupRequired && isExpired(session.user.tempPasswordExpiresAt)) ||
+      (!session.user.setupRequired &&
+        session.user.email === null &&
+        isExpired(session.user.pendingEmailExpiresAt))
+    ) {
+      await prisma.refreshToken.updateMany({
+        where: { id: session.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
       response.status(401).json({ success: false, message: "Refresh session is invalid" });
       return;
@@ -331,6 +397,7 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
         id: session.user.id,
         fullName: session.user.fullName,
         email: session.user.email,
+        setupRequired: session.user.setupRequired,
         role: session.user.role,
         regionIds: session.user.regionIds,
         districtIds: session.user.districtIds,
@@ -367,6 +434,228 @@ authRouter.post("/logout", async (request, response) => {
   }
 });
 
-authRouter.get("/me", authenticate, (_request, response) => {
+authRouter.get("/me", authenticateAllowPendingSetup, (_request, response) => {
   response.status(200).json({ success: true, user: response.locals.user });
+});
+
+// Reachable only when the account hasn't finished setup (setupRequired) or has no confirmed
+// email yet (email === null) -- every account-state row except fully-done S2. See the
+// account-states table in the phone-login plan.
+authRouter.post(
+  "/complete-setup",
+  authenticateAllowPendingSetup,
+  completeSetupRateLimiter,
+  completeSetupIpRateLimiter,
+  async (request, response) => {
+    const actor = response.locals.user as {
+      id: number;
+      fullName: string;
+      email: string | null;
+      setupRequired: boolean;
+      role: string;
+      regionIds: number[];
+      districtIds: number[];
+    };
+
+    if (!actor.setupRequired && actor.email !== null) {
+      response.status(403).json({ success: false, message: "Your account is already set up." });
+      return;
+    }
+
+    const parsed = completeSetupSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response.status(400).json({
+        success: false,
+        message: "Invalid request",
+        errors: parsed.error.issues.map((issue) => ({
+          field: issue.path.join("."),
+          message: issue.message,
+        })),
+      });
+      return;
+    }
+
+    if (actor.setupRequired && !parsed.data.newPassword) {
+      response
+        .status(400)
+        .json({ success: false, message: "Choose a new password to finish setting up your account." });
+      return;
+    }
+    if (actor.email === null && !parsed.data.email) {
+      response.status(400).json({ success: false, message: "Enter your email address." });
+      return;
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: actor.id },
+      omit: { passwordHash: false },
+    });
+    if (!dbUser || !dbUser.isActive) {
+      response.status(401).json({ success: false, message: "Authentication required" });
+      return;
+    }
+    const currentMatches = await argon2.verify(dbUser.passwordHash, parsed.data.currentPassword);
+    if (!currentMatches) {
+      response.status(401).json({ success: false, message: "Current password is incorrect" });
+      return;
+    }
+
+    const newRefreshToken = createRefreshToken();
+    let issuedVerificationToken: string | null = null;
+
+    try {
+      // One transaction, wrapped in this outer try/catch -- a unique-constraint violation
+      // aborts the whole transaction in Postgres, so a catch *inside* the callback around one
+      // statement can't recover and keep going.
+      await prisma.$transaction(async (tx) => {
+        if (parsed.data.email) {
+          issuedVerificationToken = await issuePendingEmail(tx, actor.id, parsed.data.email);
+        }
+
+        await tx.user.update({
+          where: { id: actor.id },
+          data: {
+            ...(parsed.data.newPassword
+              ? { passwordHash: await hashPassword(parsed.data.newPassword) }
+              : {}),
+            setupRequired: false,
+            tempPasswordExpiresAt: null,
+          },
+        });
+
+        await tx.refreshToken.updateMany({
+          where: { userId: actor.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        await tx.refreshToken.create({
+          data: {
+            tokenHash: hashRefreshToken(newRefreshToken),
+            userId: actor.id,
+            expiresAt: refreshTokenExpiresAt(),
+            ...clientMetadata(request),
+          },
+        });
+      });
+    } catch (error) {
+      // AppError thrown by assertEmailAvailable (inside issuePendingEmail) for a genuine,
+      // already-live pendingEmail/email conflict -- caught explicitly rather than left to the
+      // global error-handling middleware, since this handler is also exercised directly in
+      // tests without going through that middleware.
+      if (error instanceof AppError) {
+        response
+          .status(error.statusCode)
+          .json({ success: false, message: error.message, code: error.code });
+        return;
+      }
+      const field = uniqueViolationField(error);
+      if (field) {
+        response
+          .status(409)
+          .json({ success: false, message: `${uniqueFieldLabel(field)} is already in use` });
+        return;
+      }
+      throw error;
+    }
+
+    // Cache eviction before the email send -- if the send throws first, the eviction would
+    // never run and the just-completed user would stay wrongly gated until the cache TTL rolls
+    // over.
+    await invalidateStaffAuth(actor.id);
+
+    if (issuedVerificationToken && parsed.data.email) {
+      sendPendingEmailVerification(
+        env.FRONTEND_ORIGIN,
+        actor.id,
+        parsed.data.email,
+        issuedVerificationToken,
+      );
+    }
+
+    await recordAudit({
+      request,
+      actor,
+      action: actor.setupRequired ? "USER_SETUP_COMPLETED" : "USER_PENDING_EMAIL_UPDATED",
+      entityType: "USER",
+      entityId: actor.id,
+      description: `${actor.fullName} ${actor.setupRequired ? "completed account setup" : "updated their pending email"}`,
+    });
+
+    setRefreshCookie(response, newRefreshToken);
+    const updated = await prisma.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: publicUserSelect,
+    });
+    response.json({
+      success: true,
+      accessToken: await createAccessToken(actor.id),
+      user: updated,
+    });
+  },
+);
+
+authRouter.post("/confirm-email", async (request, response) => {
+  const parsed = confirmEmailSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ success: false, message: "Enter a valid confirmation link" });
+    return;
+  }
+  const invalidToken = () =>
+    response
+      .status(401)
+      .json({ success: false, message: "This confirmation link is invalid or has expired" });
+
+  const token = await prisma.userEmailVerificationToken.findUnique({
+    where: { tokenHash: hashPasswordResetToken(parsed.data.token) },
+    include: { user: { select: { id: true, fullName: true, isActive: true, pendingEmail: true } } },
+  });
+  if (
+    !token ||
+    token.consumedAt ||
+    token.expiresAt <= new Date() ||
+    !token.user.isActive ||
+    token.email !== token.user.pendingEmail
+  ) {
+    invalidToken();
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async (transaction) => {
+      const consumedCount = await transaction.userEmailVerificationToken.updateMany({
+        where: { id: token.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (consumedCount.count !== 1) throw new AppError(401, "Invalid token");
+      await transaction.user.update({
+        where: { id: token.userId },
+        data: { email: token.email, pendingEmail: null, pendingEmailExpiresAt: null },
+      });
+    });
+  } catch (error) {
+    const field = uniqueViolationField(error);
+    if (field) {
+      // Left unconsumed -- a retry just produces the same 409 again, not a different outcome,
+      // so there's no reason to special-case cleaning it up.
+      response.status(409).json({
+        success: false,
+        message: "This email address is now in use by another account",
+      });
+      return;
+    }
+    if (error instanceof AppError) {
+      invalidToken();
+      return;
+    }
+    throw error;
+  }
+
+  await invalidateStaffAuth(token.userId);
+  await recordAudit({
+    request,
+    action: "USER_EMAIL_CONFIRMED",
+    entityType: "USER",
+    entityId: token.userId,
+    description: `${token.user.fullName} confirmed their email address`,
+  });
+  response.json({ success: true, message: "Email confirmed. You can now sign in with your email." });
 });

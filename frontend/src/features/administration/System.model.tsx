@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 export type StaffUser = {
   id: number;
   fullName: string;
-  email: string;
+  // Nullable -- a GNAT account created with only a phone number has no confirmed email yet.
+  // setupRequired is the server-enforced gate for a still-temp-password account. See the
+  // backend's account-states table (middleware/authenticate.ts, modules/auth/auth.routes.ts).
+  email: string | null;
+  phone: string | null;
+  setupRequired: boolean;
   role: string;
   isActive: boolean;
   // A region/district can legitimately appear in more than one admin's scope -- see backend

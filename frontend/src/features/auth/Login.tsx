@@ -46,8 +46,12 @@ export default function Login() {
     safeMemberRedirect,
     mode,
     setMode,
+    staffIdentifierMethod,
+    setStaffIdentifierMethod,
     email,
     setEmail,
+    phone,
+    setPhone,
     password,
     setPassword,
     showPassword,
@@ -131,15 +135,24 @@ export default function Login() {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password) {
-      setError("Enter both an email and a password.");
+    const identifier = staffIdentifierMethod === "email" ? email.trim() : phone.trim();
+    if (!identifier || !password) {
+      setError(
+        `Enter both your ${staffIdentifierMethod === "email" ? "email" : "phone number"} and a password.`,
+      );
       return;
     }
 
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
-      navigate(safeStaffRedirect, { replace: true });
+      const loggedInUser = await login(
+        staffIdentifierMethod === "email" ? { email: identifier } : { phone: identifier },
+        password,
+      );
+      // A phone-only account that hasn't replaced its temp password yet goes to the setup
+      // screen instead of its normal redirect -- the backend gate blocks every other route for
+      // it regardless, this just avoids a confusing bounce through one first.
+      navigate(loggedInUser.setupRequired ? "/staff-setup" : safeStaffRedirect, { replace: true });
     } catch (err: unknown) {
       setError(getApiError(err)?.message || "Unable to sign in. Please try again.");
     } finally {
@@ -585,12 +598,37 @@ export default function Login() {
               {error && <ErrorBanner message={error} />}
 
               <form onSubmit={handleStaffSubmit} noValidate>
-                <div className="mb-3.5">
-                  <label
-                    htmlFor="login-email"
-                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
+                <div className="mb-3 flex gap-1 rounded-lg bg-info-soft p-0.5 text-[11.5px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setStaffIdentifierMethod("email")}
+                    className={`flex-1 rounded-md py-1.5 transition ${
+                      staffIdentifierMethod === "email"
+                        ? "bg-white text-text-strong shadow-subtle"
+                        : "text-text-muted"
+                    }`}
                   >
                     Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffIdentifierMethod("phone")}
+                    className={`flex-1 rounded-md py-1.5 transition ${
+                      staffIdentifierMethod === "phone"
+                        ? "bg-white text-text-strong shadow-subtle"
+                        : "text-text-muted"
+                    }`}
+                  >
+                    Phone
+                  </button>
+                </div>
+
+                <div className="mb-3.5">
+                  <label
+                    htmlFor="login-identifier"
+                    className="mb-1 block text-[11.5px] font-bold text-text-strong"
+                  >
+                    {staffIdentifierMethod === "email" ? "Email" : "Phone number"}
                   </label>
                   <div className="relative">
                     <svg
@@ -603,15 +641,26 @@ export default function Login() {
                       <circle cx="12" cy="8" r="3.4" />
                       <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" />
                     </svg>
-                    <input
-                      id="login-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      // placeholder="e.g. kofi.asante@example.com"
-                      autoComplete="username"
-                      className={inputClasses}
-                    />
+                    {staffIdentifierMethod === "email" ? (
+                      <input
+                        id="login-identifier"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        autoComplete="username"
+                        className={inputClasses}
+                      />
+                    ) : (
+                      <input
+                        id="login-identifier"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="0XXXXXXXXX"
+                        autoComplete="username"
+                        className={inputClasses}
+                      />
+                    )}
                   </div>
                 </div>
 

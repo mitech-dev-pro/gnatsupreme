@@ -49,6 +49,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [form, setForm] = useState({
     fullName: "",
     email: "",
+    phone: "",
     role: "DISTRICT_ADMIN",
     regionIds: [] as string[],
     districtIds: [] as string[],
@@ -116,6 +117,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setForm({
       fullName: "",
       email: "",
+      phone: "",
       role: "DISTRICT_ADMIN",
       regionIds: [],
       districtIds: [],
@@ -127,7 +129,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     setShowCreate(false);
     const next = {
       fullName: row.fullName,
-      email: row.email,
+      email: row.email ?? "",
+      phone: row.phone ?? "",
       role: row.role,
       regionIds: row.regionIds.map(String),
       districtIds: row.districtIds.map(String),
@@ -148,7 +151,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     try {
       await api.post("/users", {
         fullName: form.fullName.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
         role: form.role,
         regionIds: form.role === "REGIONAL_ADMIN" ? form.regionIds.map(Number) : [],
         districtIds: form.role === "DISTRICT_ADMIN" ? form.districtIds.map(Number) : [],
@@ -179,7 +183,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     try {
       await api.patch(`/users/${id}`, {
         fullName: form.fullName.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
         role: form.role,
         regionIds: form.role === "REGIONAL_ADMIN" ? form.regionIds.map(Number) : [],
         districtIds: form.role === "DISTRICT_ADMIN" ? form.districtIds.map(Number) : [],
@@ -262,8 +267,24 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           value={form.email}
           onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
           className={inputClasses}
-          required
         />
+      </div>
+      <div>
+        <label htmlFor="staff-phone" className={labelClasses}>
+          Phone
+        </label>
+        <input
+          id="staff-phone"
+          type="tel"
+          value={form.phone}
+          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+          placeholder="0XXXXXXXXX"
+          className={inputClasses}
+        />
+        <p className="mt-1 text-[11px] text-text-muted">
+          Provide an email, a phone number, or both. An account created with only a phone number
+          logs in by phone until an email is confirmed.
+        </p>
       </div>
       <div>
         <label htmlFor="staff-role" className={labelClasses}>
@@ -405,7 +426,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       {statusTarget && (
         <Dialog
           title={statusTarget.isActive ? "Deactivate staff account" : "Activate staff account"}
-          description={statusTarget.email}
+          description={statusTarget.email ?? statusTarget.phone ?? undefined}
           busy={busyId !== null}
           onClose={() => setStatusTarget(null)}
         >
@@ -429,7 +450,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       {passwordTarget && (
         <Dialog
           title="Reset staff password"
-          description={passwordTarget.fullName + " · " + passwordTarget.email}
+          description={`${passwordTarget.fullName} · ${passwordTarget.email ?? passwordTarget.phone ?? "no email/phone on file"}`}
           busy={busyId !== null}
           onClose={() => {
             setPasswordTarget(null);
@@ -487,7 +508,10 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           description={
             showCreate
               ? "Set account details, access role and geographical scope."
-              : rows.find((row) => row.id === editingId)?.email
+              : (() => {
+                  const target = rows.find((row) => row.id === editingId);
+                  return target?.email ?? target?.phone ?? undefined;
+                })()
           }
           busy={formBusy}
           onClose={() => closeForm()}
@@ -534,7 +558,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     type="submit"
                     disabled={
                       (form.role === "DISTRICT_ADMIN" && form.districtIds.length === 0) ||
-                      (form.role === "REGIONAL_ADMIN" && form.regionIds.length === 0)
+                      (form.role === "REGIONAL_ADMIN" && form.regionIds.length === 0) ||
+                      (!form.email.trim() && !form.phone.trim())
                     }
                     loading={formBusy}
                     loadingLabel={showCreate ? "Creating…" : "Saving…"}
@@ -578,7 +603,14 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             rows.map((row) => (
               <tr key={row.id} className="border-b border-border-default last:border-0">
                 <td className="px-4 py-2.5 font-semibold text-ink">{row.fullName}</td>
-                <td className="px-4 py-2.5 text-text-muted">{row.email}</td>
+                <td className="px-4 py-2.5 text-text-muted">
+                  {row.email ?? row.phone ?? "—"}
+                  {row.setupRequired && (
+                    <span className="ml-1.5 rounded-full bg-warning-soft px-1.5 py-0.5 text-[10px] font-bold text-warning-accent">
+                      Setup pending
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
                 <td className="px-4 py-2.5 text-text-muted">{scopeLabel(row)}</td>
                 <td className="px-4 py-2.5">

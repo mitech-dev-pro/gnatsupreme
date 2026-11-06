@@ -29,7 +29,11 @@ export function useLogin() {
   const safeMemberRedirect =
     requestedRedirect && isMemberPortalPath(requestedRedirect) ? requestedRedirect : "/member";
   const [mode, setMode] = useState<"staff" | "member">(requestedMode);
+  // Only one of these is actually sent, chosen by staffIdentifierMethod -- a GNAT account
+  // created with only a phone number has no email to sign in with.
+  const [staffIdentifierMethod, setStaffIdentifierMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -157,8 +161,12 @@ export function useLogin() {
     safeMemberRedirect,
     mode,
     setMode,
+    staffIdentifierMethod,
+    setStaffIdentifierMethod,
     email,
     setEmail,
+    phone,
+    setPhone,
     password,
     setPassword,
     showPassword,

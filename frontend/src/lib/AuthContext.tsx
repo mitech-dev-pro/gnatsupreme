@@ -13,7 +13,13 @@ import { isMemberPortalPath } from "@/lib/utils";
 export type AuthUser = {
   id: number;
   fullName: string;
-  email: string;
+  // Nullable -- a bulk-created GNAT account has no confirmed email yet and logs in by phone
+  // instead. setupRequired is the server-enforced gate; pendingEmail lets the setup screen
+  // prefill a re-run instead of asking the person to retype it. See the backend's
+  // account-states table (middleware/authenticate.ts, modules/auth/auth.routes.ts).
+  email: string | null;
+  pendingEmail?: string | null;
+  setupRequired: boolean;
   role: string;
   // A region/district can legitimately appear in more than one admin's array (e.g. a shared
   // jurisdiction) -- see backend schema.prisma's note on User.regionIds/districtIds.
@@ -21,12 +27,20 @@ export type AuthUser = {
   districtIds: number[];
 };
 
+export type LoginCredentials = { email: string; phone?: never } | { phone: string; email?: never };
+
 type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (credentials: LoginCredentials, password: string) => Promise<AuthUser>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
   resetPassword: (token: string, password: string) => Promise<{ message: string }>;
+  completeSetup: (data: {
+    currentPassword: string;
+    newPassword?: string;
+    email?: string;
+  }) => Promise<AuthUser>;
+  confirmEmail: (token: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
 };
 
@@ -115,8 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [scheduleRefresh]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const res = await api.post("/auth/login", { email, password });
+    async (credentials: LoginCredentials, password: string) => {
+      const res = await api.post("/auth/login", { ...credentials, password });
       setAccessToken(res.data.accessToken);
       setUser(res.data.user);
       scheduleRefresh(res.data.accessToken);
@@ -135,6 +149,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.data as { message: string };
   }, []);
 
+  const completeSetup = useCallback(
+    async (data: { currentPassword: string; newPassword?: string; email?: string }) => {
+      const res = await api.post("/auth/complete-setup", data);
+      setAccessToken(res.data.accessToken);
+      setUser(res.data.user);
+      scheduleRefresh(res.data.accessToken);
+      return res.data.user as AuthUser;
+    },
+    [scheduleRefresh],
+  );
+
+  const confirmEmail = useCallback(async (token: string) => {
+    const res = await api.post("/auth/confirm-email", { token });
+    return res.data as { message: string };
+  }, []);
+
   const logout = useCallback(async () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     try {
@@ -147,7 +177,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, forgotPassword, resetPassword, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        login,
+        forgotPassword,
+        resetPassword,
+        completeSetup,
+        confirmEmail,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

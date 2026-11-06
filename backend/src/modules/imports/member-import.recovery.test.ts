@@ -20,8 +20,8 @@ import { memberQueueDeadline } from "../../queues/import.queue.js";
 const actor = {
   id: 1,
   role: "DISTRICT_ADMIN" as const,
-  districtId: 9,
-  regionId: null,
+  districtIds: [9],
+  regionIds: [],
   email: "staff@example.test",
   fullName: "Staff",
 };

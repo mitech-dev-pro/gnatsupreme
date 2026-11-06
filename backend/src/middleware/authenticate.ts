@@ -11,8 +11,8 @@ export type AuthenticatedUser = {
   fullName: string;
   email: string;
   role: "SUPER_ADMIN" | "NATIONAL_ADMIN" | "REGIONAL_ADMIN" | "DISTRICT_ADMIN";
-  regionId: number | null;
-  districtId: number | null;
+  regionIds: number[];
+  districtIds: number[];
 };
 
 export async function authenticate(request: Request, response: Response, next: NextFunction) {
@@ -33,8 +33,8 @@ export async function authenticate(request: Request, response: Response, next: N
           fullName: true,
           email: true,
           role: true,
-          regionId: true,
-          districtId: true,
+          regionIds: true,
+          districtIds: true,
         },
       }),
     );

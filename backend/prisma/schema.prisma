@@ -155,6 +155,11 @@ enum BulkImportRowStatus {
   DUPLICATE
   EXISTING
   OUT_OF_SCOPE
+  // A district-less/region-less row that's ambiguous within a multi-scope importer's own
+  // districts/regions -- not OUT_OF_SCOPE (the row isn't outside the importer's scope, it's
+  // just unclear which of their own districts/regions it belongs to).
+  AMBIGUOUS_DISTRICT
+  AMBIGUOUS_REGION
   IMPORTED
   FAILED
 
@@ -230,7 +235,10 @@ model Region {
   id             Int                   @id @default(autoincrement())
   name           String                @unique
   districts      District[]
-  users          User[]
+  // Back-relation for the legacy singular User.legacyRegionId column -- see that field's comment.
+  // Scalar-list columns (User.regionIds) have no Prisma relation; query them directly with
+  // `regionIds: { has: id }` instead.
+  legacyUsers    User[]                @relation("UserLegacyRegion")
   // District-less members (non-teaching staff, whose region is set directly rather than derived
   // through a district) and their staged import rows -- see Member.regionId.
   members        Member[]
@@ -247,7 +255,10 @@ model District {
   name              String
   regionId          Int              @map("region_id")
   region            Region           @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  users             User[]
+  // Back-relation for the legacy singular User.legacyDistrictId column -- see that field's
+  // comment. Scalar-list columns (User.districtIds) have no Prisma relation; query them
+  // directly with `districtIds: { has: id }` instead.
+  legacyUsers       User[]           @relation("UserLegacyDistrict")
   members           Member[]
   outgoingTransfers MemberTransfer[] @relation("TransferFromDistrict")
   incomingTransfers MemberTransfer[] @relation("TransferToDistrict")
@@ -280,10 +291,19 @@ model User {
   passwordHash                String                        @map("password_hash")
   role                        UserRole
   isActive                    Boolean                       @default(true) @map("is_active")
-  regionId                    Int?                          @map("region_id")
-  districtId                  Int?                          @map("district_id")
-  region                      Region?                       @relation(fields: [regionId], references: [id], onDelete: Restrict)
-  district                    District?                     @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  // Source of truth for REGIONAL_ADMIN/DISTRICT_ADMIN scoping -- a region/district can
+  // legitimately appear in more than one admin's array (e.g. a shared GNAT jurisdiction); this
+  // is intended, not a data-quality issue. Always use these, never legacyRegionId/legacyDistrictId,
+  // for any new scoping logic.
+  regionIds                   Int[]                         @default([]) @map("region_ids")
+  districtIds                 Int[]                         @default([]) @map("district_ids")
+  // Legacy single-value columns, kept only for rollback safety -- written whenever
+  // regionIds/districtIds is written (set to the sole id if there's exactly one, else null; see
+  // resolveGeographicScope). Never read by current application code.
+  legacyRegionId              Int?                          @map("region_id")
+  legacyDistrictId            Int?                          @map("district_id")
+  legacyRegion                Region?                       @relation("UserLegacyRegion", fields: [legacyRegionId], references: [id], onDelete: Restrict)
+  legacyDistrict              District?                     @relation("UserLegacyDistrict", fields: [legacyDistrictId], references: [id], onDelete: Restrict)
   createdMembers              Member[]                      @relation("MemberCreatedBy")
   refreshTokens               RefreshToken[]
   passwordResetTokens         UserPasswordResetToken[]
@@ -306,8 +326,8 @@ model User {
   createdAt                   DateTime                      @default(now()) @map("created_at")
   updatedAt                   DateTime                      @updatedAt @map("updated_at")
 
-  @@index([regionId])
-  @@index([districtId])
+  @@index([legacyRegionId])
+  @@index([legacyDistrictId])
   @@index([fullName, id])
   @@index([role, isActive, fullName, id])
   @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_full_name_trgm_idx")
@@ -787,15 +807,15 @@ model BenefitPlanVersion {
 }
 
 model BenefitAmount {
-  id              Int                @id @default(autoincrement())
-  planVersionId   Int                @map("plan_version_id")
-  planVersion     BenefitPlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
-  type            BenefitType
-  enabled         Boolean            @default(true)
-  memberAmount    Decimal            @map("member_amount") @db.Decimal(14, 2)
-  spouseAmount    Decimal?           @map("spouse_amount") @db.Decimal(14, 2)
-  note            String?
-  namedConditions String[]           @default([]) @map("named_conditions")
+  id               Int                       @id @default(autoincrement())
+  planVersionId    Int                       @map("plan_version_id")
+  planVersion      BenefitPlanVersion        @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  type             BenefitType
+  enabled          Boolean                   @default(true)
+  memberAmount     Decimal                   @map("member_amount") @db.Decimal(14, 2)
+  spouseAmount     Decimal?                  @map("spouse_amount") @db.Decimal(14, 2)
+  note             String?
+  namedConditions  String[]                  @default([]) @map("named_conditions")
   claimSubmissions ExternalClaimSubmission[]
 
   @@unique([planVersionId, type])

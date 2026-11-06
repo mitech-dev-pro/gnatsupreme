@@ -5,10 +5,12 @@ export type StaffUser = {
   email: string;
   role: string;
   isActive: boolean;
-  regionId: number | null;
-  districtId: number | null;
-  region: { id: number; name: string } | null;
-  district: { id: number; name: string } | null;
+  // A region/district can legitimately appear in more than one admin's scope -- see backend
+  // schema.prisma's note on User.regionIds/districtIds.
+  regionIds: number[];
+  districtIds: number[];
+  regions: { id: number; name: string }[];
+  districts: { id: number; name: string }[];
   createdAt: string;
 };
 export type AuditLog = {

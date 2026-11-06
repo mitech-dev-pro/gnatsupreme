@@ -1,5 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import type { MemberSearchScope } from "./member.access.js";
 
 export function phoneSearchTerms(search: string) {
   if (!/^\+?[\d\s().-]+$/.test(search)) return [];
@@ -17,7 +18,7 @@ export function phoneSearchTerms(search: string) {
 
 export async function memberSearchWhere(
   search: string | undefined,
-  scope: { districtId?: number; regionId?: number },
+  scope: MemberSearchScope,
 ): Promise<Prisma.MemberWhereInput> {
   if (!search?.trim()) return {};
   const value = search.trim();
@@ -31,11 +32,17 @@ export async function memberSearchWhere(
     ...terms.map((term) => ({ phone: { contains: term } })),
   ];
   // Full/long phone queries also match legacy punctuation in stored values. Scope is
-  // applied here and again by the caller; SQL values are always parameterized.
+  // applied here and again by the caller; SQL values are always parameterized. Always include
+  // the ANY() clause whenever scope.kind !== "all" -- never guard it behind an array-length
+  // check, which would omit the filter entirely for an empty-scope admin and let this subquery
+  // return every member's id instead of none.
   if (terms.some((term) => term.length >= 9)) {
     const clauses = [Prisma.sql`TRUE`];
-    if (scope.districtId !== undefined) clauses.push(Prisma.sql`district_id = ${scope.districtId}`);
-    if (scope.regionId !== undefined) clauses.push(Prisma.sql`region_id = ${scope.regionId}`);
+    if (scope.kind === "district") {
+      clauses.push(Prisma.sql`district_id = ANY(${scope.districtIds}::int[])`);
+    } else if (scope.kind === "region") {
+      clauses.push(Prisma.sql`region_id = ANY(${scope.regionIds}::int[])`);
+    }
     const matches = await prisma.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id FROM members WHERE ${Prisma.join(clauses, " AND ")}
       AND (${Prisma.join(

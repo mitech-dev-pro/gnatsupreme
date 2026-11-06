@@ -1,5 +1,5 @@
-import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
+import { canAccessDistrict } from "../../lib/geo-scope.js";
 
 // Resolves the Prisma `where` scope a user is permitted to query members within, optionally
 // narrowed further by an explicit region/district filter (e.g. from the Members list toolbar).
@@ -20,27 +20,58 @@ export function resolveMemberScope(
 
   if (user.role === "REGIONAL_ADMIN") {
     // regionId is kept in sync with district.regionId whenever a member has a district (see
-    // Member.regionId in schema.prisma), so this single flat filter covers both a member with a
-    // district and a district-less NON_TEACHING member scoped directly to this admin's region.
-    const ownRegionId = user.regionId ?? -1;
-    return districtId ? { districtId, regionId: ownRegionId } : { regionId: ownRegionId };
+    // Member.regionId in schema.prisma), so this filter covers both a member with a district
+    // and a district-less NON_TEACHING member scoped directly to one of this admin's regions.
+    // Always the `{ in: ... }` fragment, even when regionIds is empty -- see geo-scope.ts.
+    return districtId
+      ? { districtId, regionId: { in: user.regionIds } }
+      : { regionId: { in: user.regionIds } };
   }
 
-  // DISTRICT_ADMIN: the only remaining UserRole value — fixed regardless of any query params.
-  return { districtId: user.districtId ?? -1 };
+  if (user.role === "DISTRICT_ADMIN") {
+    return { districtId: { in: user.districtIds } };
+  }
+
+  // Unrecognized role -- deny by default rather than fall through to an unfiltered query.
+  return { districtId: { in: [] } };
 }
 
 export function memberScope(user: AuthenticatedUser) {
   return resolveMemberScope(user);
 }
 
-export async function canAccessDistrict(user: AuthenticatedUser, districtId: number) {
-  if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") return true;
-  if (user.role === "DISTRICT_ADMIN") return user.districtId === districtId;
+// Parallel to resolveMemberScope above, but for member.search.ts's raw-SQL phone-matching path,
+// which needs plain id arrays rather than a Prisma `where` fragment. Kept as a discriminated
+// union (never an optional-field object) so a caller can't build a scoped search with no array
+// at all -- the exact fail-open shape this exists to prevent.
+export type MemberSearchScope =
+  | { kind: "all" }
+  | { kind: "region"; regionIds: number[] }
+  | { kind: "district"; districtIds: number[] };
 
-  const district = await prisma.district.findUnique({
-    where: { id: districtId },
-    select: { regionId: true },
-  });
-  return district?.regionId === user.regionId;
+export function resolveMemberSearchScope(
+  user: AuthenticatedUser,
+  filters: { regionId?: number; districtId?: number } = {},
+): MemberSearchScope {
+  const { regionId, districtId } = filters;
+
+  if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") {
+    if (districtId !== undefined) return { kind: "district", districtIds: [districtId] };
+    if (regionId !== undefined) return { kind: "region", regionIds: [regionId] };
+    return { kind: "all" };
+  }
+
+  if (user.role === "DISTRICT_ADMIN") {
+    return { kind: "district", districtIds: user.districtIds };
+  }
+
+  if (user.role === "REGIONAL_ADMIN") {
+    if (districtId !== undefined) return { kind: "district", districtIds: [districtId] };
+    return { kind: "region", regionIds: user.regionIds };
+  }
+
+  // Unrecognized role -- deny by default, same as resolveMemberScope above.
+  return { kind: "district", districtIds: [] };
 }
+
+export { canAccessDistrict };

@@ -7,7 +7,7 @@ import { prisma } from "../../lib/prisma.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { authenticate } from "../../middleware/authenticate.js";
 
-const user = { id: 1, role: "DISTRICT_ADMIN", districtId: 9, regionId: null };
+const user = { id: 1, role: "DISTRICT_ADMIN", districtIds: [9], regionIds: [] };
 function response() {
   return {
     locals: { user },
@@ -40,7 +40,7 @@ test("out-of-scope history cannot call Mankrado", async (t) => {
     "findFirst",
     async (args: Prisma.MemberFindFirstArgs & { where: Prisma.MemberWhereInput }) => {
       assert.equal(args.where.controllerId, "123456");
-      assert.equal(args.where.districtId, 9);
+      assert.deepEqual(args.where.districtId, { in: [9] });
       return null;
     },
   );
@@ -62,7 +62,7 @@ test("external detail access requires a locally associated, scoped Mankrado clai
     ) => {
       assert.equal(args.where.externalClaimId, "MK-1");
       assert.equal(args.where.provider, "Claims System");
-      assert.equal(args.where.member?.is?.districtId, 9);
+      assert.deepEqual(args.where.member?.is?.districtId, { in: [9] });
       return null;
     },
   );
@@ -315,7 +315,7 @@ test("saved-claim recovery is scoped and only reaches a claim in a deliverable s
       // own enforcement of the same boundary.
       assert.deepEqual(args.where.deliveryState, { in: ["NOT_SENT", "FAILED", "UNKNOWN"] });
       assert.equal(args.where.provider, "Claims System");
-      assert.equal(args.where.member?.is?.districtId, 9);
+      assert.deepEqual(args.where.member?.is?.districtId, { in: [9] });
       assert.deepEqual(args.where.OR?.[1], { source: "MEMBER_PORTAL", reviewedAt: { not: null } });
       return null;
     },

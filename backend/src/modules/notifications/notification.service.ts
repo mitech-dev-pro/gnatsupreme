@@ -100,8 +100,11 @@ export async function notifyStaffForMember(input: {
         { role: { in: ["SUPER_ADMIN", "NATIONAL_ADMIN"] } },
         ...(member.district
           ? [
-              { role: "REGIONAL_ADMIN" as const, regionId: member.district.regionId },
-              { role: "DISTRICT_ADMIN" as const, districtId: member.districtId },
+              {
+                role: "REGIONAL_ADMIN" as const,
+                regionIds: { has: member.district.regionId },
+              },
+              { role: "DISTRICT_ADMIN" as const, districtIds: { has: member.districtId } },
             ]
           : []),
       ],

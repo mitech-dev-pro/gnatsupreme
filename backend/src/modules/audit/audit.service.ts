@@ -12,7 +12,7 @@ function isExpressRequest(source: AuditRequestSource): source is Request {
 
 type AuditInput = {
   request: AuditRequestSource;
-  actor?: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null;
+  actor?: Pick<AuthenticatedUser, "id" | "email" | "regionIds" | "districtIds"> | null;
   actorEmail?: string | null;
   action: string;
   entityType: string;
@@ -31,6 +31,15 @@ function asJson(value: unknown): Prisma.InputJsonValue | undefined {
 
 export async function recordAudit(input: AuditInput) {
   try {
+    // AuditLog itself still stores a single regionId/districtId (the acted-on record's
+    // geography, unaffected by this change) -- the actor fallback (used when the caller doesn't
+    // supply an explicit regionId/districtId, e.g. a plain login event) only has a single value
+    // to fall back to when the actor has exactly one region/district. A multi-scope actor falls
+    // back to null rather than arbitrarily picking the first of their regions/districts.
+    const actorRegionId =
+      input.actor?.regionIds?.length === 1 ? input.actor.regionIds[0]! : null;
+    const actorDistrictId =
+      input.actor?.districtIds?.length === 1 ? input.actor.districtIds[0]! : null;
     await prisma.auditLog.create({
       data: {
         actorId: input.actor?.id ?? null,
@@ -41,8 +50,8 @@ export async function recordAudit(input: AuditInput) {
         description: input.description,
         beforeData: asJson(input.beforeData),
         afterData: asJson(input.afterData),
-        regionId: input.regionId ?? input.actor?.regionId ?? null,
-        districtId: input.districtId ?? input.actor?.districtId ?? null,
+        regionId: input.regionId ?? actorRegionId,
+        districtId: input.districtId ?? actorDistrictId,
         ipAddress: input.request.ip?.slice(0, 64),
         userAgent: (isExpressRequest(input.request)
           ? input.request.get("user-agent")

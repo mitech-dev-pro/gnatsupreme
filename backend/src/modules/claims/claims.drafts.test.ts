@@ -14,8 +14,8 @@ import { fileRouter } from "../files/file.routes.js";
 const staff = {
   id: 1,
   role: "DISTRICT_ADMIN" as const,
-  districtId: 9,
-  regionId: null,
+  districtIds: [9],
+  regionIds: [],
   fullName: "Staff",
   email: "staff@example.test",
 };
@@ -90,7 +90,10 @@ test("draft payloads accept incomplete input but strip declarations and insurer 
   assert.equal("externalStatus" in result, false);
 });
 test("draft queries require preparer ownership and current member scope", () => {
-  assert.deepEqual(draftOwnership({ user: staff }), { preparedById: 1, member: { districtId: 9 } });
+  assert.deepEqual(draftOwnership({ user: staff }), {
+    preparedById: 1,
+    member: { districtId: { in: [9] } },
+  });
   assert.deepEqual(draftOwnership({ member }), { preparedByMemberId: 7, memberId: 7 });
 });
 test("members cannot save a draft for someone else", async (t) => {

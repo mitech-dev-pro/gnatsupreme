@@ -74,8 +74,8 @@ function queueReport20Job(
     actor: {
       id: currentUser.id,
       email: currentUser.email,
-      regionId: currentUser.regionId,
-      districtId: currentUser.districtId,
+      regionIds: currentUser.regionIds,
+      districtIds: currentUser.districtIds,
     },
     auditContext: { ip: request.ip, userAgent: request.get("user-agent") },
   };

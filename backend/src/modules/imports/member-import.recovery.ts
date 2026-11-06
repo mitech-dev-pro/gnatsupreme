@@ -33,6 +33,8 @@ export const RECOVERY_STATUSES = [
   "DUPLICATE",
   "EXISTING",
   "OUT_OF_SCOPE",
+  "AMBIGUOUS_DISTRICT",
+  "AMBIGUOUS_REGION",
 ] as const;
 export const recoveryAction = (status: string) =>
   ({
@@ -45,4 +47,10 @@ export const recoveryAction = (status: string) =>
       "Skipped: this member already exists. Use the member profile to request updates; do not create another member.",
     OUT_OF_SCOPE:
       "Ask an administrator with access to the correct district or region to review this row.",
+    // Distinct from OUT_OF_SCOPE -- the row isn't outside the importer's own scope, it's just
+    // unclear which of the importer's own districts/regions it belongs to.
+    AMBIGUOUS_DISTRICT:
+      "Add a District column value naming one of your own districts, then re-upload this row.",
+    AMBIGUOUS_REGION:
+      "Add a Region column value naming one of your own regions, then re-upload this row.",
   })[status] ?? "Review this row before uploading it again.";

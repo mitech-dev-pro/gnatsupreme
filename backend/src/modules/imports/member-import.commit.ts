@@ -186,7 +186,11 @@ export async function runMemberImportCommit(
         readyRows: counts.READY ?? 0,
         invalidRows: (counts.INVALID ?? 0) + (counts.FAILED ?? 0),
         duplicateRows: counts.DUPLICATE ?? 0,
-        unmatchedRows: (counts.EXISTING ?? 0) + (counts.OUT_OF_SCOPE ?? 0),
+        unmatchedRows:
+          (counts.EXISTING ?? 0) +
+          (counts.OUT_OF_SCOPE ?? 0) +
+          (counts.AMBIGUOUS_DISTRICT ?? 0) +
+          (counts.AMBIGUOUS_REGION ?? 0),
         errorMessage: null,
       },
     });

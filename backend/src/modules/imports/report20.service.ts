@@ -107,7 +107,7 @@ export async function reconcileReport20(
   importJobId: number,
   sourceRows: SourceRow[],
   auditContext: AuditRequestSource,
-  actor: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId">,
+  actor: Pick<AuthenticatedUser, "id" | "email" | "regionIds" | "districtIds">,
 ) {
   // Captured up front so sourceRows can be dropped once classification is done (see below) --
   // this is the only later use of its length.

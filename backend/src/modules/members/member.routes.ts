@@ -22,7 +22,7 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { generateTempPassword, hashMemberPassword } from "../member-auth/member-auth.tokens.js";
-import { canAccessDistrict, resolveMemberScope } from "./member.access.js";
+import { canAccessDistrict, resolveMemberScope, resolveMemberSearchScope } from "./member.access.js";
 import { resolveMemberRegionId } from "./member-region.js";
 import {
   beneficiaryBaseSchema,
@@ -55,16 +55,19 @@ function simpleFailure(response: Response, field: string, message: string) {
   response.status(400).json({ success: false, message, errors: [{ field, message }] });
 }
 
-// A DISTRICT_ADMIN's own region -- looked up fresh rather than cached on the JWT, since a
-// district's region essentially never changes but this keeps it authoritative. Returns null only
-// if the admin's own districtId is somehow unset/invalid.
-async function districtAdminOwnRegionId(user: AuthenticatedUser) {
-  if (!user.districtId) return null;
-  const district = await prisma.district.findUnique({
-    where: { id: user.districtId },
+// A DISTRICT_ADMIN's own regions -- the distinct set of regions covered by their districts,
+// looked up fresh rather than cached on the JWT (a district's region essentially never changes,
+// but this keeps it authoritative). In practice DISTRICT_ADMIN always has a district forced
+// before this is used (create force-overrides one of their own districts; update's
+// canAccessDistrict gate keeps any supplied district in scope), so this is a defensive
+// fallback, not DISTRICT_ADMIN's normal path.
+async function districtAdminOwnRegionIds(user: AuthenticatedUser): Promise<number[]> {
+  if (!user.districtIds.length) return [];
+  const districts = await prisma.district.findMany({
+    where: { id: { in: user.districtIds } },
     select: { regionId: true },
   });
-  return district?.regionId ?? null;
+  return [...new Set(districts.map((d) => d.regionId))];
 }
 
 memberRouter.use(authenticate);
@@ -100,7 +103,7 @@ memberRouter.get("/", async (request, response) => {
       : registered === "false"
         ? { passwordHash: null }
         : {}),
-    ...(await memberSearchWhere(search, requestedScope)),
+    ...(await memberSearchWhere(search, resolveMemberSearchScope(user, { regionId, districtId }))),
   };
 
   const [members, total] = await Promise.all([
@@ -113,7 +116,7 @@ memberRouter.get("/", async (request, response) => {
     }),
     cachedCount(
       "members",
-      { scope: { role: user.role, regionId: user.regionId, districtId: user.districtId }, where },
+      { scope: { role: user.role, regionIds: user.regionIds, districtIds: user.districtIds }, where },
       () => prisma.member.count({ where }),
     ),
   ]);
@@ -194,9 +197,14 @@ memberRouter.get("/schools", async (request, response) => {
   if (!query.success) return validationFailure(response, query.error);
 
   const user = currentUser(response);
+  // A single-district admin's own district is inferred as today; a multi-district admin must
+  // supply one explicitly (resolveMemberScope ANDs it with their own scope below, so an
+  // out-of-scope value yields zero rows rather than a leak).
   const districtId =
     query.data.districtId ??
-    (user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : undefined);
+    (user.role === "DISTRICT_ADMIN" && user.districtIds.length === 1
+      ? user.districtIds[0]
+      : undefined);
   if (!districtId) {
     response.status(400).json({
       success: false,
@@ -234,9 +242,38 @@ memberRouter.post("/", async (request, response) => {
   const user = currentUser(response);
   // DISTRICT_ADMIN always enrolls into their own district, regardless of employment category --
   // a district-less non-teaching member would otherwise be invisible on this admin's own list
-  // (REGIONAL_ADMIN/SUPER_ADMIN/NATIONAL_ADMIN are the only roles that can create one).
-  const districtId =
-    user.role === "DISTRICT_ADMIN" ? (user.districtId ?? undefined) : parsed.data.districtId;
+  // (REGIONAL_ADMIN/SUPER_ADMIN/NATIONAL_ADMIN are the only roles that can create one). A
+  // single-district admin keeps today's unconditional force-override, since AddMember.tsx
+  // sends a districtId for every role and validating a single-district admin's pick would be a
+  // new regression. A multi-district admin's pick is validated/required instead -- this is the
+  // most important security check in this change (most DISTRICT_ADMIN accounts in the real GNAT
+  // rollout are multi-district, not single).
+  let districtId: number | null | undefined;
+  if (user.role === "DISTRICT_ADMIN") {
+    if (user.districtIds.length === 1) {
+      districtId = user.districtIds[0];
+    } else if (
+      parsed.data.districtId !== undefined &&
+      parsed.data.districtId !== null &&
+      user.districtIds.includes(parsed.data.districtId)
+    ) {
+      districtId = parsed.data.districtId;
+    } else if (parsed.data.districtId) {
+      return simpleFailure(
+        response,
+        "districtId",
+        "You cannot enroll members in this district",
+      );
+    } else {
+      return simpleFailure(
+        response,
+        "districtId",
+        "Select which of your districts this member belongs to",
+      );
+    }
+  } else {
+    districtId = parsed.data.districtId;
+  }
 
   if (districtId && !(await canAccessDistrict(user, districtId))) {
     response
@@ -253,12 +290,13 @@ memberRouter.post("/", async (request, response) => {
     return;
   }
 
-  const ownRegionId =
-    user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
+  const ownRegionIds =
+    user.role === "REGIONAL_ADMIN" ? user.regionIds : await districtAdminOwnRegionIds(user);
   const resolvedRegion = resolveMemberRegionId(user, {
     districtRegionId: district?.regionId ?? null,
     explicitRegionId: parsed.data.regionId ?? null,
-    ownRegionId,
+    existingRegionId: null,
+    ownRegionIds,
   });
   if (resolvedRegion.issue) {
     return simpleFailure(response, "regionId", resolvedRegion.issue);
@@ -384,6 +422,16 @@ memberRouter.patch("/:id", async (request, response) => {
     response.status(404).json({ success: false, message: "Member not found" });
     return;
   }
+  // A DISTRICT_ADMIN cannot clear a member's district -- substitute this out before
+  // body.data.districtId is read anywhere else below, since it feeds both the final Prisma
+  // write and the districtRegionId computation passed into resolveMemberRegionId. If the null
+  // reached resolveMemberRegionId unchanged, the resolver would see "no district" and take the
+  // district-less branch (possibly forcing a region pick) even though the record being written
+  // keeps its district -- the two would disagree with each other. No error here; this mirrors
+  // the existing silent-override precedent on create rather than introducing new rejection UX.
+  if (user.role === "DISTRICT_ADMIN" && body.data.districtId === null) {
+    body.data.districtId = undefined;
+  }
   if (body.data.districtId && !(await canAccessDistrict(user, body.data.districtId))) {
     response
       .status(403)
@@ -480,8 +528,8 @@ memberRouter.patch("/:id", async (request, response) => {
     body.data.regionId !== undefined ||
     body.data.placeOfWork !== undefined
   ) {
-    const ownRegionId =
-      user.role === "REGIONAL_ADMIN" ? user.regionId : await districtAdminOwnRegionId(user);
+    const ownRegionIds =
+      user.role === "REGIONAL_ADMIN" ? user.regionIds : await districtAdminOwnRegionIds(user);
     const districtRegionId = body.data.districtId
       ? (patchedDistrictRegionId ?? null)
       : existing.districtId
@@ -490,7 +538,8 @@ memberRouter.patch("/:id", async (request, response) => {
     const resolvedRegion = resolveMemberRegionId(user, {
       districtRegionId,
       explicitRegionId: body.data.regionId ?? null,
-      ownRegionId,
+      existingRegionId: existing.regionId ?? null,
+      ownRegionIds,
     });
     if (resolvedRegion.issue) {
       return simpleFailure(response, "regionId", resolvedRegion.issue);

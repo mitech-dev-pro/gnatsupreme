@@ -727,7 +727,7 @@ changeRequestRouter.get("/", async (request, response) => {
     cachedCount(
       "change-requests",
       {
-        scope: { role: actor.role, regionId: actor.regionId, districtId: actor.districtId },
+        scope: { role: actor.role, regionIds: actor.regionIds, districtIds: actor.districtIds },
         status,
         type,
         requestId,

@@ -40,21 +40,30 @@ function validationFailure(response: Response, error: ZodError) {
   });
 }
 
+// Transfers are two-sided (fromDistrict/toDistrict), so they don't fit the single-field shape in
+// lib/geo-scope.ts -- the OR spans both sides explicitly here. Always the `{ in: ... }` fragment,
+// even for an empty scope array, so an unrecognized or empty-scope admin matches nothing rather
+// than falling through to an unfiltered query.
 function transferScope(user: AuthenticatedUser) {
   if (user.role === "REGIONAL_ADMIN") {
     return {
       OR: [
-        { fromDistrict: { regionId: user.regionId ?? -1 } },
-        { toDistrict: { regionId: user.regionId ?? -1 } },
+        { fromDistrict: { regionId: { in: user.regionIds } } },
+        { toDistrict: { regionId: { in: user.regionIds } } },
       ],
     };
   }
   if (user.role === "DISTRICT_ADMIN") {
     return {
-      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
+      OR: [
+        { fromDistrictId: { in: user.districtIds } },
+        { toDistrictId: { in: user.districtIds } },
+      ],
     };
   }
-  return {};
+  if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") return {};
+  // Unrecognized role -- deny by default.
+  return { OR: [{ fromDistrictId: { in: [] } }, { toDistrictId: { in: [] } }] };
 }
 
 async function accessibleTransfer(id: number, user: AuthenticatedUser) {

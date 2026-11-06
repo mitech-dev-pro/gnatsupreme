@@ -190,22 +190,25 @@ export async function stageMemberImport(
   const regionIdByNormalizedName = new Map(
     districts.map((d) => [normalizeDistrictName(d.region.name), d.regionId]),
   );
-  // Computed once for the whole job, not per row -- a DISTRICT_ADMIN's own region (via their
-  // fixed district) or a REGIONAL_ADMIN's own regionId. Irrelevant for SUPER_ADMIN/NATIONAL_ADMIN,
-  // who supply an explicit region instead (job.defaultRegionId, set from the upload screen).
-  const ownRegionId =
+  // Computed once for the whole job, not per row -- a DISTRICT_ADMIN's own regions (the distinct
+  // set covered by their own districts) or a REGIONAL_ADMIN's own regionIds. Irrelevant for
+  // SUPER_ADMIN/NATIONAL_ADMIN, who supply an explicit region instead (job.defaultRegionId, set
+  // from the upload screen).
+  const ownDistricts = districts.filter((d) => user.districtIds.includes(d.id));
+  const ownDistrictIds = ownDistricts.map((d) => d.id);
+  const ownRegionIds =
     user.role === "REGIONAL_ADMIN"
-      ? user.regionId
+      ? user.regionIds
       : user.role === "DISTRICT_ADMIN"
-        ? (districts.find((d) => d.id === user.districtId)?.regionId ?? null)
-        : null;
+        ? [...new Set(ownDistricts.map((d) => d.regionId))]
+        : [];
   // DISTRICT_ADMIN always enrolls into their own district -- a district-less NON_TEACHING member
   // would otherwise be invisible on this admin's own list (REGIONAL_ADMIN/SUPER_ADMIN/
-  // NATIONAL_ADMIN are the only roles that can create one). Only forced for rows that end up
-  // NON_TEACHING with no district of their own; a TEACHING row keeps its normal
-  // resolve/out-of-scope behavior unchanged.
+  // NATIONAL_ADMIN are the only roles that can create one). A single-district admin keeps
+  // today's unconditional force-override (same single-vs-multi carve-out as member.routes.ts):
+  // a file that imports cleanly today for a single-district admin keeps doing so.
   const districtAdminOwnDistrict =
-    user.role === "DISTRICT_ADMIN" ? districts.find((d) => d.id === user.districtId) : undefined;
+    user.role === "DISTRICT_ADMIN" && ownDistricts.length === 1 ? ownDistricts[0] : undefined;
   const districtAliases = await prisma.districtAlias.findMany({
     select: { alias: true, districtId: true },
   });
@@ -274,7 +277,15 @@ export async function stageMemberImport(
   // false-flag as an in-file duplicate even though cross-table is no longer a conflict.
   const seenMemberCards = new Set<string>();
   const seenSpouseCards = new Set<string>();
-  const counts = { READY: 0, INVALID: 0, DUPLICATE: 0, EXISTING: 0, OUT_OF_SCOPE: 0 };
+  const counts = {
+    READY: 0,
+    INVALID: 0,
+    DUPLICATE: 0,
+    EXISTING: 0,
+    OUT_OF_SCOPE: 0,
+    AMBIGUOUS_DISTRICT: 0,
+    AMBIGUOUS_REGION: 0,
+  };
 
   const rows: Prisma.MemberBulkImportRowCreateManyInput[] = sourceRows.map(
     ({ rowNumber, data }) => {
@@ -357,18 +368,39 @@ export async function stageMemberImport(
         issues.push("Member and spouse cannot use the same Ghana Card ID");
 
       let regionId: number | null = null;
+      // Distinct from the generic "issues" validation failures below -- these are scope
+      // ambiguities (which of the importer's own districts/regions this row belongs to), not
+      // malformed data, and get their own AMBIGUOUS_DISTRICT/AMBIGUOUS_REGION status rather than
+      // reading as a permissions error (OUT_OF_SCOPE) or a generic validation failure (INVALID).
+      let ambiguousDistrict = false;
+      let ambiguousRegion = false;
       if (isNonTeaching) {
-        const regionCellId = regionName
-          ? (regionIdByNormalizedName.get(normalizeDistrictName(regionName)) ?? null)
-          : null;
-        const explicitRegionId: number | null = regionCellId ?? job.defaultRegionId ?? null;
-        const resolvedRegion = resolveMemberRegionId(user, {
-          districtRegionId: district?.regionId ?? null,
-          explicitRegionId,
-          ownRegionId,
-        });
-        if (resolvedRegion.issue) issues.push(resolvedRegion.issue);
-        regionId = resolvedRegion.regionId;
+        if (user.role === "DISTRICT_ADMIN" && !district && ownDistricts.length > 1) {
+          // Multi-district admin, no usable district on this row -- silently landing this as a
+          // district-less member would make it invisible on this admin's own list (the exact
+          // problem districtAdminOwnDistrict's force-override exists to prevent for the
+          // single-district case).
+          ambiguousDistrict = true;
+        } else {
+          const regionCellId = regionName
+            ? (regionIdByNormalizedName.get(normalizeDistrictName(regionName)) ?? null)
+            : null;
+          const explicitRegionId: number | null = regionCellId ?? job.defaultRegionId ?? null;
+          const resolvedRegion = resolveMemberRegionId(user, {
+            districtRegionId: district?.regionId ?? null,
+            explicitRegionId,
+            existingRegionId: null,
+            ownRegionIds,
+          });
+          if (resolvedRegion.issue) {
+            if (user.role === "REGIONAL_ADMIN" && ownRegionIds.length > 1) {
+              ambiguousRegion = true;
+            } else {
+              issues.push(resolvedRegion.issue);
+            }
+          }
+          regionId = resolvedRegion.regionId;
+        }
       } else if (district) {
         regionId = district.regionId;
       }
@@ -395,11 +427,17 @@ export async function stageMemberImport(
         issues.push("Spouse Ghana Card ID is already enrolled");
       } else if (
         district &&
-        ((user.role === "DISTRICT_ADMIN" && district.id !== user.districtId) ||
-          (user.role === "REGIONAL_ADMIN" && district.regionId !== user.regionId))
+        ((user.role === "DISTRICT_ADMIN" && !ownDistrictIds.includes(district.id)) ||
+          (user.role === "REGIONAL_ADMIN" && !ownRegionIds.includes(district.regionId)))
       ) {
         status = "OUT_OF_SCOPE";
         issues.push("You cannot enroll members in this district");
+      } else if (ambiguousDistrict) {
+        status = "AMBIGUOUS_DISTRICT";
+        issues.push("Select which of your districts this member belongs to");
+      } else if (ambiguousRegion) {
+        status = "AMBIGUOUS_REGION";
+        issues.push("Select which of your regions this member belongs to");
       }
       if (controllerId) seenIds.add(controllerId);
       if (ghanaCardId) seenMemberCards.add(ghanaCardId);
@@ -435,7 +473,11 @@ export async function stageMemberImport(
           readyRows: counts.READY,
           invalidRows: counts.INVALID,
           duplicateRows: counts.DUPLICATE,
-          unmatchedRows: counts.EXISTING + counts.OUT_OF_SCOPE,
+          unmatchedRows:
+            counts.EXISTING +
+            counts.OUT_OF_SCOPE +
+            counts.AMBIGUOUS_DISTRICT +
+            counts.AMBIGUOUS_REGION,
           completedAt: new Date(),
           errorMessage: null,
         },

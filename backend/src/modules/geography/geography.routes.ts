@@ -51,16 +51,22 @@ regionRouter.get("/", async (_request, response) => {
   const user = currentUser(response);
   const where =
     user.role === "REGIONAL_ADMIN"
-      ? { id: user.regionId ?? -1 }
+      ? { id: { in: user.regionIds } }
       : user.role === "DISTRICT_ADMIN"
-        ? { districts: { some: { id: user.districtId ?? -1 } } }
+        ? { districts: { some: { id: { in: user.districtIds } } } }
         : {};
+
+  // Pre-joined, numerically-sorted scope ids rather than letting cacheKey's object-hashing
+  // serialize the arrays -- that doesn't guarantee a stable order, which would otherwise create
+  // a distinct cache entry per request for the same admin.
+  const sortedRegionIds = [...user.regionIds].sort((a, b) => a - b).join(",");
+  const sortedDistrictIds = [...user.districtIds].sort((a, b) => a - b).join(",");
 
   const regions = await withCache(
     cacheKey("reference:regions", {
       role: user.role,
-      regionId: user.regionId,
-      districtId: user.districtId,
+      regionIds: sortedRegionIds,
+      districtIds: sortedDistrictIds,
     }),
     env.READ_CACHE_TTL_SECONDS,
     () =>
@@ -153,13 +159,17 @@ regionRouter.delete("/:id", geographyManagers, async (request, response) => {
 
   const region = await prisma.region.findUnique({
     where: { id: params.data.id },
-    include: { _count: { select: { districts: true, users: true } } },
+    include: { _count: { select: { districts: true } } },
   });
   if (!region) {
     response.status(404).json({ success: false, message: "Region not found" });
     return;
   }
-  if (region._count.districts > 0 || region._count.users > 0) {
+  // regionIds is the source of truth for admin scoping now, not the legacy relation -- a
+  // multi-region admin scoped to this region has it in their array, never a row in the legacy
+  // back-relation, so that count alone would under-report.
+  const assignedUsers = await prisma.user.count({ where: { regionIds: { has: region.id } } });
+  if (region._count.districts > 0 || assignedUsers > 0) {
     response.status(409).json({
       success: false,
       message: "Region cannot be deleted while it has districts or assigned users",
@@ -189,18 +199,21 @@ districtRouter.get("/", async (request, response) => {
   const user = currentUser(response);
   const where =
     user.role === "REGIONAL_ADMIN"
-      ? { regionId: user.regionId ?? -1 }
+      ? { regionId: { in: user.regionIds } }
       : user.role === "DISTRICT_ADMIN"
-        ? { id: user.districtId ?? -1 }
+        ? { id: { in: user.districtIds } }
         : query.data.regionId
           ? { regionId: query.data.regionId }
           : {};
 
+  const sortedRegionIds = [...user.regionIds].sort((a, b) => a - b).join(",");
+  const sortedDistrictIds = [...user.districtIds].sort((a, b) => a - b).join(",");
+
   const districts = await withCache(
     cacheKey("reference:districts", {
       role: user.role,
-      regionId: user.regionId,
-      districtId: user.districtId,
+      regionIds: sortedRegionIds,
+      districtIds: sortedDistrictIds,
       filterRegionId: query.data.regionId,
     }),
     env.READ_CACHE_TTL_SECONDS,
@@ -322,13 +335,18 @@ districtRouter.delete("/:id", geographyManagers, async (request, response) => {
 
   const district = await prisma.district.findUnique({
     where: { id: params.data.id },
-    include: { _count: { select: { users: true, members: true } } },
+    include: { _count: { select: { members: true } } },
   });
   if (!district) {
     response.status(404).json({ success: false, message: "District not found" });
     return;
   }
-  if (district._count.users > 0 || district._count.members > 0) {
+  // districtIds is the source of truth for admin scoping now -- see the equivalent region check
+  // above for why the legacy relation count alone isn't enough.
+  const assignedUsers = await prisma.user.count({
+    where: { districtIds: { has: district.id } },
+  });
+  if (assignedUsers > 0 || district._count.members > 0) {
     response.status(409).json({
       success: false,
       message: "District cannot be deleted while it has assigned users or members",

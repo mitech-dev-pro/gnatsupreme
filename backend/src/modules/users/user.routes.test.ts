@@ -15,7 +15,7 @@ function stubCache(t: Parameters<typeof stub>[0]) {
 
 function response(role = "SUPER_ADMIN", id = 1) {
   return {
-    locals: { user: { id, role, regionId: null, districtId: null } },
+    locals: { user: { id, role, regionIds: [], districtIds: [] } },
     code: 200,
     body: null as unknown,
     status(code: number) {
@@ -60,7 +60,7 @@ test("creating a user with an email already in use is rejected", async (t) => {
         fullName: "Test Admin",
         email: "taken@example.com",
         role: "DISTRICT_ADMIN",
-        districtId: 4,
+        districtIds: [4],
         password: "Str0ng!NewPassw0rd",
       },
     },
@@ -108,8 +108,8 @@ test("a NATIONAL_ADMIN cannot promote a user to super administrator", async (t) 
     id: 5,
     role: "DISTRICT_ADMIN",
     email: "staff@example.com",
-    districtId: 4,
-    regionId: 2,
+    districtIds: [4],
+    regionIds: [2],
   }));
   const res = response("NATIONAL_ADMIN");
   await routeHandler(
@@ -156,8 +156,8 @@ test("deactivating a user revokes their active sessions and invalidates the auth
     role: "DISTRICT_ADMIN",
     isActive: true,
     fullName: "Test Staff",
-    regionId: 2,
-    districtId: 4,
+    regionIds: [2],
+    districtIds: [4],
   }));
   // The route builds an array of already-invoked Prisma calls and hands it to
   // prisma.$transaction([...]) -- stubbing $transaction to just await that array mirrors the
@@ -167,9 +167,11 @@ test("deactivating a user revokes their active sessions and invalidates the auth
     id: 6,
     isActive: false,
     fullName: "Test Staff",
-    regionId: 2,
-    districtId: 4,
+    regionIds: [2],
+    districtIds: [4],
   }));
+  stub(t, prisma.region, "findMany", async () => []);
+  stub(t, prisma.district, "findMany", async () => []);
   let revokedWhere: { userId: number; revokedAt: null } | undefined;
   stub(t, prisma.refreshToken, "updateMany", async ({ where }: { where: typeof revokedWhere }) => {
     revokedWhere = where;
@@ -192,8 +194,8 @@ test("resetting a user's password revokes their active sessions", async (t) => {
     id: 7,
     role: "DISTRICT_ADMIN",
     fullName: "Test Staff",
-    regionId: 2,
-    districtId: 4,
+    regionIds: [2],
+    districtIds: [4],
   }));
   stub(t, prisma, "$transaction", async (queries: unknown[]) => Promise.all(queries));
   stub(t, prisma.user, "update", async () => undefined);

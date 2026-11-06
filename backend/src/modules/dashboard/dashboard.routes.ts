@@ -5,6 +5,7 @@ import { withCache } from "../../lib/cache.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { memberScope } from "../members/member.access.js";
+import { geoScopeWhere } from "../../lib/geo-scope.js";
 
 export const dashboardRouter = Router();
 
@@ -26,25 +27,30 @@ function currentUser(response: Response) {
   return response.locals.user as AuthenticatedUser;
 }
 
+// See the equivalent function in transfer.routes.ts -- transfers are two-sided, so they don't
+// fit the single-field shape in lib/geo-scope.ts. Always the `{ in: ... }` fragment, even for an
+// empty scope array, so an unrecognized or empty-scope admin matches nothing.
 function transferScope(user: AuthenticatedUser) {
   if (user.role === "REGIONAL_ADMIN")
     return {
       OR: [
-        { fromDistrict: { regionId: user.regionId ?? -1 } },
-        { toDistrict: { regionId: user.regionId ?? -1 } },
+        { fromDistrict: { regionId: { in: user.regionIds } } },
+        { toDistrict: { regionId: { in: user.regionIds } } },
       ],
     };
   if (user.role === "DISTRICT_ADMIN")
     return {
-      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
+      OR: [
+        { fromDistrictId: { in: user.districtIds } },
+        { toDistrictId: { in: user.districtIds } },
+      ],
     };
-  return {};
+  if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") return {};
+  return { OR: [{ fromDistrictId: { in: [] } }, { toDistrictId: { in: [] } }] };
 }
 
 function auditScope(user: AuthenticatedUser) {
-  if (user.role === "REGIONAL_ADMIN") return { regionId: user.regionId ?? -1 };
-  if (user.role === "DISTRICT_ADMIN") return { districtId: user.districtId ?? -1 };
-  return {};
+  return geoScopeWhere(user);
 }
 
 function monthStart(date: Date) {
@@ -63,29 +69,33 @@ const memberAggregateColumns = `
   COUNT(*) FILTER (WHERE m.missing_from_report20_at IS NOT NULL) AS "missingFromReport20"`;
 
 async function aggregateMembers(user: AuthenticatedUser, firstMonth: Date) {
+  // Always include the `= ANY($1::int[])` clause -- never guard it behind
+  // `if (ids.length)`, which would omit the filter entirely for an empty-scope admin and
+  // silently fall back to an unfiltered (all-members) query. An empty array naturally matches
+  // zero rows under `= ANY`.
   if (user.role === "DISTRICT_ADMIN") {
-    const districtId = user.districtId ?? -1;
+    const districtIds = user.districtIds;
     const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(
-      `SELECT ${memberAggregateColumns} FROM members m WHERE m.district_id = $1`,
-      districtId,
+      `SELECT ${memberAggregateColumns} FROM members m WHERE m.district_id = ANY($1::int[])`,
+      districtIds,
     );
     const enrollments = await prisma.$queryRaw<EnrollmentAggregate[]>`
       SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*) AS count
-      FROM members WHERE district_id = ${districtId} AND created_at >= ${firstMonth}
+      FROM members WHERE district_id = ANY(${districtIds}::int[]) AND created_at >= ${firstMonth}
       GROUP BY DATE_TRUNC('month', created_at) ORDER BY DATE_TRUNC('month', created_at)`;
     return { summary: summary!, enrollments };
   }
 
   if (user.role === "REGIONAL_ADMIN") {
-    const regionId = user.regionId ?? -1;
+    const regionIds = user.regionIds;
     const [summary] = await prisma.$queryRawUnsafe<MemberAggregate[]>(
-      `SELECT ${memberAggregateColumns} FROM members m JOIN districts d ON d.id = m.district_id WHERE d.region_id = $1`,
-      regionId,
+      `SELECT ${memberAggregateColumns} FROM members m JOIN districts d ON d.id = m.district_id WHERE d.region_id = ANY($1::int[])`,
+      regionIds,
     );
     const enrollments = await prisma.$queryRaw<EnrollmentAggregate[]>`
       SELECT TO_CHAR(DATE_TRUNC('month', m.created_at), 'YYYY-MM') AS month, COUNT(*) AS count
       FROM members m JOIN districts d ON d.id = m.district_id
-      WHERE d.region_id = ${regionId} AND m.created_at >= ${firstMonth}
+      WHERE d.region_id = ANY(${regionIds}::int[]) AND m.created_at >= ${firstMonth}
       GROUP BY DATE_TRUNC('month', m.created_at) ORDER BY DATE_TRUNC('month', m.created_at)`;
     return { summary: summary!, enrollments };
   }
@@ -222,7 +232,11 @@ dashboardRouter.use(authenticate);
 
 dashboardRouter.get("/", async (_request, response) => {
   const user = currentUser(response);
-  const key = `dashboard:v2:${user.role}:${user.regionId ?? 0}:${user.districtId ?? 0}`;
+  // Numerically sorted, not the default lexicographic join -- a stable key per scope regardless
+  // of array insertion order.
+  const sortedRegionIds = [...user.regionIds].sort((a, b) => a - b).join(",");
+  const sortedDistrictIds = [...user.districtIds].sort((a, b) => a - b).join(",");
+  const key = `dashboard:v3:${user.role}:${sortedRegionIds}:${sortedDistrictIds}`;
   response.json({
     success: true,
     data: await withCache(key, env.READ_CACHE_TTL_SECONDS, () => loadDashboard(user)),

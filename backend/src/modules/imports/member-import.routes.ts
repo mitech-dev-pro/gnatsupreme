@@ -28,7 +28,17 @@ const rowQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
   status: z
-    .enum(["READY", "INVALID", "DUPLICATE", "EXISTING", "OUT_OF_SCOPE", "IMPORTED", "FAILED"])
+    .enum([
+      "READY",
+      "INVALID",
+      "DUPLICATE",
+      "EXISTING",
+      "OUT_OF_SCOPE",
+      "AMBIGUOUS_DISTRICT",
+      "AMBIGUOUS_REGION",
+      "IMPORTED",
+      "FAILED",
+    ])
     .optional(),
 });
 const listSchema = z.object({

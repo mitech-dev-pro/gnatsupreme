@@ -19,6 +19,17 @@ import {
   useDebouncedValue,
   type StaffUser,
 } from "./System.model";
+
+// Joined name list, truncated with a count -- a multi-scope admin's row would otherwise overflow
+// the table cell.
+function scopeLabel(row: StaffUser) {
+  const names = row.districts.length
+    ? row.districts.map((d) => d.name)
+    : row.regions.map((r) => r.name);
+  if (!names.length) return "National";
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
+}
 export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const { districts } = useDistricts();
   const regions = Array.from(new Map(districts.map((d) => [d.region.id, d.region])).values());
@@ -39,8 +50,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     fullName: "",
     email: "",
     role: "DISTRICT_ADMIN",
-    regionId: "",
-    districtId: "",
+    regionIds: [] as string[],
+    districtIds: [] as string[],
     password: "",
   });
   const [formError, setFormError] = useState("");
@@ -106,30 +117,24 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       fullName: "",
       email: "",
       role: "DISTRICT_ADMIN",
-      regionId: "",
-      districtId: "",
+      regionIds: [],
+      districtIds: [],
       password: "",
     });
 
   const startEdit = (row: StaffUser) => {
     setEditingId(row.id);
     setShowCreate(false);
-    setForm({
+    const next = {
       fullName: row.fullName,
       email: row.email,
       role: row.role,
-      regionId: row.regionId ? String(row.regionId) : "",
-      districtId: row.districtId ? String(row.districtId) : "",
+      regionIds: row.regionIds.map(String),
+      districtIds: row.districtIds.map(String),
       password: "",
-    });
-    initialForm.current = JSON.stringify({
-      fullName: row.fullName,
-      email: row.email,
-      role: row.role,
-      regionId: row.regionId ? String(row.regionId) : "",
-      districtId: row.districtId ? String(row.districtId) : "",
-      password: "",
-    });
+    };
+    setForm(next);
+    initialForm.current = JSON.stringify(next);
     setDiscarding(false);
     setFormError("");
   };
@@ -145,13 +150,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         role: form.role,
-        regionId:
-          form.role === "REGIONAL_ADMIN"
-            ? Number(form.regionId)
-            : form.role === "DISTRICT_ADMIN"
-              ? undefined
-              : null,
-        districtId: form.role === "DISTRICT_ADMIN" ? Number(form.districtId) : null,
+        regionIds: form.role === "REGIONAL_ADMIN" ? form.regionIds.map(Number) : [],
+        districtIds: form.role === "DISTRICT_ADMIN" ? form.districtIds.map(Number) : [],
         password: form.password,
       });
       resetForm();
@@ -181,13 +181,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         role: form.role,
-        regionId:
-          form.role === "REGIONAL_ADMIN"
-            ? Number(form.regionId)
-            : form.role === "DISTRICT_ADMIN"
-              ? undefined
-              : null,
-        districtId: form.role === "DISTRICT_ADMIN" ? Number(form.districtId) : null,
+        regionIds: form.role === "REGIONAL_ADMIN" ? form.regionIds.map(Number) : [],
+        districtIds: form.role === "DISTRICT_ADMIN" ? form.districtIds.map(Number) : [],
       });
       setEditingId(null);
       resetForm();
@@ -279,42 +274,78 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           aria-label="Role"
           value={form.role}
           onChange={(value) =>
-            setForm((f) => ({ ...f, role: value, regionId: "", districtId: "" }))
+            setForm((f) => ({ ...f, role: value, regionIds: [], districtIds: [] }))
           }
           options={availableRoles.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
         />
       </div>
       {form.role === "REGIONAL_ADMIN" && (
-        <div>
-          <label htmlFor="staff-region" className={labelClasses}>
-            Region
-          </label>
-          <Dropdown
-            id="staff-region"
-            aria-label="Region"
-            value={form.regionId}
-            onChange={(value) => setForm((f) => ({ ...f, regionId: value }))}
-            placeholder="Select region"
-            options={regions.map((r) => ({ value: String(r.id), label: r.name }))}
-          />
+        <div className="sm:col-span-2">
+          <label className={labelClasses}>Regions</label>
+          <div className="grid max-h-48 grid-cols-2 gap-1.5 overflow-y-auto rounded-lg border border-border-default p-2.5 sm:grid-cols-3">
+            {regions.map((r) => {
+              const id = String(r.id);
+              const checked = form.regionIds.includes(id);
+              return (
+                <label key={id} className="flex items-center gap-1.5 text-[12.5px]">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        regionIds: checked
+                          ? f.regionIds.filter((v) => v !== id)
+                          : [...f.regionIds, id],
+                      }))
+                    }
+                  />
+                  {r.name}
+                </label>
+              );
+            })}
+          </div>
         </div>
       )}
       {form.role === "DISTRICT_ADMIN" && (
-        <div>
-          <label htmlFor="staff-district" className={labelClasses}>
-            District
-          </label>
-          <Dropdown
-            id="staff-district"
-            aria-label="District"
-            value={form.districtId}
-            onChange={(value) => setForm((f) => ({ ...f, districtId: value }))}
-            placeholder="Select district"
-            options={districts.map((d) => ({
-              value: String(d.id),
-              label: `${d.name} (${d.region.name})`,
-            }))}
-          />
+        <div className="sm:col-span-2">
+          <label className={labelClasses}>Districts</label>
+          <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border-default p-2.5">
+            {regions.map((region) => {
+              const regionDistricts = districts.filter((d) => d.region.id === region.id);
+              if (!regionDistricts.length) return null;
+              return (
+                <div key={region.id}>
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                    {region.name}
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {regionDistricts.map((d) => {
+                      const id = String(d.id);
+                      const checked = form.districtIds.includes(id);
+                      return (
+                        <label key={id} className="flex items-center gap-1.5 text-[12.5px]">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setForm((f) => ({
+                                ...f,
+                                districtIds: checked
+                                  ? f.districtIds.filter((v) => v !== id)
+                                  : [...f.districtIds, id],
+                              }))
+                            }
+                          />
+                          {d.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -355,8 +386,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               fullName: "",
               email: "",
               role: "DISTRICT_ADMIN",
-              regionId: "",
-              districtId: "",
+              regionIds: [],
+              districtIds: [],
               password: "",
             });
             setEditingId(null);
@@ -502,8 +533,8 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   <Button
                     type="submit"
                     disabled={
-                      (form.role === "DISTRICT_ADMIN" && !form.districtId) ||
-                      (form.role === "REGIONAL_ADMIN" && !form.regionId)
+                      (form.role === "DISTRICT_ADMIN" && form.districtIds.length === 0) ||
+                      (form.role === "REGIONAL_ADMIN" && form.regionIds.length === 0)
                     }
                     loading={formBusy}
                     loadingLabel={showCreate ? "Creating…" : "Saving…"}
@@ -549,9 +580,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 <td className="px-4 py-2.5 font-semibold text-ink">{row.fullName}</td>
                 <td className="px-4 py-2.5 text-text-muted">{row.email}</td>
                 <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
-                <td className="px-4 py-2.5 text-text-muted">
-                  {row.district?.name ?? row.region?.name ?? "National"}
-                </td>
+                <td className="px-4 py-2.5 text-text-muted">{scopeLabel(row)}</td>
                 <td className="px-4 py-2.5">
                   <StatusBadge tone={row.isActive ? "success" : "danger"}>
                     {row.isActive ? "Active" : "Inactive"}

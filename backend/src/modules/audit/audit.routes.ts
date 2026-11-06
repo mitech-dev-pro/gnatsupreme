@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
+import { geoScopeWhere } from "../../lib/geo-scope.js";
 
 export const auditRouter = Router();
 
@@ -37,12 +38,7 @@ auditRouter.get("/", async (request, response) => {
 
   const user = response.locals.user as AuthenticatedUser;
   const { page, limit, actorId, action, entityType, entityId, search, from, to } = parsed.data;
-  const scope =
-    user.role === "REGIONAL_ADMIN"
-      ? { regionId: user.regionId ?? -1 }
-      : user.role === "DISTRICT_ADMIN"
-        ? { districtId: user.districtId ?? -1 }
-        : {};
+  const scope = geoScopeWhere(user);
   const where = {
     ...scope,
     ...(actorId ? { actorId } : {}),

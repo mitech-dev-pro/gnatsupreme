@@ -56,21 +56,28 @@ async function sendReport(
   response.end();
 }
 
+// See the equivalent function in transfer.routes.ts -- transfers are two-sided, so they don't
+// fit the single-field shape in lib/geo-scope.ts. Always the `{ in: ... }` fragment, even for an
+// empty scope array, so an unrecognized or empty-scope admin matches nothing.
 function transferScope(user: AuthenticatedUser) {
   if (user.role === "REGIONAL_ADMIN") {
     return {
       OR: [
-        { fromDistrict: { regionId: user.regionId ?? -1 } },
-        { toDistrict: { regionId: user.regionId ?? -1 } },
+        { fromDistrict: { regionId: { in: user.regionIds } } },
+        { toDistrict: { regionId: { in: user.regionIds } } },
       ],
     };
   }
   if (user.role === "DISTRICT_ADMIN") {
     return {
-      OR: [{ fromDistrictId: user.districtId ?? -1 }, { toDistrictId: user.districtId ?? -1 }],
+      OR: [
+        { fromDistrictId: { in: user.districtIds } },
+        { toDistrictId: { in: user.districtIds } },
+      ],
     };
   }
-  return {};
+  if (user.role === "SUPER_ADMIN" || user.role === "NATIONAL_ADMIN") return {};
+  return { OR: [{ fromDistrictId: { in: [] } }, { toDistrictId: { in: [] } }] };
 }
 
 reportRouter.use(authenticate);

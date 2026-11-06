@@ -47,26 +47,46 @@ export function useAddMember() {
   const householdSection = useRef<HTMLElement>(null);
   const selectedDistrict = districts.find((item) => String(item.id) === districtId);
   const isNonTeaching = employmentCategory === "NON_TEACHING";
-  // REGIONAL_ADMIN/DISTRICT_ADMIN never pick a region themselves -- it's always their own, fixed
-  // and read-only (mirrors resolveMemberRegionId server-side). Only SUPER_ADMIN/NATIONAL_ADMIN,
-  // who have no fixed region, get a real picker.
-  const needsRegionPicker = user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN";
+  // A single-region REGIONAL_ADMIN (or DISTRICT_ADMIN, whose region is always derived from
+  // their district) never picks a region themselves -- it's fixed and read-only, mirroring
+  // resolveMemberRegionId server-side. A multi-region REGIONAL_ADMIN and SUPER_ADMIN/
+  // NATIONAL_ADMIN (who have no fixed region at all) get a real picker.
+  const needsRegionPicker =
+    user?.role === "SUPER_ADMIN" ||
+    user?.role === "NATIONAL_ADMIN" ||
+    (user?.role === "REGIONAL_ADMIN" && user.regionIds.length > 1);
   const regionOptions = useMemo(() => {
     const map = new Map<number, string>();
-    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    districts.forEach((item) => {
+      if (user?.role === "REGIONAL_ADMIN" && !user.regionIds.includes(item.region.id)) return;
+      map.set(item.region.id, item.region.name);
+    });
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [districts]);
+  }, [districts, user]);
   const ownRegionName = useMemo(() => {
-    if (user?.role === "REGIONAL_ADMIN") {
-      return regionOptions.find((r) => r.id === user.regionId)?.name ?? "";
+    if (user?.role === "REGIONAL_ADMIN" && user.regionIds.length === 1) {
+      return regionOptions.find((r) => r.id === user.regionIds[0])?.name ?? "";
     }
     if (user?.role === "DISTRICT_ADMIN") {
-      return districts.find((item) => item.id === user.districtId)?.region.name ?? "";
+      return districts.find((item) => user.districtIds.includes(item.id))?.region.name ?? "";
     }
     return "";
   }, [user, districts, regionOptions]);
+  // District options scoped to the acting admin's own scope -- a DISTRICT_ADMIN only ever sees
+  // their own districts, a REGIONAL_ADMIN only districts within their own region(s). Filtering
+  // this for a single-scope admin too (not just multi-scope) is a usability nicety, not a
+  // correctness requirement -- the backend force-overrides/validates correctly either way.
+  const scopedDistricts = useMemo(() => {
+    if (user?.role === "DISTRICT_ADMIN") {
+      return districts.filter((item) => user.districtIds.includes(item.id));
+    }
+    if (user?.role === "REGIONAL_ADMIN") {
+      return districts.filter((item) => user.regionIds.includes(item.region.id));
+    }
+    return districts;
+  }, [districts, user]);
   const isDirty = Boolean(
     controllerId ||
     fullName ||
@@ -90,15 +110,17 @@ export function useAddMember() {
   const groupedDistricts = useMemo(() => {
     const query = districtSearch.trim().toLowerCase();
     const filtered = query
-      ? districts.filter((item) => `${item.name} ${item.region.name}`.toLowerCase().includes(query))
-      : districts;
+      ? scopedDistricts.filter((item) =>
+          `${item.name} ${item.region.name}`.toLowerCase().includes(query),
+        )
+      : scopedDistricts;
     return Array.from(new Set(filtered.map((item) => item.region.name)))
       .sort()
       .map((region) => ({
         region,
         districts: filtered.filter((item) => item.region.name === region),
       }));
-  }, [districtSearch, districts]);
+  }, [districtSearch, scopedDistricts]);
   const requiredValues = [
     controllerId,
     fullName,

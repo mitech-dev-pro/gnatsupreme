@@ -27,12 +27,42 @@ const publicUserSelect = {
   email: true,
   role: true,
   isActive: true,
-  regionId: true,
-  districtId: true,
-  region: { select: { id: true, name: true } },
-  district: { select: { id: true, name: true } },
+  regionIds: true,
+  districtIds: true,
   createdAt: true,
 } as const;
+
+type PublicUser = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  regionIds: number[];
+  districtIds: number[];
+  createdAt: Date;
+};
+
+// regionIds/districtIds is just scalar ids on User -- there's no Prisma relation to `include`
+// for display names (see schema.prisma's note on Region.legacyUsers/District.legacyUsers), so
+// names are looked up separately and attached here.
+async function withGeographyNames(user: PublicUser) {
+  const [regions, districts] = await Promise.all([
+    user.regionIds.length
+      ? prisma.region.findMany({
+          where: { id: { in: user.regionIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+    user.districtIds.length
+      ? prisma.district.findMany({
+          where: { id: { in: user.districtIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+  ]);
+  return { ...user, regions, districts };
+}
 
 class UserInputError extends Error {}
 
@@ -55,37 +85,59 @@ function canManageRole(currentUser: AuthenticatedUser, role: UserRole) {
   return currentUser.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN";
 }
 
+// Legacy single-value columns, written alongside regionIds/districtIds for rollback safety only
+// -- null whenever the scope has anything other than exactly one id. Never read by current
+// application code; see schema.prisma's comment on User.legacyRegionId/legacyDistrictId.
+function legacyScalar(ids: number[]) {
+  return ids.length === 1 ? ids[0]! : null;
+}
+
 async function resolveGeographicScope(
   role: UserRole,
-  regionId?: number | null,
-  districtId?: number | null,
+  regionIds?: number[],
+  districtIds?: number[],
 ) {
   if (role === "SUPER_ADMIN" || role === "NATIONAL_ADMIN") {
-    if (regionId != null || districtId != null) {
+    if ((regionIds && regionIds.length) || (districtIds && districtIds.length)) {
       throw new UserInputError(
         "National and super administrators cannot have geographic assignments",
       );
     }
-    return { regionId: null, districtId: null };
+    return { regionIds: [], districtIds: [], legacyRegionId: null, legacyDistrictId: null };
   }
 
   if (role === "REGIONAL_ADMIN") {
-    if (!regionId) throw new UserInputError("A regional administrator requires a region");
-    if (districtId != null) {
+    if (!regionIds?.length) throw new UserInputError("A regional administrator requires a region");
+    if (districtIds?.length) {
       throw new UserInputError("A regional administrator cannot have a district assignment");
     }
-    const region = await prisma.region.findUnique({ where: { id: regionId } });
-    if (!region) throw new UserInputError("Selected region does not exist");
-    return { regionId, districtId: null };
+    const found = await prisma.region.findMany({ where: { id: { in: regionIds } } });
+    if (found.length !== regionIds.length) {
+      throw new UserInputError("Selected region does not exist");
+    }
+    return {
+      regionIds,
+      districtIds: [],
+      legacyRegionId: legacyScalar(regionIds),
+      legacyDistrictId: null,
+    };
   }
 
-  if (!districtId) throw new UserInputError("A district administrator requires a district");
-  const district = await prisma.district.findUnique({ where: { id: districtId } });
-  if (!district) throw new UserInputError("Selected district does not exist");
-  if (regionId != null && regionId !== district.regionId) {
-    throw new UserInputError("The selected district does not belong to the selected region");
+  // DISTRICT_ADMIN
+  if (!districtIds?.length) throw new UserInputError("A district administrator requires a district");
+  const districts = await prisma.district.findMany({ where: { id: { in: districtIds } } });
+  if (districts.length !== districtIds.length) {
+    throw new UserInputError("Selected district does not exist");
   }
-  return { regionId: district.regionId, districtId };
+  // regionIds is always derived from the distinct set of the admin's own districts' regions --
+  // never independently settable for DISTRICT_ADMIN, even if the caller supplied one.
+  const derivedRegionIds = [...new Set(districts.map((d) => d.regionId))];
+  return {
+    regionIds: derivedRegionIds,
+    districtIds,
+    legacyRegionId: legacyScalar(derivedRegionIds),
+    legacyDistrictId: legacyScalar(districtIds),
+  };
 }
 
 async function hashPassword(password: string) {
@@ -103,8 +155,8 @@ function safeUserSnapshot(user: {
   email: string;
   role: UserRole;
   isActive: boolean;
-  regionId: number | null;
-  districtId: number | null;
+  regionIds: number[];
+  districtIds: number[];
 }) {
   return {
     id: user.id,
@@ -112,8 +164,8 @@ function safeUserSnapshot(user: {
     email: user.email,
     role: user.role,
     isActive: user.isActive,
-    regionId: user.regionId,
-    districtId: user.districtId,
+    regionIds: user.regionIds,
+    districtIds: user.districtIds,
   };
 }
 
@@ -150,7 +202,7 @@ userRouter.get("/", async (request, response) => {
       : {}),
   };
 
-  const [users, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.user.findMany({
       where,
       select: publicUserSelect,
@@ -160,6 +212,7 @@ userRouter.get("/", async (request, response) => {
     }),
     cachedCount("users", where, () => prisma.user.count({ where })),
   ]);
+  const users = await Promise.all(rows.map(withGeographyNames));
 
   response.json({
     success: true,
@@ -180,7 +233,7 @@ userRouter.get("/:id", async (request, response) => {
     response.status(404).json({ success: false, message: "User not found" });
     return;
   }
-  response.json({ success: true, data: user });
+  response.json({ success: true, data: await withGeographyNames(user) });
 });
 
 userRouter.post("/", async (request, response) => {
@@ -206,8 +259,8 @@ userRouter.post("/", async (request, response) => {
   try {
     const scope = await resolveGeographicScope(
       parsed.data.role,
-      parsed.data.regionId,
-      parsed.data.districtId,
+      parsed.data.regionIds,
+      parsed.data.districtIds,
     );
     const user = await prisma.user.create({
       data: {
@@ -227,10 +280,10 @@ userRouter.post("/", async (request, response) => {
       entityId: user.id,
       description: `Created staff account for ${user.fullName}`,
       afterData: safeUserSnapshot(user),
-      regionId: user.regionId,
-      districtId: user.districtId,
+      regionId: legacyScalar(user.regionIds),
+      districtId: legacyScalar(user.districtIds),
     });
-    response.status(201).json({ success: true, data: user });
+    response.status(201).json({ success: true, data: await withGeographyNames(user) });
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
@@ -279,16 +332,16 @@ userRouter.patch("/:id", async (request, response) => {
     const roleChanged = body.data.role !== undefined && body.data.role !== existing.role;
     const scope = await resolveGeographicScope(
       nextRole,
-      body.data.regionId !== undefined
-        ? body.data.regionId
+      body.data.regionIds !== undefined
+        ? body.data.regionIds
         : roleChanged && (nextRole === "SUPER_ADMIN" || nextRole === "NATIONAL_ADMIN")
-          ? null
-          : existing.regionId,
-      body.data.districtId !== undefined
-        ? body.data.districtId
+          ? []
+          : existing.regionIds,
+      body.data.districtIds !== undefined
+        ? body.data.districtIds
         : roleChanged && nextRole !== "DISTRICT_ADMIN"
-          ? null
-          : existing.districtId,
+          ? []
+          : existing.districtIds,
     );
     const user = await prisma.user.update({
       where: { id: existing.id },
@@ -310,10 +363,10 @@ userRouter.patch("/:id", async (request, response) => {
       description: `Updated staff account for ${user.fullName}`,
       beforeData: safeUserSnapshot(existing),
       afterData: safeUserSnapshot(user),
-      regionId: user.regionId,
-      districtId: user.districtId,
+      regionId: legacyScalar(user.regionIds),
+      districtId: legacyScalar(user.districtIds),
     });
-    response.json({ success: true, data: user });
+    response.json({ success: true, data: await withGeographyNames(user) });
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
@@ -380,10 +433,10 @@ userRouter.patch("/:id/status", async (request, response) => {
     description: `${body.data.isActive ? "Activated" : "Deactivated"} ${user.fullName}`,
     beforeData: { isActive: existing.isActive },
     afterData: { isActive: user.isActive },
-    regionId: user.regionId,
-    districtId: user.districtId,
+    regionId: legacyScalar(user.regionIds),
+    districtId: legacyScalar(user.districtIds),
   });
-  response.json({ success: true, data: user });
+  response.json({ success: true, data: await withGeographyNames(user) });
 });
 
 userRouter.patch("/:id/password", async (request, response) => {
@@ -416,8 +469,8 @@ userRouter.patch("/:id/password", async (request, response) => {
     entityType: "USER",
     entityId: existing.id,
     description: `Reset password and revoked sessions for ${existing.fullName}`,
-    regionId: existing.regionId,
-    districtId: existing.districtId,
+    regionId: legacyScalar(existing.regionIds),
+    districtId: legacyScalar(existing.districtIds),
   });
   response.json({ success: true, message: "Password updated; existing sessions were revoked" });
 });

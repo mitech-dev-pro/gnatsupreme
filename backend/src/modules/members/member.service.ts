@@ -224,7 +224,7 @@ export async function relinkSpousesForMember(
 // unverified. One member's declaration should never silently become the other member's data.
 export async function auditLinkChanges(
   request: AuditRequestSource,
-  actor: Pick<AuthenticatedUser, "id" | "email" | "regionId" | "districtId"> | null,
+  actor: Pick<AuthenticatedUser, "id" | "email" | "regionIds" | "districtIds"> | null,
   changes: LinkChange[],
 ) {
   for (const change of changes) {

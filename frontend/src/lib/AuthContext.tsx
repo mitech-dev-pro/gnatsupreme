@@ -15,8 +15,10 @@ export type AuthUser = {
   fullName: string;
   email: string;
   role: string;
-  regionId: number | null;
-  districtId: number | null;
+  // A region/district can legitimately appear in more than one admin's array (e.g. a shared
+  // jurisdiction) -- see backend schema.prisma's note on User.regionIds/districtIds.
+  regionIds: number[];
+  districtIds: number[];
 };
 
 type AuthContextType = {

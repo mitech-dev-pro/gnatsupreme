@@ -34,8 +34,8 @@ const publicUserSelect = {
   fullName: true,
   email: true,
   role: true,
-  regionId: true,
-  districtId: true,
+  regionIds: true,
+  districtIds: true,
 } as const;
 
 const refreshCookieOptions = {
@@ -153,8 +153,8 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        regionId: user.regionId,
-        districtId: user.districtId,
+        regionIds: user.regionIds,
+        districtIds: user.districtIds,
       },
     });
   } catch (error) {
@@ -332,8 +332,8 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
         fullName: session.user.fullName,
         email: session.user.email,
         role: session.user.role,
-        regionId: session.user.regionId,
-        districtId: session.user.districtId,
+        regionIds: session.user.regionIds,
+        districtIds: session.user.districtIds,
       },
     });
   } catch (error) {

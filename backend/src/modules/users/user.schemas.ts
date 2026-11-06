@@ -15,8 +15,17 @@ const staffFields = {
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().toLowerCase().email(),
   role: roleSchema,
-  regionId: z.coerce.number().int().positive().nullable().optional(),
-  districtId: z.coerce.number().int().positive().nullable().optional(),
+  // Deduplicated here, not left to the caller -- a create/update with a repeated id must never
+  // be mistaken for "not found" when resolveGeographicScope compares input length against the
+  // number of matching rows.
+  regionIds: z
+    .array(z.coerce.number().int().positive())
+    .transform((ids) => [...new Set(ids)])
+    .optional(),
+  districtIds: z
+    .array(z.coerce.number().int().positive())
+    .transform((ids) => [...new Set(ids)])
+    .optional(),
 };
 
 export const createUserSchema = z.object({

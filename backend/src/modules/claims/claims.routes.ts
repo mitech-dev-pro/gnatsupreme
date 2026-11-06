@@ -636,7 +636,7 @@ claimsRouter.get("/submissions", async (request, response) => {
     cachedCount(
       "claims",
       {
-        scope: { role: user.role, regionId: user.regionId, districtId: user.districtId },
+        scope: { role: user.role, regionIds: user.regionIds, districtIds: user.districtIds },
         status: parsed.data.status,
         source: parsed.data.source,
         awaitingReview,

@@ -17,7 +17,12 @@ function response(role: string) {
     code: 200,
     body: null as unknown,
     locals: {
-      user: { id: 7, role, districtId: role === "DISTRICT_ADMIN" ? 9 : null, regionId: null },
+      user: {
+        id: 7,
+        role,
+        districtIds: role === "DISTRICT_ADMIN" ? [9] : [],
+        regionIds: [],
+      },
       member: { id: 123, controllerId: "123456", fullName: "Test Member", status: "ACTIVE" },
     },
     status(code: number) {
@@ -85,7 +90,7 @@ async function fixture(t: TestContext, role: string, inaccessible = false) {
     "findFirst",
     async ({ where }: Prisma.MemberFindFirstArgs & { where: Prisma.MemberWhereInput }) => {
       assert.equal(where.id, 123);
-      if (role === "DISTRICT_ADMIN") assert.equal(where.districtId, 9);
+      if (role === "DISTRICT_ADMIN") assert.deepEqual(where.districtId, { in: [9] });
       else assert.equal(where.districtId, undefined);
       return inaccessible ? null : member;
     },

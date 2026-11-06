@@ -41,19 +41,42 @@ export function useMemberDetail() {
   const [editRegionId, setEditRegionId] = useState("");
   const [employmentCategoryNote, setEmploymentCategoryNote] = useState("");
   const lastTeachingSchoolRef = useRef("");
-  const needsRegionPicker = user?.role === "SUPER_ADMIN" || user?.role === "NATIONAL_ADMIN";
+  // A single-region REGIONAL_ADMIN (or DISTRICT_ADMIN) never picks a region themselves -- fixed
+  // and read-only. A multi-region REGIONAL_ADMIN and SUPER_ADMIN/NATIONAL_ADMIN get a real
+  // picker. Mirrors useAddMember.tsx's identical split.
+  const needsRegionPicker =
+    user?.role === "SUPER_ADMIN" ||
+    user?.role === "NATIONAL_ADMIN" ||
+    (user?.role === "REGIONAL_ADMIN" && user.regionIds.length > 1);
   const [passwordResult, setPasswordResult] = useState<string | null>(null);
   const [confirmingPasswordReset, setConfirmingPasswordReset] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordError, setPasswordError] = useState("");
-  const { districts } = useDistricts();
+  const { districts: allDistricts } = useDistricts();
   const regionOptions = useMemo(() => {
     const map = new Map<number, string>();
-    districts.forEach((item) => map.set(item.region.id, item.region.name));
+    allDistricts.forEach((item) => {
+      if (user?.role === "REGIONAL_ADMIN" && !user.regionIds.includes(item.region.id)) return;
+      map.set(item.region.id, item.region.name);
+    });
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [districts]);
+  }, [allDistricts, user]);
+  // Scoped for the submitAssignDistrict flow below -- a DISTRICT_ADMIN only ever sees their own
+  // districts, a REGIONAL_ADMIN only districts within their own region(s). This flow is
+  // effectively unreachable for DISTRICT_ADMIN in practice (their read-scope is by district, so
+  // they can't open a district-less member to begin with) -- REGIONAL_ADMIN is the real,
+  // heavier-traffic case here.
+  const districts = useMemo(() => {
+    if (user?.role === "DISTRICT_ADMIN") {
+      return allDistricts.filter((item) => user.districtIds.includes(item.id));
+    }
+    if (user?.role === "REGIONAL_ADMIN") {
+      return allDistricts.filter((item) => user.regionIds.includes(item.region.id));
+    }
+    return allDistricts;
+  }, [allDistricts, user]);
   const [assigningDistrict, setAssigningDistrict] = useState(false);
   const [assignDistrictId, setAssignDistrictId] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);

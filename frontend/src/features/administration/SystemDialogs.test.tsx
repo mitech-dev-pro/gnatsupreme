@@ -17,8 +17,10 @@ const staff = {
   email: "staff@example.test",
   role: "NATIONAL_ADMIN",
   isActive: true,
-  regionId: null,
-  districtId: null,
+  regionIds: [],
+  districtIds: [],
+  regions: [],
+  districts: [],
 };
 beforeEach(() => {
   vi.clearAllMocks();

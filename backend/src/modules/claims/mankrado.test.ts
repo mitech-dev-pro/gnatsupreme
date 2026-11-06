@@ -412,6 +412,15 @@ test("history parses confirmed envelope and comma-formatted amounts without disc
   for (const amountPayable of ["20,00.0", "abc", "-20", "1,000,00"])
     assert.throws(() => parseHistory({ status: "200", history: [{ ...item, amountPayable }] }));
   assert.throws(() => parseHistory({ status: "404", history: [] }));
+  assert.deepEqual(
+    parseHistory({ status: 400, message: "Bad request. Unknown staffID" }),
+    [],
+  );
+  assert.deepEqual(
+    parseHistory({ status: "400", message: "Bad Request. Unknown StaffID" }),
+    [],
+  );
+  assert.throws(() => parseHistory({ status: 400, message: "Bad request. Missing claimType" }));
   assert.throws(() =>
     parseHistory({ status: "200", history: [{ ...item, claimDate: "2026-02-31" }] }),
   );

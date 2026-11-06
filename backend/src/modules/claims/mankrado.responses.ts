@@ -45,7 +45,16 @@ export function parseSubmission(value: unknown): ClaimSubmissionResult {
     );
   return { externalClaimId: result.data.claimId, status: "SUBMITTED" };
 }
+// Confirmed from a live request (2026-11-06): a staffId with no claims on file comes back as
+// HTTP 200 with an in-band {"status":400,"message":"Bad request. Unknown staffID"} body, not an
+// empty history array or an HTTP error. Without this, that normal "nothing to show" case fails
+// the success schema below and surfaces as an opaque "Claims Portal unavailable" 502.
+const unknownStaffIdSchema = z.object({
+  status: z.union([z.literal("400"), z.literal(400)]),
+  message: z.string().regex(/unknown staffid/i),
+});
 export function parseHistory(value: unknown): ExternalClaim[] {
+  if (unknownStaffIdSchema.safeParse(value).success) return [];
   const { history } = z
     .object({
       status: z.union([z.literal("200"), z.literal(200)]),

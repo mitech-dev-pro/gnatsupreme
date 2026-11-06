@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { phoneFieldSchema } from "../../lib/phone.js";
 
 const roleSchema = z.enum(["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DISTRICT_ADMIN"]);
 
@@ -13,7 +14,10 @@ export const staffPasswordSchema = z
 
 const staffFields = {
   fullName: z.string().trim().min(2).max(120),
-  email: z.string().trim().toLowerCase().email(),
+  // Nullable -- a GNAT account created with only a phone number has no email yet. See
+  // User.setupRequired/phone/pendingEmail and the account-states table in the phone-login plan.
+  email: z.string().trim().toLowerCase().email().nullable().optional(),
+  phone: phoneFieldSchema,
   role: roleSchema,
   // Deduplicated here, not left to the caller -- a create/update with a repeated id must never
   // be mistaken for "not found" when resolveGeographicScope compares input length against the
@@ -28,10 +32,12 @@ const staffFields = {
     .optional(),
 };
 
-export const createUserSchema = z.object({
-  ...staffFields,
-  password: staffPasswordSchema,
-});
+export const createUserSchema = z
+  .object({ ...staffFields, password: staffPasswordSchema })
+  .refine((value) => Boolean(value.email) || Boolean(value.phone), {
+    message: "Provide an email or a phone number",
+    path: ["email"],
+  });
 
 export const updateUserSchema = z
   .object(staffFields)

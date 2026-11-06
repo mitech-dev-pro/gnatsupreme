@@ -8,7 +8,7 @@ export type Report20WorkerData = {
   mimeType: string;
   originalName: string;
   action: "REPORT20_IMPORTED" | "REPORT20_RECONCILE_RERUN";
-  actor: { id: number; email: string; regionIds: number[]; districtIds: number[] };
+  actor: { id: number; email: string | null; regionIds: number[]; districtIds: number[] };
   auditContext: { ip?: string; userAgent?: string };
 };
 

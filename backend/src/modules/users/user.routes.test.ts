@@ -52,7 +52,11 @@ test("a NATIONAL_ADMIN cannot create a super administrator", async (t) => {
 });
 
 test("creating a user with an email already in use is rejected", async (t) => {
-  stub(t, prisma.user, "findUnique", async () => ({ id: 9 }));
+  stub(t, prisma, "$transaction", async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+    callback(prisma),
+  );
+  stub(t, prisma.user, "updateMany", async () => ({ count: 0 }));
+  stub(t, prisma.user, "findFirst", async () => ({ id: 9 }));
   const res = response("SUPER_ADMIN");
   await postHandler(userRouter, "/")(
     {
@@ -67,7 +71,7 @@ test("creating a user with an email already in use is rejected", async (t) => {
     res,
   );
   assert.equal(res.code, 409);
-  assert.match(message(res.body), /already exists/i);
+  assert.match(message(res.body), /already in use/i);
 });
 
 test("a district administrator requires a district assignment", async (t) => {
@@ -214,4 +218,134 @@ test("resetting a user's password revokes their active sessions", async (t) => {
   assert.equal(res.code, 200);
   assert.equal(revokedUserId, 7);
   assert.match(message(res.body) ?? "", /revoked/i);
+});
+
+test("an admin cannot clear a confirmed email", async (t) => {
+  stub(t, prisma.user, "findUnique", async () => ({
+    id: 8,
+    role: "DISTRICT_ADMIN",
+    email: "confirmed@example.test",
+    setupRequired: false,
+    phone: "0244000000",
+    regionIds: [2],
+    districtIds: [4],
+  }));
+  const res = response("SUPER_ADMIN");
+  await routeHandler(
+    userRouter,
+    "/:id",
+    "patch",
+  )({ params: { id: "8" }, body: { email: null } }, res);
+  assert.equal(res.code, 400);
+  assert.match(message(res.body), /cannot be cleared/i);
+});
+
+test("an admin clearing phone on a still-pending account is rejected", async (t) => {
+  stub(t, prisma.user, "findUnique", async () => ({
+    id: 9,
+    role: "DISTRICT_ADMIN",
+    email: null,
+    setupRequired: true,
+    phone: "0244000000",
+    regionIds: [2],
+    districtIds: [4],
+  }));
+  const res = response("SUPER_ADMIN");
+  await routeHandler(
+    userRouter,
+    "/:id",
+    "patch",
+  )({ params: { id: "9" }, body: { phone: null } }, res);
+  assert.equal(res.code, 400);
+  assert.match(message(res.body), /needs a phone number/i);
+});
+
+test("an admin adding an email to an S1 account (setup already done, email unconfirmed) routes through pendingEmail, not email", async (t) => {
+  stubCache(t);
+  stub(t, prisma.user, "findUnique", async () => ({
+    id: 10,
+    role: "DISTRICT_ADMIN",
+    email: null,
+    setupRequired: false,
+    phone: "0244000000",
+    regionIds: [2],
+    districtIds: [4],
+  }));
+  stub(t, prisma, "$transaction", async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+    callback(prisma),
+  );
+  stub(t, prisma.user, "updateMany", async () => ({ count: 0 }));
+  stub(t, prisma.user, "findFirst", async () => null);
+  stub(t, prisma.userEmailVerificationToken, "deleteMany", async () => ({ count: 0 }));
+  stub(t, prisma.userEmailVerificationToken, "create", async () => ({}));
+  const revoke = stub(
+    t,
+    prisma.refreshToken,
+    "updateMany",
+    async (args: { where: { userId: number; revokedAt: null } }) => {
+      assert.deepEqual(args.where, { userId: 10, revokedAt: null });
+      return { count: 1 };
+    },
+  );
+  const update = stub(t, prisma.user, "update", async (args: { data: Record<string, unknown> }) => {
+    // Never writes `email` directly, never touches setupRequired/passwordHash -- only
+    // pendingEmail/pendingEmailExpiresAt (from issuePendingEmail) and whatever else was patched.
+    assert.equal(args.data.email, undefined);
+    assert.equal(args.data.setupRequired, undefined);
+    assert.equal(args.data.passwordHash, undefined);
+    return {
+      id: 10,
+      role: "DISTRICT_ADMIN",
+      email: null,
+      phone: "0244000000",
+      setupRequired: false,
+      regionIds: [2],
+      districtIds: [4],
+      createdAt: new Date(),
+    };
+  });
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  stub(t, prisma.region, "findMany", async () => []);
+  // Also stands in for resolveGeographicScope's own DISTRICT_ADMIN validation lookup (needs a
+  // row matching districtIds=[4] to pass), not just withGeographyNames' later naming lookup.
+  stub(t, prisma.district, "findMany", async () => [{ id: 4, regionId: 2, name: "Test District" }]);
+  const res = response("SUPER_ADMIN");
+  await routeHandler(
+    userRouter,
+    "/:id",
+    "patch",
+  )({ params: { id: "10" }, body: { email: "staff@example.test" } }, res);
+  assert.equal(res.code, 200);
+  // Called twice: once by issuePendingEmail (sets pendingEmail), once by this handler's own
+  // final write (fullName/phone/role/scope) -- neither call ever sets `email` directly.
+  assert.equal(update.mock.callCount(), 2);
+  assert.equal(revoke.mock.callCount(), 1);
+});
+
+test("an admin password reset on an S2a account (email confirmed, setup not yet done) re-arms setupRequired", async (t) => {
+  stubCache(t);
+  stub(t, prisma.user, "findUnique", async () => ({
+    id: 11,
+    role: "DISTRICT_ADMIN",
+    email: "confirmed@example.test",
+    setupRequired: true,
+    regionIds: [2],
+    districtIds: [4],
+  }));
+  stub(t, prisma, "$transaction", async (queries: unknown[]) => Promise.all(queries));
+  const update = stub(t, prisma.user, "update", async (args: { data: Record<string, unknown> }) => {
+    assert.equal(args.data.setupRequired, true);
+    assert.ok(args.data.tempPasswordExpiresAt instanceof Date);
+    return undefined;
+  });
+  stub(t, prisma.refreshToken, "updateMany", async () => ({ count: 1 }));
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  const res = response("SUPER_ADMIN", 1);
+  await routeHandler(
+    userRouter,
+    "/:id/password",
+    "patch",
+  )({ params: { id: "11" }, body: { password: "Str0ng!NewPassw0rd" } }, res);
+  assert.equal(res.code, 200);
+  assert.equal(update.mock.callCount(), 1);
 });

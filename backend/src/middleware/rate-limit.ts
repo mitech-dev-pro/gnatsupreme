@@ -60,6 +60,31 @@ export const forgotPasswordRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("staff-forgot-password"),
 });
 
+// Keyed on the authenticated user's id alone, not combined with IP -- the threat model here is a
+// stolen access token used from any IP, and combining the two would give each IP its own bucket
+// per user, letting IP rotation reset the limit (the opposite of the point). authenticate /
+// authenticateAllowPendingSetup must run before this middleware on the route so
+// response.locals.user is already populated -- the reverse order from every other rate-limited
+// route in this app.
+export const completeSetupRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (_request, response) => String(response.locals.user?.id ?? "unknown"),
+  handler: jsonRateLimitHandler("staff-complete-setup"),
+});
+
+// A blunt per-IP ceiling underneath the user-keyed limiter above, same shape as
+// memberLoginIpRateLimiter.
+export const completeSetupIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler("staff-complete-setup-network"),
+});
+
 export const refreshRateLimiter = rateLimit({
   windowMs: 60 * 1_000,
   limit: 30,

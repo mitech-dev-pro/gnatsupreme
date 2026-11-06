@@ -6,9 +6,14 @@ import type { UserRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
 import { invalidateStaffAuth } from "../../lib/auth-cache.js";
 import { cachedCount } from "../../lib/cached-count.js";
+import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
+import { assertEmailAvailable, tempPasswordExpiryInstant } from "../../lib/account-setup.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { AppError } from "../../middleware/error-handler.js";
+import { env } from "../../config/env.js";
 import { recordAudit } from "../audit/audit.service.js";
+import { issuePendingEmail, sendPendingEmailVerification } from "../auth/auth.service.js";
 import {
   createUserSchema,
   updateUserPasswordSchema,
@@ -25,6 +30,8 @@ const publicUserSelect = {
   id: true,
   fullName: true,
   email: true,
+  phone: true,
+  setupRequired: true,
   role: true,
   isActive: true,
   regionIds: true,
@@ -35,13 +42,24 @@ const publicUserSelect = {
 type PublicUser = {
   id: number;
   fullName: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
+  setupRequired: boolean;
   role: UserRole;
   isActive: boolean;
   regionIds: number[];
   districtIds: number[];
   createdAt: Date;
 };
+
+// An account is still "pending" -- no confirmed login identifier of its own besides phone yet --
+// whenever it hasn't replaced its temp password (setupRequired) or has no confirmed email
+// (email === null). Using setupRequired alone would miss the state where setup already
+// completed but the email is still unconfirmed (pendingEmail set, setupRequired false) --
+// see the account-states table in the phone-login plan.
+function isPending(user: { setupRequired: boolean; email: string | null }) {
+  return user.setupRequired || user.email === null;
+}
 
 // regionIds/districtIds is just scalar ids on User -- there's no Prisma relation to `include`
 // for display names (see schema.prisma's note on Region.legacyUsers/District.legacyUsers), so
@@ -152,7 +170,9 @@ async function hashPassword(password: string) {
 function safeUserSnapshot(user: {
   id: number;
   fullName: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
+  setupRequired: boolean;
   role: UserRole;
   isActive: boolean;
   regionIds: number[];
@@ -162,6 +182,8 @@ function safeUserSnapshot(user: {
     id: user.id,
     fullName: user.fullName,
     email: user.email,
+    phone: user.phone,
+    setupRequired: user.setupRequired,
     role: user.role,
     isActive: user.isActive,
     regionIds: user.regionIds,
@@ -248,12 +270,14 @@ userRouter.post("/", async (request, response) => {
     return;
   }
 
-  // User schemas normalize email addresses to lowercase, allowing the unique
-  // email index to serve duplicate checks directly.
-  const duplicate = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (duplicate) {
-    response.status(409).json({ success: false, message: "A user with this email already exists" });
-    return;
+  if (parsed.data.phone) {
+    const duplicatePhone = await prisma.user.findUnique({ where: { phone: parsed.data.phone } });
+    if (duplicatePhone) {
+      response
+        .status(409)
+        .json({ success: false, message: "A user with this phone number already exists" });
+      return;
+    }
   }
 
   try {
@@ -262,15 +286,27 @@ userRouter.post("/", async (request, response) => {
       parsed.data.regionIds,
       parsed.data.districtIds,
     );
-    const user = await prisma.user.create({
-      data: {
-        fullName: parsed.data.fullName,
-        email: parsed.data.email,
-        passwordHash: await hashPassword(parsed.data.password),
-        role: parsed.data.role,
-        ...scope,
-      },
-      select: publicUserSelect,
+    // A phone-only account (no email) starts in S0 -- phone + a temp password, gated behind the
+    // setup wall until complete-setup replaces the password. See the account-states table in
+    // the phone-login plan.
+    const isPhoneOnly = Boolean(parsed.data.phone) && !parsed.data.email;
+    const user = await prisma.$transaction(async (tx) => {
+      // User schemas normalize email addresses to lowercase; checked (and any stale claim
+      // released) inside this transaction, same as every other write that sets email.
+      if (parsed.data.email) await assertEmailAvailable(tx, parsed.data.email);
+      return tx.user.create({
+        data: {
+          fullName: parsed.data.fullName,
+          email: parsed.data.email ?? null,
+          phone: parsed.data.phone ?? null,
+          setupRequired: isPhoneOnly,
+          tempPasswordExpiresAt: isPhoneOnly ? tempPasswordExpiryInstant() : null,
+          passwordHash: await hashPassword(parsed.data.password),
+          role: parsed.data.role,
+          ...scope,
+        },
+        select: publicUserSelect,
+      });
     });
     await recordAudit({
       request,
@@ -287,6 +323,23 @@ userRouter.post("/", async (request, response) => {
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
+      return;
+    }
+    // AppError thrown by assertEmailAvailable (a genuine, already-live pendingEmail/email
+    // conflict) -- caught explicitly, same as UserInputError above, rather than left to the
+    // global error-handling middleware (this handler is also exercised directly in tests
+    // without going through that middleware).
+    if (error instanceof AppError) {
+      response
+        .status(error.statusCode)
+        .json({ success: false, message: error.message, code: error.code });
+      return;
+    }
+    const field = uniqueViolationField(error);
+    if (field) {
+      response
+        .status(409)
+        .json({ success: false, message: `${uniqueFieldLabel(field)} is already in use` });
       return;
     }
     throw error;
@@ -313,19 +366,33 @@ userRouter.patch("/:id", async (request, response) => {
     return;
   }
 
-  if (body.data.email) {
-    const duplicate = await prisma.user.findFirst({
-      where: {
-        id: { not: existing.id },
-        email: body.data.email,
-      },
+  // Clearing a confirmed email is never allowed -- there's no legitimate admin workflow for
+  // reverting a confirmed account to phone-only, and allowing it would let the account drift
+  // back into matching the phone-login query's `email: null` clause (closed, by design, the
+  // moment an email is confirmed). Supplying a *new* value is handled below, inside the
+  // transaction, via the pending-vs-direct split. Already-null email + an explicit null patch is
+  // a no-op, not an error -- nothing to clear.
+  if (body.data.email === null && existing.email !== null) {
+    response
+      .status(400)
+      .json({ success: false, message: "Email cannot be cleared once confirmed" });
+    return;
+  }
+
+  // Pending condition covers S0/S0p/S1/S2a -- setupRequired alone would miss S1 (setup already
+  // replaced the password, but the email is still unconfirmed).
+  const pending = isPending(existing);
+  const writingDirectEmail = body.data.email != null && !pending;
+  const resultingEmail = writingDirectEmail ? body.data.email! : existing.email;
+  const resultingPending = existing.setupRequired || resultingEmail === null;
+  const resultingPhone = body.data.phone !== undefined ? body.data.phone : existing.phone;
+  if (resultingPending && resultingPhone === null) {
+    response.status(400).json({
+      success: false,
+      message:
+        "This account has no confirmed email yet -- it needs a phone number to be reachable.",
     });
-    if (duplicate) {
-      response
-        .status(409)
-        .json({ success: false, message: "A user with this email already exists" });
-      return;
-    }
+    return;
   }
 
   try {
@@ -343,17 +410,52 @@ userRouter.patch("/:id", async (request, response) => {
           ? []
           : existing.districtIds,
     );
-    const user = await prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        ...(body.data.fullName !== undefined ? { fullName: body.data.fullName } : {}),
-        ...(body.data.email !== undefined ? { email: body.data.email } : {}),
-        ...(body.data.role !== undefined ? { role: body.data.role } : {}),
-        ...scope,
-      },
-      select: publicUserSelect,
+
+    let issuedVerificationToken: string | null = null;
+    const user = await prisma.$transaction(async (tx) => {
+      if (body.data.email != null && pending) {
+        // Admin adding/changing an email on a pending account must not silently complete setup
+        // or bypass verification -- routes through the same pending-email path as self-service
+        // setup. This write extends pendingEmailExpiresAt, so it also revokes every refresh
+        // token for this user: without that, a dormant token that outlived the old window could
+        // otherwise come back to life the moment this write refreshes it.
+        issuedVerificationToken = await issuePendingEmail(tx, existing.id, body.data.email);
+        await tx.refreshToken.updateMany({
+          where: { userId: existing.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      } else if (writingDirectEmail) {
+        await assertEmailAvailable(tx, body.data.email!, { excludeUserId: existing.id });
+        // Writing a confirmed email directly also clears any dangling pendingEmail/token --
+        // tidiness, not required for correctness.
+        await tx.userEmailVerificationToken.deleteMany({ where: { userId: existing.id } });
+      }
+
+      return tx.user.update({
+        where: { id: existing.id },
+        data: {
+          ...(body.data.fullName !== undefined ? { fullName: body.data.fullName } : {}),
+          ...(writingDirectEmail
+            ? { email: body.data.email, pendingEmail: null, pendingEmailExpiresAt: null }
+            : {}),
+          ...(body.data.phone !== undefined ? { phone: body.data.phone } : {}),
+          ...(body.data.role !== undefined ? { role: body.data.role } : {}),
+          ...scope,
+        },
+        select: publicUserSelect,
+      });
     });
     await invalidateStaffAuth(user.id);
+
+    if (issuedVerificationToken && body.data.email) {
+      sendPendingEmailVerification(
+        env.FRONTEND_ORIGIN,
+        user.id,
+        body.data.email,
+        issuedVerificationToken,
+      );
+    }
+
     await recordAudit({
       request,
       actor: actor(response),
@@ -370,6 +472,23 @@ userRouter.patch("/:id", async (request, response) => {
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
+      return;
+    }
+    // AppError thrown by assertEmailAvailable (a genuine, already-live pendingEmail/email
+    // conflict) -- caught explicitly, same as UserInputError above, rather than left to the
+    // global error-handling middleware (this handler is also exercised directly in tests
+    // without going through that middleware).
+    if (error instanceof AppError) {
+      response
+        .status(error.statusCode)
+        .json({ success: false, message: error.message, code: error.code });
+      return;
+    }
+    const field = uniqueViolationField(error);
+    if (field) {
+      response
+        .status(409)
+        .json({ success: false, message: `${uniqueFieldLabel(field)} is already in use` });
       return;
     }
     throw error;
@@ -451,10 +570,22 @@ userRouter.patch("/:id/password", async (request, response) => {
     return;
   }
 
+  // An admin-chosen password is a temp password by definition -- re-arm setupRequired whenever
+  // the account hasn't reached full S2 yet (email === null covers S0/S0p/S1; setupRequired
+  // alone would miss S2a, where this fresh password would otherwise be checked against a stale
+  // old tempPasswordExpiresAt and rejected the moment it's used). A normal reset on a fully
+  // set-up (S2) account stays a normal reset, unchanged.
+  const reArm = existing.email === null || existing.setupRequired;
+
   await prisma.$transaction([
     prisma.user.update({
       where: { id: existing.id },
-      data: { passwordHash: await hashPassword(body.data.password) },
+      data: {
+        passwordHash: await hashPassword(body.data.password),
+        ...(reArm
+          ? { setupRequired: true, tempPasswordExpiresAt: tempPasswordExpiryInstant() }
+          : {}),
+      },
     }),
     prisma.refreshToken.updateMany({
       where: { userId: existing.id, revokedAt: null },

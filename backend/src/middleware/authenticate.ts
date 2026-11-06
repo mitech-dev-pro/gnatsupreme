@@ -9,46 +9,70 @@ import { verifyAccessToken } from "../modules/auth/auth.tokens.js";
 export type AuthenticatedUser = {
   id: number;
   fullName: string;
-  email: string;
+  email: string | null;
+  pendingEmail: string | null;
+  setupRequired: boolean;
   role: "SUPER_ADMIN" | "NATIONAL_ADMIN" | "REGIONAL_ADMIN" | "DISTRICT_ADMIN";
   regionIds: number[];
   districtIds: number[];
 };
 
-export async function authenticate(request: Request, response: Response, next: NextFunction) {
-  const authorization = request.header("authorization");
-
-  if (!authorization?.startsWith("Bearer ")) {
-    response.status(401).json({ success: false, message: "Authentication required" });
-    return;
-  }
-
-  try {
-    const userId = await verifyAccessToken(authorization.slice(7));
-    const user = await withCache(staffAuthCacheKey(userId), env.AUTH_CACHE_TTL_SECONDS, () =>
-      prisma.user.findFirst({
-        where: { id: userId, isActive: true },
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          role: true,
-          regionIds: true,
-          districtIds: true,
-        },
-      }),
-    );
-
-    if (!user) {
-      response.status(401).json({ success: false, message: "Authentication required" });
-      return;
-    }
-
-    response.locals.user = user satisfies AuthenticatedUser;
-    next();
-  } catch {
-    response.status(401).json({ success: false, message: "Authentication required" });
-  }
+async function loadAuthenticatedUser(authorization: string | undefined) {
+  if (!authorization?.startsWith("Bearer ")) return null;
+  const userId = await verifyAccessToken(authorization.slice(7));
+  return withCache(staffAuthCacheKey(userId), env.AUTH_CACHE_TTL_SECONDS, () =>
+    prisma.user.findFirst({
+      where: { id: userId, isActive: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        pendingEmail: true,
+        setupRequired: true,
+        role: true,
+        regionIds: true,
+        districtIds: true,
+      },
+    }),
+  );
 }
 
-//this middleware function checks if the user is authenticated by verifying the access token provided in the "Authorization" header. If the token is valid and corresponds to an active user, it attaches the user information to `response.locals.user` and calls the next middleware function. If the token is invalid or the user is not found, it returns a 401 Unauthorized response.
+// A phone-only account that hasn't replaced its temp password yet (setupRequired: true) is
+// gated off every route except a small allowlist -- GET /auth/me and POST /auth/complete-setup,
+// which pass `allowPendingSetup: true` here. This is the actual enforcement; a frontend redirect
+// to a setup screen is UX only. No route-path allowlist is needed: every other staff router
+// already goes through `authenticate` (the allowPendingSetup: false variant) via its own
+// `XRouter.use(authenticate, ...)` call, untouched by this change.
+function buildAuthenticate(options: { allowPendingSetup: boolean }) {
+  return async function authenticateMiddleware(
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const user = await loadAuthenticatedUser(request.header("authorization"));
+
+      if (!user) {
+        response.status(401).json({ success: false, message: "Authentication required" });
+        return;
+      }
+
+      if (user.setupRequired && !options.allowPendingSetup) {
+        response.status(403).json({
+          success: false,
+          code: "SETUP_REQUIRED",
+          message: "Finish setting up your account before continuing.",
+        });
+        return;
+      }
+
+      response.locals.user = user satisfies AuthenticatedUser;
+      next();
+    } catch {
+      response.status(401).json({ success: false, message: "Authentication required" });
+    }
+  };
+}
+
+export const authenticate = buildAuthenticate({ allowPendingSetup: false });
+export const authenticateAllowPendingSetup = buildAuthenticate({ allowPendingSetup: true });

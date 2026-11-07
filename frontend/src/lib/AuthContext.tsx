@@ -29,6 +29,14 @@ export type AuthUser = {
 
 export type LoginCredentials = { email: string; phone?: never } | { phone: string; email?: never };
 
+// Mirrors the backend's own isPending() (modules/users/user.routes.ts): setupRequired alone
+// misses S1 (setup already done, email still unconfirmed, setupRequired already false) -- any
+// code deciding whether to route someone back to /staff-setup needs this, not just
+// setupRequired on its own.
+export function isAccountPending(user: Pick<AuthUser, "setupRequired" | "email">): boolean {
+  return user.setupRequired || user.email === null;
+}
+
 type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
@@ -41,6 +49,7 @@ type AuthContextType = {
     email?: string;
   }) => Promise<AuthUser>;
   confirmEmail: (token: string) => Promise<{ message: string }>;
+  resendVerificationEmail: () => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -165,6 +174,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.data as { message: string };
   }, []);
 
+  const resendVerificationEmail = useCallback(async () => {
+    const res = await api.post("/auth/resend-verification-email");
+    setAccessToken(res.data.accessToken);
+    setUser(res.data.user);
+    scheduleRefresh(res.data.accessToken);
+    return res.data.user as AuthUser;
+  }, [scheduleRefresh]);
+
   const logout = useCallback(async () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     try {
@@ -186,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         completeSetup,
         confirmEmail,
+        resendVerificationEmail,
         logout,
       }}
     >

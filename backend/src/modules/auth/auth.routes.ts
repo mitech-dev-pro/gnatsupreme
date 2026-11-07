@@ -9,7 +9,10 @@ import { logger } from "../../lib/logger.js";
 import { invalidateStaffAuth } from "../../lib/auth-cache.js";
 import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
 import { isExpired } from "../../lib/account-setup.js";
-import { authenticateAllowPendingSetup } from "../../middleware/authenticate.js";
+import {
+  authenticateAllowPendingSetup,
+  type AuthenticatedUser,
+} from "../../middleware/authenticate.js";
 import { requireXhrHeader } from "../../middleware/require-xhr-header.js";
 import {
   completeSetupIpRateLimiter,
@@ -17,6 +20,7 @@ import {
   forgotPasswordRateLimiter,
   loginRateLimiter,
   refreshRateLimiter,
+  resendVerificationRateLimiter,
 } from "../../middleware/rate-limit.js";
 import { AppError } from "../../middleware/error-handler.js";
 import { sendStaffPasswordResetEmail } from "./auth.profile.js";
@@ -46,6 +50,7 @@ const publicUserSelect = {
   id: true,
   fullName: true,
   email: true,
+  pendingEmail: true,
   setupRequired: true,
   role: true,
   regionIds: true,
@@ -191,6 +196,7 @@ authRouter.post("/login", loginRateLimiter, async (request, response) => {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
+        pendingEmail: user.pendingEmail,
         setupRequired: user.setupRequired,
         role: user.role,
         regionIds: user.regionIds,
@@ -397,6 +403,7 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
         id: session.user.id,
         fullName: session.user.fullName,
         email: session.user.email,
+        pendingEmail: session.user.pendingEmail,
         setupRequired: session.user.setupRequired,
         role: session.user.role,
         regionIds: session.user.regionIds,
@@ -589,6 +596,93 @@ authRouter.post(
       success: true,
       accessToken: await createAccessToken(actor.id),
       user: updated,
+    });
+  },
+);
+
+// Re-issues a fresh verification token and resends it for whatever address is currently
+// pending, without touching the password or asking for one -- for a typo'd or lost confirmation
+// email. Reachable in every state complete-setup is (S0p/S1/S2a), since any of those can have a
+// pendingEmail to resend for; a 400 if there isn't one covers the rest.
+authRouter.post(
+  "/resend-verification-email",
+  authenticateAllowPendingSetup,
+  resendVerificationRateLimiter,
+  completeSetupIpRateLimiter,
+  async (request, response) => {
+    const actor = response.locals.user as AuthenticatedUser;
+
+    if (!actor.pendingEmail) {
+      response
+        .status(400)
+        .json({ success: false, message: "There is no pending email to confirm." });
+      return;
+    }
+    const pendingEmail = actor.pendingEmail;
+
+    const newRefreshToken = createRefreshToken();
+    let issuedToken: string;
+
+    try {
+      // One transaction, same outer-try/catch shape as complete-setup -- issuePendingEmail
+      // extends pendingEmailExpiresAt, so this write has to revoke every refresh token for the
+      // user too (the same rule as the admin pending-email edit on PATCH /users/:id), not just
+      // the one presented on this request. A fresh token is issued in the same transaction so
+      // the person making the request stays logged in.
+      issuedToken = await prisma.$transaction(async (tx) => {
+        const token = await issuePendingEmail(tx, actor.id, pendingEmail);
+        await tx.refreshToken.updateMany({
+          where: { userId: actor.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        await tx.refreshToken.create({
+          data: {
+            tokenHash: hashRefreshToken(newRefreshToken),
+            userId: actor.id,
+            expiresAt: refreshTokenExpiresAt(),
+            ...clientMetadata(request),
+          },
+        });
+        return token;
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        response
+          .status(error.statusCode)
+          .json({ success: false, message: error.message, code: error.code });
+        return;
+      }
+      const field = uniqueViolationField(error);
+      if (field) {
+        response
+          .status(409)
+          .json({ success: false, message: `${uniqueFieldLabel(field)} is already in use` });
+        return;
+      }
+      throw error;
+    }
+
+    await invalidateStaffAuth(actor.id);
+    sendPendingEmailVerification(env.FRONTEND_ORIGIN, actor.id, pendingEmail, issuedToken);
+    await recordAudit({
+      request,
+      actor,
+      action: "USER_VERIFICATION_EMAIL_RESENT",
+      entityType: "USER",
+      entityId: actor.id,
+      description: `${actor.fullName} requested a new confirmation email`,
+    });
+
+    setRefreshCookie(response, newRefreshToken);
+    const updated = await prisma.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: publicUserSelect,
+    });
+    response.json({
+      success: true,
+      accessToken: await createAccessToken(actor.id),
+      user: updated,
+      message: "A new confirmation email has been sent.",
     });
   },
 );

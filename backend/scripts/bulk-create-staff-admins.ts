@@ -11,6 +11,7 @@ import { normalizeGhanaPhone } from "../src/lib/phone.js";
 import { tempPasswordExpiryInstant } from "../src/lib/account-setup.js";
 import { uniqueViolationField } from "../src/lib/prisma-errors.js";
 import { recordAudit } from "../src/modules/audit/audit.service.js";
+import { normalizeDistrictName, resolveDistrict } from "../src/modules/geography/district-match.js";
 import type { UserRole } from "../src/generated/prisma/enums.js";
 
 // Bulk-creates phone-only GNAT regional/district secretary accounts (S0 in the phone-login
@@ -133,10 +134,20 @@ async function main() {
 
   const regions = await prisma.region.findMany({ select: { id: true, name: true } });
   const districts = await prisma.district.findMany({
-    select: { id: true, name: true, regionId: true },
+    select: { id: true, name: true, regionId: true, region: { select: { name: true } } },
   });
   const regionsByName = new Map(regions.map((r) => [r.name, r]));
-  const districtsByName = new Map(districts.map((d) => [d.name, d]));
+  // Same resolution districts/members use for an uploaded file's raw spelling (suffix-strip,
+  // then a staff-curated DistrictAlias) -- the Accounts sheet's "App districts" column is
+  // already app-side names from an earlier match_districts.py run, but this makes the script
+  // resilient to a near-miss (a stray "Municipal" suffix, or a name only known via alias)
+  // instead of a spurious "unknown district name" skip.
+  const districtAliases = await prisma.districtAlias.findMany({
+    select: { alias: true, districtId: true },
+  });
+  const aliasMap = new Map(
+    districtAliases.map((entry) => [normalizeDistrictName(entry.alias), entry.districtId]),
+  );
 
   const candidates: Candidate[] = [];
   const skipped: Skip[] = [];
@@ -203,16 +214,24 @@ async function main() {
         skipped.push({ personId, name, reason: "no App districts listed" });
         continue;
       }
-      const unresolved = names.filter((n) => !districtsByName.has(n));
+      const resolved = names.map((n) => ({
+        raw: n,
+        ...resolveDistrict(n, null, districts, aliasMap),
+      }));
+      const unresolved = resolved.filter((r) => !r.district);
       if (unresolved.length > 0) {
         skipped.push({
           personId,
           name,
-          reason: `unknown district name(s): ${unresolved.join(", ")}`,
+          reason: `unknown district name(s): ${unresolved
+            .map((r) =>
+              r.ambiguous ? `${r.raw} (ambiguous, matches more than one district)` : r.raw,
+            )
+            .join(", ")}`,
         });
         continue;
       }
-      const matched = names.map((n) => districtsByName.get(n)!);
+      const matched = resolved.map((r) => r.district!);
       districtIds = [...new Set(matched.map((d) => d.id))];
       // Mirrors resolveGeographicScope in user.routes.ts: a district admin's regionIds is always
       // derived from their own districts, never independently set.

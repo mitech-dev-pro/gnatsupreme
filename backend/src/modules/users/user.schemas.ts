@@ -5,7 +5,7 @@ const roleSchema = z.enum(["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "D
 
 export const staffPasswordSchema = z
   .string()
-  .min(12, "Password must contain at least 12 characters")
+  .min(8, "Password must contain at least 8 characters")
   .max(128)
   .regex(/[a-z]/, "Password must contain a lowercase letter")
   .regex(/[A-Z]/, "Password must contain an uppercase letter")

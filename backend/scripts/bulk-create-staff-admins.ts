@@ -54,8 +54,10 @@ function pick(alphabet: string) {
   return alphabet[randomInt(alphabet.length)]!;
 }
 
-// Satisfies staffPasswordSchema (12+ chars, one each of lower/upper/digit/special) by
-// construction, then fills and shuffles rather than rejection-sampling.
+// Satisfies staffPasswordSchema (8+ chars, one each of lower/upper/digit/special) by
+// construction, then fills and shuffles rather than rejection-sampling. 16 chars total --
+// well above the minimum -- since these are machine-generated, not something a person has to
+// remember past their first setup.
 function generateTempPassword(): string {
   const required = [pick(LOWER), pick(UPPER), pick(DIGITS), pick(SPECIAL)];
   const rest = Array.from({ length: 12 }, () => pick(ALL));

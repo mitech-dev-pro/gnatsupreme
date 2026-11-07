@@ -18,6 +18,7 @@
     "prisma:generate": "prisma generate",
     "admin:create": "tsx scripts/create-admin.ts",
     "admin:reset-password": "tsx scripts/reset-admin-password.ts",
+    "admin:bulk-create-staff": "tsx scripts/bulk-create-staff-admins.ts",
     "db:seed-geography": "tsx scripts/seed-geography.ts",
     "verify:member-scope": "tsx scripts/verify-member-scope.ts",
     "clear:members-and-uploads": "tsx scripts/clear-members-and-uploads.ts",

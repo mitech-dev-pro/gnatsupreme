@@ -38,8 +38,8 @@ export default function StaffSetup() {
       return;
     }
     if (needsNewPassword) {
-      if (newPassword.length < 12) {
-        setError("New password must be at least 12 characters.");
+      if (newPassword.length < 8) {
+        setError("New password must be at least 8 characters.");
         return;
       }
       if (newPassword !== confirmPassword) {
@@ -126,7 +126,7 @@ export default function StaffSetup() {
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="At least 12 characters"
+                      placeholder="At least 8 characters"
                       autoComplete="new-password"
                       className={inputClasses}
                     />

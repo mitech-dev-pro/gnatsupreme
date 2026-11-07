@@ -8,7 +8,7 @@ const fullNameSchema = z.string().trim().min(2, "Enter the administrator's full 
 const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address");
 const passwordSchema = z
   .string()
-  .min(12, "Password must contain at least 12 characters")
+  .min(8, "Password must contain at least 8 characters")
   .max(128, "Password must not exceed 128 characters")
   .regex(/[a-z]/, "Password must contain a lowercase letter")
   .regex(/[A-Z]/, "Password must contain an uppercase letter")

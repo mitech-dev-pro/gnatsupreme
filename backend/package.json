@@ -20,6 +20,7 @@
     "admin:reset-password": "tsx scripts/reset-admin-password.ts",
     "admin:bulk-create-staff": "tsx scripts/bulk-create-staff-admins.ts",
     "db:seed-geography": "tsx scripts/seed-geography.ts",
+    "db:export-geography": "tsx scripts/export-live-geography.ts",
     "verify:member-scope": "tsx scripts/verify-member-scope.ts",
     "clear:members-and-uploads": "tsx scripts/clear-members-and-uploads.ts",
     "verify:performance-indexes": "node scripts/verify-performance-indexes.mjs",

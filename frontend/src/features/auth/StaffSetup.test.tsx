@@ -4,17 +4,21 @@ import { it, expect, vi, beforeEach } from "vitest";
 import StaffSetup from "./StaffSetup";
 
 const completeSetup = vi.fn();
+const resendVerificationEmail = vi.fn();
 let mockUser: {
   setupRequired: boolean;
   email: string | null;
   pendingEmail?: string | null;
 } | null = null;
 vi.mock("@/lib/AuthContext", () => ({
-  useAuth: () => ({ user: mockUser, isLoading: false, completeSetup }),
+  useAuth: () => ({ user: mockUser, isLoading: false, completeSetup, resendVerificationEmail }),
+  isAccountPending: (user: { setupRequired: boolean; email: string | null }) =>
+    user.setupRequired || user.email === null,
 }));
 
 beforeEach(() => {
   completeSetup.mockReset();
+  resendVerificationEmail.mockReset();
 });
 
 function renderPage() {
@@ -61,6 +65,22 @@ it("prefills the email from pendingEmail when re-running setup", () => {
   mockUser = { setupRequired: true, email: null, pendingEmail: "typo@example.test" };
   renderPage();
   expect(screen.getByLabelText(/^email$/i)).toHaveValue("typo@example.test");
+});
+
+it("shows a resend option whenever there is a pendingEmail, and calls resendVerificationEmail", async () => {
+  mockUser = { setupRequired: false, email: null, pendingEmail: "typo@example.test" };
+  resendVerificationEmail.mockResolvedValueOnce({});
+  renderPage();
+  expect(screen.getByText("typo@example.test")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /resend confirmation email/i }));
+  await waitFor(() => expect(resendVerificationEmail).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/new confirmation email has been sent/i)).toBeInTheDocument();
+});
+
+it("does not show a resend option when there is no pendingEmail", () => {
+  mockUser = { setupRequired: true, email: null, pendingEmail: null };
+  renderPage();
+  expect(screen.queryByRole("button", { name: /resend confirmation email/i })).not.toBeInTheDocument();
 });
 
 it("only asks for the current password on an S2a account (email confirmed, setup not done)", () => {

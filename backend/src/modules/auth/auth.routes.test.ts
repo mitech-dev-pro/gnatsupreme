@@ -391,6 +391,85 @@ test("complete-setup on an already set-up but unconfirmed (S1) account requires 
   assert.match((res.body as { message: string }).message, /email/i);
 });
 
+test("resend-verification-email rejects an account with no pending email", async (t) => {
+  const res = response();
+  res.locals.user = {
+    id: 6,
+    fullName: "Classic Admin",
+    email: "admin@example.test",
+    pendingEmail: null,
+    setupRequired: false,
+    role: "SUPER_ADMIN",
+    regionIds: [],
+    districtIds: [],
+  };
+  await postHandler(authRouter, "/resend-verification-email")({ body: {}, get: () => undefined }, res);
+  assert.equal(res.code, 400);
+  assert.match((res.body as { message: string }).message, /no pending email/i);
+});
+
+test("resend-verification-email reissues a token for the existing pendingEmail and revokes every refresh token", async (t) => {
+  stubCache(t);
+  stub(t, prisma, "$transaction", async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+    callback(prisma),
+  );
+  stub(t, prisma.user, "updateMany", async () => ({ count: 0 }));
+  stub(t, prisma.user, "findFirst", async () => null);
+  const deleteMany = stub(t, prisma.userEmailVerificationToken, "deleteMany", async () => ({
+    count: 1,
+  }));
+  const createToken = stub(t, prisma.userEmailVerificationToken, "create", async (args: { data: { email: string } }) => {
+    assert.equal(args.data.email, "typo-admin@example.test");
+    return {};
+  });
+  const updateUser = stub(t, prisma.user, "update", async (args: { data: Record<string, unknown> }) => {
+    assert.equal(args.data.pendingEmail, "typo-admin@example.test");
+    return {};
+  });
+  const revoke = stub(
+    t,
+    prisma.refreshToken,
+    "updateMany",
+    async (args: { where: Record<string, unknown> }) => {
+      assert.deepEqual(args.where, { userId: 7, revokedAt: null });
+      return { count: 2 };
+    },
+  );
+  const createRefresh = stub(t, prisma.refreshToken, "create", async () => ({}));
+  stub(t, prisma.auditLog, "create", async () => ({}));
+  stub(t, prisma.user, "findUniqueOrThrow", async () => ({
+    id: 7,
+    fullName: "Pending Email Admin",
+    email: null,
+    pendingEmail: "typo-admin@example.test",
+    setupRequired: false,
+    role: "DISTRICT_ADMIN",
+    regionIds: [],
+    districtIds: [],
+  }));
+
+  const res = response();
+  res.locals.user = {
+    id: 7,
+    fullName: "Pending Email Admin",
+    email: null,
+    pendingEmail: "typo-admin@example.test",
+    setupRequired: false,
+    role: "DISTRICT_ADMIN",
+    regionIds: [],
+    districtIds: [],
+  };
+  await postHandler(authRouter, "/resend-verification-email")({ body: {}, get: () => undefined }, res);
+
+  assert.equal(res.code, 200);
+  assert.equal(deleteMany.mock.callCount(), 1);
+  assert.equal(createToken.mock.callCount(), 1);
+  assert.equal(updateUser.mock.callCount(), 1);
+  assert.equal(revoke.mock.callCount(), 1);
+  assert.equal(createRefresh.mock.callCount(), 1);
+  assert.equal((res.body as { user: { pendingEmail: string } }).user.pendingEmail, "typo-admin@example.test");
+});
+
 test("confirm-email rejects a token whose address no longer matches pendingEmail", async (t) => {
   const tokenHash = hashPasswordResetToken("d".repeat(64));
   stub(

@@ -6,6 +6,8 @@ import ProtectedRoute from "./ProtectedRoute";
 let mockUser: { setupRequired?: boolean } | null = null;
 vi.mock("@/lib/AuthContext", () => ({
   useAuth: () => ({ user: mockUser, isLoading: false }),
+  isAccountPending: (user: { setupRequired: boolean; email: string | null }) =>
+    user.setupRequired || user.email === null,
 }));
 
 function renderAt(path: string) {

@@ -85,6 +85,19 @@ export const completeSetupIpRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("staff-complete-setup-network"),
 });
 
+// Tighter than completeSetupRateLimiter -- a resend has no other input to validate (no
+// password, no new email), so the only cost of abuse is spamming the recipient's real inbox.
+// Same user-keyed reasoning as above; completeSetupIpRateLimiter is reused underneath it as the
+// network-wide ceiling rather than duplicating a second one.
+export const resendVerificationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (_request, response) => String(response.locals.user?.id ?? "unknown"),
+  handler: jsonRateLimitHandler("staff-resend-verification"),
+});
+
 export const refreshRateLimiter = rateLimit({
   windowMs: 60 * 1_000,
   limit: 30,
@@ -134,8 +147,8 @@ export const memberForgotPasswordRateLimiter = rateLimit({
 });
 
 export const memberLookupRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1_000,
-  limit: 8,
+  windowMs: 60 * 1_000,
+  limit: 200,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (request) => {

@@ -87,7 +87,21 @@ export class MankradoClaimsProvider implements ClaimsProvider {
             : `Claims Portal rejected the request (HTTP ${response.status}). Check credentials and claim fields.`,
         );
       }
-      return (await response.json()) as unknown;
+      const responseText = await response.text();
+      try {
+        return JSON.parse(responseText) as unknown;
+      } catch {
+        dump("Mankrado returned a 2xx response that was not valid JSON", {
+          url: String(url),
+          status: response.status,
+          body: responseText,
+        });
+        throw new ClaimsDeliveryError(
+          "UNKNOWN",
+          "UNCONFIRMED_RESPONSE",
+          "Claims Portal delivery is unconfirmed. Check claim history before submitting again.",
+        );
+      }
     } catch (error) {
       if (error instanceof ClaimsDeliveryError) throw error;
       dump("Mankrado request errored before a response could be read", { url: String(url), error });

@@ -474,7 +474,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 required
-                minLength={12}
+                minLength={8}
                 hint="At least 8 characters with mixed case, a number, and a symbol."
                 autoComplete="new-password"
               />
@@ -547,7 +547,7 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     value={form.password}
                     onChange={(event) => setForm((f) => ({ ...f, password: event.target.value }))}
                     required
-                    minLength={12}
+                    minLength={8}
                     autoComplete="new-password"
                     hint="At least 8 characters with mixed case, a number, and a symbol."
                   />

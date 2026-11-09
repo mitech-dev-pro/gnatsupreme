@@ -66,10 +66,3 @@ export function hashPasswordResetToken(token: string) {
 export function passwordResetTokenExpiresAt() {
   return new Date(Date.now() + env.STAFF_PASSWORD_RESET_TTL_MINUTES * 60_000);
 }
-
-// createPasswordResetToken/hashPasswordResetToken above are generic 32-byte-hex/SHA-256 helpers
-// with nothing password-specific in them -- reused directly for email verification tokens too,
-// not duplicated.
-export function emailVerificationTokenExpiresAt() {
-  return new Date(Date.now() + env.STAFF_EMAIL_VERIFICATION_TTL_MINUTES * 60_000);
-}

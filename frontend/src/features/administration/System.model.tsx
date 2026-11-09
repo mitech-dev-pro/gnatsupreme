@@ -8,6 +8,14 @@ export type StaffUser = {
   email: string | null;
   phone: string | null;
   setupRequired: boolean;
+  // Independent of (and a backstop under) the per-identifier login rate limiter -- a hard
+  // lockout once a phone-only account's failed attempts reach the threshold, shown here as
+  // `locked` so a mass lockout is visible at a glance rather than inferred from support calls.
+  setupFailedAttempts: number;
+  locked: boolean;
+  // Null for anything not phone-capable, or phone-capable but never yet logged in since its
+  // setup was last armed (bulk-create or an admin reset).
+  firstLoginSinceArmed: { at: string; ip: string | null } | null;
   role: string;
   isActive: boolean;
   // A region/district can legitimately appear in more than one admin's scope -- see backend

@@ -1,7 +1,6 @@
 import DatePicker from "@/components/ui/DatePicker";
 import Dropdown from "@/components/ui/Dropdown";
 import api from "@/lib/api";
-import { isAccountPending } from "@/lib/AuthContext";
 import { getApiError, getApiErrorStatus } from "@/lib/errorExtract";
 import {
   applyGhanaCardIdChange,
@@ -122,7 +121,7 @@ export default function Login() {
     );
   }
   if (user && requestedMode === "staff") {
-    return <Navigate to={isAccountPending(user) ? "/staff-setup" : safeStaffRedirect} replace />;
+    return <Navigate to={user.setupRequired ? "/staff-setup" : safeStaffRedirect} replace />;
   }
   if (
     member &&
@@ -150,12 +149,10 @@ export default function Login() {
         staffIdentifierMethod === "email" ? { email: identifier } : { phone: identifier },
         password,
       );
-      // A phone-only account that hasn't replaced its temp password yet, or has but still has an
-      // unconfirmed pendingEmail, goes to the setup screen instead of its normal redirect -- the
-      // backend gate blocks every other route for the first case regardless, this just avoids a
-      // confusing bounce through one first; the second case isn't gated at all, so this is the
-      // only thing that gets them back there.
-      navigate(isAccountPending(loggedInUser) ? "/staff-setup" : safeStaffRedirect, {
+      // A phone-only account that hasn't replaced its temp password yet goes to the setup
+      // screen instead of its normal redirect -- the backend gate blocks every other route for
+      // it regardless, this just avoids a confusing bounce through one first.
+      navigate(loggedInUser.setupRequired ? "/staff-setup" : safeStaffRedirect, {
         replace: true,
       });
     } catch (err: unknown) {

@@ -2,6 +2,7 @@ import api from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import AddEmailBanner from "./AddEmailBanner";
 import "./Dashboard.css";
 
 type DashboardData = {
@@ -209,6 +210,7 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
+      <AddEmailBanner />
       <header className="dash-heading">
         <div>
           <p>{today}</p>

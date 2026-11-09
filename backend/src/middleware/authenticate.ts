@@ -10,7 +10,6 @@ export type AuthenticatedUser = {
   id: number;
   fullName: string;
   email: string | null;
-  pendingEmail: string | null;
   setupRequired: boolean;
   role: "SUPER_ADMIN" | "NATIONAL_ADMIN" | "REGIONAL_ADMIN" | "DISTRICT_ADMIN";
   regionIds: number[];
@@ -27,7 +26,6 @@ async function loadAuthenticatedUser(authorization: string | undefined) {
         id: true,
         fullName: true,
         email: true,
-        pendingEmail: true,
         setupRequired: true,
         role: true,
         regionIds: true,

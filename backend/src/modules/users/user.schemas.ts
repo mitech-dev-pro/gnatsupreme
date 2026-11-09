@@ -14,8 +14,9 @@ export const staffPasswordSchema = z
 
 const staffFields = {
   fullName: z.string().trim().min(2).max(120),
-  // Nullable -- a GNAT account created with only a phone number has no email yet. See
-  // User.setupRequired/phone/pendingEmail and the account-states table in the phone-login plan.
+  // Nullable -- a GNAT account created with only a phone number has no email yet. Phone stays
+  // a valid login identifier forever, even after email is set -- see the
+  // simplified-onboarding plan.
   email: z.string().trim().toLowerCase().email().nullable().optional(),
   phone: phoneFieldSchema,
   role: roleSchema,

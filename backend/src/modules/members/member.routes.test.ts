@@ -88,7 +88,10 @@ test("creating a member as a multi-district DISTRICT_ADMIN supplying a district 
     res,
   );
   assert.equal(res.code, 400);
-  assert.match((res.body as { message: string }).message, /cannot enroll members in this district/i);
+  assert.match(
+    (res.body as { message: string }).message,
+    /cannot enroll members in this district/i,
+  );
 });
 
 test("creating a member as a multi-region REGIONAL_ADMIN with no region picked is rejected", async () => {
@@ -110,26 +113,21 @@ test("a single-district DISTRICT_ADMIN creating a member with a districtId that 
     callback(prisma),
   );
   let createdDistrictId: number | null | undefined;
-  stub(
-    t,
-    prisma.member,
-    "create",
-    async (args: { data: Record<string, unknown> }) => {
-      createdDistrictId = args.data.districtId as number | null;
-      return {
-        id: 10,
-        controllerId: payload.controllerId,
-        fullName: payload.fullName,
-        school: payload.school,
-        status: "PENDING",
-        districtId: args.data.districtId,
-        regionId: args.data.regionId,
-        spouse: null,
-        beneficiaries: [],
-        ghanaCardId: null,
-      };
-    },
-  );
+  stub(t, prisma.member, "create", async (args: { data: Record<string, unknown> }) => {
+    createdDistrictId = args.data.districtId as number | null;
+    return {
+      id: 10,
+      controllerId: payload.controllerId,
+      fullName: payload.fullName,
+      school: payload.school,
+      status: "PENDING",
+      districtId: args.data.districtId,
+      regionId: args.data.regionId,
+      spouse: null,
+      beneficiaries: [],
+      ghanaCardId: null,
+    };
+  });
   stub(t, prisma.auditLog, "create", async () => ({}));
   // relinkSpousesForMember runs unconditionally after create, and districtAdminOwnRegionIds
   // (called regardless of how districtId was resolved) looks up the admin's own districts --

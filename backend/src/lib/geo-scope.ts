@@ -9,9 +9,7 @@ import type { AuthenticatedUser } from "../middleware/authenticate.js";
 // test in geo-scope.test.ts) -- always return the `{ in: ... }` fragment, never branch on
 // array length.
 export type GeoScopeWhere =
-  | { regionId: { in: number[] } }
-  | { districtId: { in: number[] } }
-  | Record<string, never>;
+  { regionId: { in: number[] } } | { districtId: { in: number[] } } | Record<string, never>;
 
 export function geoScopeWhere(user: AuthenticatedUser): GeoScopeWhere {
   switch (user.role) {

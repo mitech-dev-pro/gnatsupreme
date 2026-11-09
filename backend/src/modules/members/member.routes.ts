@@ -22,7 +22,11 @@ import { authenticate, type AuthenticatedUser } from "../../middleware/authentic
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { generateTempPassword, hashMemberPassword } from "../member-auth/member-auth.tokens.js";
-import { canAccessDistrict, resolveMemberScope, resolveMemberSearchScope } from "./member.access.js";
+import {
+  canAccessDistrict,
+  resolveMemberScope,
+  resolveMemberSearchScope,
+} from "./member.access.js";
 import { resolveMemberRegionId } from "./member-region.js";
 import {
   beneficiaryBaseSchema,
@@ -116,7 +120,10 @@ memberRouter.get("/", async (request, response) => {
     }),
     cachedCount(
       "members",
-      { scope: { role: user.role, regionIds: user.regionIds, districtIds: user.districtIds }, where },
+      {
+        scope: { role: user.role, regionIds: user.regionIds, districtIds: user.districtIds },
+        where,
+      },
       () => prisma.member.count({ where }),
     ),
   ]);
@@ -259,11 +266,7 @@ memberRouter.post("/", async (request, response) => {
     ) {
       districtId = parsed.data.districtId;
     } else if (parsed.data.districtId) {
-      return simpleFailure(
-        response,
-        "districtId",
-        "You cannot enroll members in this district",
-      );
+      return simpleFailure(response, "districtId", "You cannot enroll members in this district");
     } else {
       return simpleFailure(
         response,

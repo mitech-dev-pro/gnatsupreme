@@ -4,21 +4,13 @@ import { it, expect, vi, beforeEach } from "vitest";
 import StaffSetup from "./StaffSetup";
 
 const completeSetup = vi.fn();
-const resendVerificationEmail = vi.fn();
-let mockUser: {
-  setupRequired: boolean;
-  email: string | null;
-  pendingEmail?: string | null;
-} | null = null;
+let mockUser: { setupRequired: boolean; email: string | null } | null = null;
 vi.mock("@/lib/AuthContext", () => ({
-  useAuth: () => ({ user: mockUser, isLoading: false, completeSetup, resendVerificationEmail }),
-  isAccountPending: (user: { setupRequired: boolean; email: string | null }) =>
-    user.setupRequired || user.email === null,
+  useAuth: () => ({ user: mockUser, isLoading: false, completeSetup }),
 }));
 
 beforeEach(() => {
   completeSetup.mockReset();
-  resendVerificationEmail.mockReset();
 });
 
 function renderPage() {
@@ -29,14 +21,14 @@ function renderPage() {
   );
 }
 
-it("asks for a new password and an email for a fresh (S0) phone-only account", async () => {
-  mockUser = { setupRequired: true, email: null, pendingEmail: null };
+it("asks for the temp password and a new password for a phone-only account", async () => {
+  mockUser = { setupRequired: true, email: null };
   completeSetup.mockResolvedValueOnce({});
   renderPage();
 
   expect(screen.getByLabelText(/temporary password/i)).toBeInTheDocument();
   expect(screen.getByLabelText(/^new password$/i)).toBeInTheDocument();
-  expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+  expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText(/temporary password/i), {
     target: { value: "Str0ng!TempPassw0rd" },
@@ -47,51 +39,18 @@ it("asks for a new password and an email for a fresh (S0) phone-only account", a
   fireEvent.change(screen.getByLabelText(/confirm new password/i), {
     target: { value: "Str0ng!NewPassw0rd" },
   });
-  fireEvent.change(screen.getByLabelText(/^email$/i), {
-    target: { value: "staff@example.test" },
-  });
   fireEvent.click(screen.getByRole("button", { name: /continue/i }));
 
   await waitFor(() =>
     expect(completeSetup).toHaveBeenCalledWith({
       currentPassword: "Str0ng!TempPassw0rd",
       newPassword: "Str0ng!NewPassw0rd",
-      email: "staff@example.test",
     }),
   );
 });
 
-it("prefills the email from pendingEmail when re-running setup", () => {
-  mockUser = { setupRequired: true, email: null, pendingEmail: "typo@example.test" };
-  renderPage();
-  expect(screen.getByLabelText(/^email$/i)).toHaveValue("typo@example.test");
-});
-
-it("shows a resend option whenever there is a pendingEmail, and calls resendVerificationEmail", async () => {
-  mockUser = { setupRequired: false, email: null, pendingEmail: "typo@example.test" };
-  resendVerificationEmail.mockResolvedValueOnce({});
-  renderPage();
-  expect(screen.getByText("typo@example.test")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /resend confirmation email/i }));
-  await waitFor(() => expect(resendVerificationEmail).toHaveBeenCalledTimes(1));
-  expect(await screen.findByText(/new confirmation email has been sent/i)).toBeInTheDocument();
-});
-
-it("does not show a resend option when there is no pendingEmail", () => {
-  mockUser = { setupRequired: true, email: null, pendingEmail: null };
-  renderPage();
-  expect(screen.queryByRole("button", { name: /resend confirmation email/i })).not.toBeInTheDocument();
-});
-
-it("only asks for the current password on an S2a account (email confirmed, setup not done)", () => {
-  mockUser = { setupRequired: true, email: "confirmed@example.test", pendingEmail: null };
-  renderPage();
-  expect(screen.getByLabelText(/temporary password/i)).toBeInTheDocument();
-  expect(screen.queryByLabelText(/^email$/i)).not.toBeInTheDocument();
-});
-
 it("rejects mismatched new passwords before calling the API", async () => {
-  mockUser = { setupRequired: true, email: null, pendingEmail: null };
+  mockUser = { setupRequired: true, email: null };
   renderPage();
   fireEvent.change(screen.getByLabelText(/temporary password/i), {
     target: { value: "Str0ng!TempPassw0rd" },
@@ -102,10 +61,34 @@ it("rejects mismatched new passwords before calling the API", async () => {
   fireEvent.change(screen.getByLabelText(/confirm new password/i), {
     target: { value: "Different!Passw0rd" },
   });
-  fireEvent.change(screen.getByLabelText(/^email$/i), {
-    target: { value: "staff@example.test" },
-  });
   fireEvent.click(screen.getByRole("button", { name: /continue/i }));
   await waitFor(() => expect(screen.getByText(/do not match/i)).toBeInTheDocument());
   expect(completeSetup).not.toHaveBeenCalled();
+});
+
+it("surfaces the backend's same-password rejection as a form error", async () => {
+  mockUser = { setupRequired: true, email: null };
+  completeSetup.mockRejectedValueOnce({
+    response: {
+      data: { message: "Choose a new password -- it can't be the same as your current one" },
+    },
+  });
+  renderPage();
+  fireEvent.change(screen.getByLabelText(/temporary password/i), {
+    target: { value: "Str0ng!TempPassw0rd" },
+  });
+  fireEvent.change(screen.getByLabelText(/^new password$/i), {
+    target: { value: "Str0ng!TempPassw0rd" },
+  });
+  fireEvent.change(screen.getByLabelText(/confirm new password/i), {
+    target: { value: "Str0ng!TempPassw0rd" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+  expect(await screen.findByText(/can't be the same/i)).toBeInTheDocument();
+});
+
+it("redirects away once setup is already done", () => {
+  mockUser = { setupRequired: false, email: null };
+  const { container } = renderPage();
+  expect(container.textContent).not.toMatch(/temporary password/i);
 });

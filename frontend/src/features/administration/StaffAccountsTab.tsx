@@ -584,15 +584,16 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             <th className="px-4 py-2.5">Role</th>
             <th className="px-4 py-2.5">Scope</th>
             <th className="px-4 py-2.5">Status</th>
+            <th className="px-4 py-2.5">First login</th>
             <th className="px-4 py-2.5">Actions</th>
           </tr>
         </thead>
         <tbody>
           {loading && rows.length === 0 ? (
-            <TableSkeleton columns={6} />
+            <TableSkeleton columns={7} />
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={6}>
+              <td colSpan={7}>
                 <EmptyState
                   title="No staff accounts found"
                   description="No accounts match the current search and role filters."
@@ -610,6 +611,11 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       Setup pending
                     </span>
                   )}
+                  {row.locked && (
+                    <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                      Locked
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5">{ROLE_LABELS[row.role] ?? row.role}</td>
                 <td className="px-4 py-2.5 text-text-muted">{scopeLabel(row)}</td>
@@ -617,6 +623,11 @@ export function StaffAccountsTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   <StatusBadge tone={row.isActive ? "success" : "danger"}>
                     {row.isActive ? "Active" : "Inactive"}
                   </StatusBadge>
+                </td>
+                <td className="px-4 py-2.5 text-text-muted">
+                  {row.firstLoginSinceArmed
+                    ? `${new Date(row.firstLoginSinceArmed.at).toLocaleString()}${row.firstLoginSinceArmed.ip ? ` · ${row.firstLoginSinceArmed.ip}` : ""}`
+                    : "—"}
                 </td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-wrap gap-1.5">

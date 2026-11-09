@@ -99,21 +99,18 @@ const ALL_STAFF_ROLES = ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN", "DIS
 const adminItems: {
   label: string;
   to: string;
-  lock: string;
   roles: string[];
   icon: ReactNode;
 }[] = [
   {
     label: "Global Settings",
     to: "/settings",
-    lock: "",
     roles: ALL_STAFF_ROLES,
     icon: settingsIcon,
   },
   {
     label: "Scheme Configuration",
     to: "/setup",
-    lock: "Regional+",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN", "REGIONAL_ADMIN"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -125,7 +122,6 @@ const adminItems: {
   {
     label: "Staff & Audit",
     to: "/system",
-    lock: "National",
     roles: ["SUPER_ADMIN", "NATIONAL_ADMIN"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -354,8 +350,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             ADMINISTRATION
           </div>
 
-          {adminItems.map((item) =>
-            user && item.roles.includes(user.role) ? (
+          {adminItems
+            .filter((item) => user && item.roles.includes(user.role))
+            .map((item) => (
               <NavLink
                 key={item.label}
                 to={item.to}
@@ -369,19 +366,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </span>
                 {item.label}
               </NavLink>
-            ) : (
-              <span
-                key={item.label}
-                className={`mb-0.5 cursor-not-allowed opacity-40 ${navItemBase}`}
-              >
-                <span className="h-4.5 w-4.5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
-                  {item.icon}
-                </span>
-                {item.label}
-                <span className={navSoonBadge}>{item.lock}</span>
-              </span>
-            ),
-          )}
+            ))}
         </nav>
 
         <div className="border-t border-white/8 px-5 pb-1 pt-3.5 text-[10.5px] text-nav-subtle">

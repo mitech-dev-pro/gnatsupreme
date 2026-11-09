@@ -29,6 +29,12 @@
   color: oklch(0.51 0.025 273);
   font-size: 13px;
 }
+.dash-actions-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
 .dash-actions {
   display: flex;
   gap: 10px;
@@ -496,6 +502,10 @@
   .dash-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .dash-actions-group {
+    width: 100%;
+    align-items: flex-start;
   }
   .dash-actions {
     width: 100%;

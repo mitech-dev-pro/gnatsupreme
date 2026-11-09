@@ -1,5 +1,7 @@
 import api from "@/lib/api";
-import { useAuth } from "@/lib/AuthContext";
+import { useAuth, type AuthUser } from "@/lib/AuthContext";
+import { useDistricts, type District } from "@/lib/useDistricts";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import AddEmailBanner from "./AddEmailBanner";
@@ -110,6 +112,29 @@ function Metric({
   );
 }
 
+// Surfaces exactly which district/region an admin was given (or confirms a national-level
+// account truly has no restriction) -- feedback from leadership was that this wasn't visible
+// anywhere, and an admin with no names resolved for a non-national role is worth flagging
+// rather than hiding, since it likely means their assignment is missing.
+function scopeLabel(user: AuthUser, districts: District[]) {
+  if (user.role === "DISTRICT_ADMIN") {
+    const names = districts.filter((d) => user.districtIds.includes(d.id)).map((d) => d.name);
+    return names.length
+      ? { text: `District: ${names.join(", ")}`, tone: "info" as const }
+      : { text: "No district assigned -- contact an administrator", tone: "danger" as const };
+  }
+  if (user.role === "REGIONAL_ADMIN") {
+    const regionsById = new Map(districts.map((d) => [d.region.id, d.region]));
+    const names = user.regionIds
+      .map((id) => regionsById.get(id)?.name)
+      .filter((name): name is string => Boolean(name));
+    return names.length
+      ? { text: `Region: ${names.join(", ")}`, tone: "info" as const }
+      : { text: "No region assigned -- contact an administrator", tone: "danger" as const };
+  }
+  return { text: "National -- all regions and districts", tone: "info" as const };
+}
+
 function timeAgo(value: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
   if (minutes < 1) return "Just now";
@@ -153,6 +178,7 @@ function EnrollmentChart({ data }: { data: DashboardData["enrollmentGrowth"] }) 
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { districts, loading: districtsLoading } = useDistricts();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -201,6 +227,7 @@ export default function Dashboard() {
 
   const claimsTotal = Object.values(data.claims.byStatus).reduce((sum, count) => sum + count, 0);
   const firstName = user?.fullName?.trim().split(/\s+/)[0];
+  const scope = user && !districtsLoading ? scopeLabel(user, districts) : null;
 
   const today = new Intl.DateTimeFormat(undefined, {
     weekday: "long",
@@ -208,22 +235,31 @@ export default function Dashboard() {
     month: "long",
   }).format(new Date());
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
   return (
     <div className="dashboard">
       <AddEmailBanner />
       <header className="dash-heading">
         <div>
           <p>{today}</p>
-          <h1>Good morning{firstName ? `, ${firstName}` : ""}</h1>
+          <h1>
+            {greeting}
+            {firstName ? `, ${firstName}` : ""}
+          </h1>
           <span>A quick view of membership operations and current exceptions.</span>
         </div>
-        <div className="dash-actions">
-          <Link className="dash-button dash-button--quiet" to="/members/upload">
-            Import members
-          </Link>
-          <Link className="dash-button dash-button--primary" to="/members/new">
-            <b>+</b> Add member
-          </Link>
+        <div className="dash-actions-group">
+          {scope && <StatusBadge tone={scope.tone}>{scope.text}</StatusBadge>}
+          <div className="dash-actions">
+            <Link className="dash-button dash-button--quiet" to="/members/upload">
+              Import members
+            </Link>
+            <Link className="dash-button dash-button--primary" to="/members/new">
+              <b>+</b> Add member
+            </Link>
+          </div>
         </div>
       </header>
 

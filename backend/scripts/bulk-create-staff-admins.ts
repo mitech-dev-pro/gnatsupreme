@@ -10,14 +10,16 @@ import { prisma } from "../src/lib/prisma.js";
 import { normalizeGhanaPhone } from "../src/lib/phone.js";
 import { tempPasswordExpiryInstant } from "../src/lib/account-setup.js";
 import { uniqueViolationField } from "../src/lib/prisma-errors.js";
+import { staffPasswordSchema } from "../src/modules/users/user.schemas.js";
 import { recordAudit } from "../src/modules/audit/audit.service.js";
 import { normalizeDistrictName, resolveDistrict } from "../src/modules/geography/district-match.js";
+import { ADJECTIVES, NOUNS } from "./temp-password-words.js";
 import type { UserRole } from "../src/generated/prisma/enums.js";
 
-// Bulk-creates phone-only GNAT regional/district secretary accounts (S0 in the phone-login
-// account-states table: setupRequired, no email, logs in with phone + a generated temp
-// password) from the reviewed rollout workbook, and writes a credentials export file
-// (name, GNAT title/"level", phone, temp password) for secure distribution.
+// Bulk-creates phone-only GNAT regional/district secretary accounts (setupRequired, no email,
+// logs in with phone + a generated temp password) from the reviewed rollout workbook, and
+// writes a credentials export file (name, GNAT title/"level", phone, temp password) for secure
+// distribution.
 //
 // Input: temp/GNAT_admin_accounts.xlsx, sheet "Accounts" -- the finalized, human-reviewed plan
 // (see temp/build_final_report.py and friends for how it was produced). Only rows whose Status
@@ -43,31 +45,47 @@ const inputPath = args.find((a) => !a.startsWith("--")) ?? DEFAULT_INPUT_PATH;
 const ACCEPTED_STATUSES = new Set(includeConfirm ? ["READY", "CONFIRM"] : ["READY"]);
 const VALID_ROLES = new Set<UserRole>(["REGIONAL_ADMIN", "DISTRICT_ADMIN"]);
 
-// Avoids characters easily confused on paper or a small phone screen (0/O, 1/l/I) -- these
-// passwords are read off a printed/shared list and typed in by hand during first setup.
-const LOWER = "abcdefghjkmnpqrstuvwxyz";
-const UPPER = "ABCDEFGHJKMNPQRSTUVWXYZ";
-const DIGITS = "23456789";
-const SPECIAL = "!@#$%*-_=+?";
-const ALL = LOWER + UPPER + DIGITS + SPECIAL;
+// temp-password-words.ts's two lists must still be large enough for the entropy trade-off in
+// the simplified-onboarding plan to hold (it assumes 2,000+ combinations) -- checked here,
+// against the lists as they actually are, rather than assumed from how large they looked when
+// written.
+const MIN_WORD_COMBINATIONS = 2_000;
+if (ADJECTIVES.length * NOUNS.length < MIN_WORD_COMBINATIONS) {
+  throw new Error(
+    `temp-password-words.ts only has ${ADJECTIVES.length * NOUNS.length} word combinations -- need at least ${MIN_WORD_COMBINATIONS}`,
+  );
+}
 
-function pick(alphabet: string) {
+// Digits exclude 0/1 (easily confused with the letters O/I that the word lists already avoid
+// leading with) and the symbol set is restricted to characters that survive SMS gateways and
+// are easy to type on a phone keyboard -- see the simplified-onboarding plan.
+const DIGITS = "23456789";
+const SYMBOLS = "!@#$%&*?";
+
+function pickOne<T>(items: readonly T[]): T {
+  return items[randomInt(items.length)]!;
+}
+
+function pickChar(alphabet: string): string {
   return alphabet[randomInt(alphabet.length)]!;
 }
 
-// Satisfies staffPasswordSchema (8+ chars, one each of lower/upper/digit/special) by
-// construction, then fills and shuffles rather than rejection-sampling. 16 chars total --
-// well above the minimum -- since these are machine-generated, not something a person has to
-// remember past their first setup.
+// Two short, common, unambiguous words (no letter-substitution -- the goal is reliable
+// SMS-typing, and a substituted 0/1 is exactly what people mistype, plus a reader can't tell
+// which letters were swapped) + 4 random digits + 1 random symbol. Satisfies
+// staffPasswordSchema (upper/lower/digit/special/8+) by construction; the digits and symbol
+// supply the real randomness beyond "which two words".
 function generateTempPassword(): string {
-  const required = [pick(LOWER), pick(UPPER), pick(DIGITS), pick(SPECIAL)];
-  const rest = Array.from({ length: 12 }, () => pick(ALL));
-  const chars = [...required, ...rest];
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
-  }
-  return chars.join("");
+  return `${pickOne(ADJECTIVES)}${pickOne(NOUNS)}${Array.from({ length: 4 }, () => pickChar(DIGITS)).join("")}${pickChar(SYMBOLS)}`;
+}
+
+// Regenerates on a collision so "unique" is exactly true within one run, not just
+// statistically likely.
+function generateUniqueTempPassword(used: Set<string>): string {
+  let candidate = generateTempPassword();
+  while (used.has(candidate)) candidate = generateTempPassword();
+  used.add(candidate);
+  return candidate;
 }
 
 type SheetRow = Record<string, unknown>;
@@ -305,9 +323,17 @@ async function main() {
   type Created = Candidate & { tempPassword: string };
   const created: Created[] = [];
   const failed: Skip[] = [];
+  const usedPasswords = new Set<string>();
 
   for (const c of toCreate) {
-    const tempPassword = generateTempPassword();
+    let tempPassword = generateUniqueTempPassword(usedPasswords);
+    // Defensive, same safety net every other password-accepting path in this app has --
+    // the generator is built to satisfy staffPasswordSchema by construction, so this should
+    // never actually fail, but a generator bug should be caught here, not surface as a
+    // created account nobody can ever log into.
+    if (!staffPasswordSchema.safeParse(tempPassword).success) {
+      tempPassword = generateUniqueTempPassword(usedPasswords);
+    }
     try {
       const passwordHash = await argon2.hash(tempPassword, {
         type: argon2.argon2id,
@@ -322,6 +348,7 @@ async function main() {
           email: null,
           setupRequired: true,
           tempPasswordExpiresAt: tempPasswordExpiryInstant(),
+          setupArmedAt: new Date(),
           passwordHash,
           role: c.role,
           regionIds: c.regionIds,

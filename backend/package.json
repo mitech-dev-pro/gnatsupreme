@@ -19,6 +19,7 @@
     "admin:create": "tsx scripts/create-admin.ts",
     "admin:reset-password": "tsx scripts/reset-admin-password.ts",
     "admin:bulk-create-staff": "tsx scripts/bulk-create-staff-admins.ts",
+    "admin:clear-phone-only-staff": "tsx scripts/clear-phone-only-staff-accounts.ts",
     "db:seed-geography": "tsx scripts/seed-geography.ts",
     "db:export-geography": "tsx scripts/export-live-geography.ts",
     "db:add-district-aliases": "tsx scripts/add-district-aliases.ts",

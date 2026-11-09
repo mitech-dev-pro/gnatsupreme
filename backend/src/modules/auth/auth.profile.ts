@@ -9,11 +9,14 @@ export async function sendStaffPasswordResetEmail(email: string, resetUrl: strin
   });
 }
 
-export async function sendStaffEmailVerificationEmail(email: string, confirmUrl: string) {
+// Sent to the OLD address whenever set-email replaces an already-set email with a new one --
+// lets the real account owner notice if someone else took over, since the old address is no
+// longer the password-reset destination after this.
+export async function sendStaffEmailChangedNotice(oldEmail: string, newEmail: string) {
   await emailProvider.send({
-    to: email,
-    subject: "Confirm your GNAT Supreme staff email address",
-    text: `Confirm this email address for your GNAT Supreme staff account.\n\nConfirm your email: ${confirmUrl}\n\nIf you did not request this, you can safely ignore this email.`,
-    html: `<p>Confirm this email address for your GNAT Supreme staff account.</p><p><a href="${confirmUrl}">Confirm your email</a></p><p>If you did not request this, you can safely ignore this email.</p>`,
+    to: oldEmail,
+    subject: "Your GNAT Supreme staff login email was changed",
+    text: `The login email for your GNAT Supreme staff account was changed from this address to ${newEmail}.\n\nIf you made this change, no action is needed. If you did not, contact an administrator immediately.`,
+    html: `<p>The login email for your GNAT Supreme staff account was changed from this address to ${newEmail}.</p><p>If you made this change, no action is needed. If you did not, contact an administrator immediately.</p>`,
   });
 }

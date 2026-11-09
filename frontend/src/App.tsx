@@ -12,7 +12,6 @@ import ChunkErrorBoundary from "@/components/ChunkErrorBoundary";
 const Login = lazy(() => import("@/pages/auth/Login"));
 const ResetPassword = lazy(() => import("@/pages/auth/ResetPassword"));
 const StaffSetup = lazy(() => import("@/pages/auth/StaffSetup"));
-const ConfirmEmail = lazy(() => import("@/pages/auth/ConfirmEmail"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MembersList = lazy(() => import("@/pages/members/MembersList"));
 const MemberDetail = lazy(() => import("@/pages/members/MemberDetail"));
@@ -53,7 +52,6 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/confirm-email" element={<ConfirmEmail />} />
 
               <Route element={<ProtectedRoute />}>
                 {/* No AppLayout -- a pending (setupRequired) account shouldn't see the app's

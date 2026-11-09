@@ -24,11 +24,6 @@ const environmentSchema = z.object({
   MEMBER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   MEMBER_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   STAFF_PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
-  // Longer than the password-reset TTL -- confirming an email is lower-stakes than a password
-  // reset, and GNAT field staff won't always check email same-day. The account's own
-  // reachability window (regionIds/districtIds-adjacent -- see User.pendingEmailExpiresAt) is a
-  // separate, longer 14-day constant in auth.tokens.ts, decoupled from this link's own TTL.
-  STAFF_EMAIL_VERIFICATION_TTL_MINUTES: z.coerce.number().int().min(60).max(20_160).default(4_320),
   SMS_PROVIDER: z.enum(["CONSOLE"]).default("CONSOLE"),
   EMAIL_PROVIDER: z.enum(["DEV", "SMTP"]).default("DEV"),
   SMTP_HOST: z.preprocess(

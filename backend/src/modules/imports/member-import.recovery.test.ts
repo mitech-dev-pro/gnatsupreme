@@ -24,7 +24,6 @@ const actor = {
   regionIds: [],
   email: "staff@example.test",
   fullName: "Staff",
-  pendingEmail: null,
   setupRequired: false,
 };
 const startedAt = new Date("2026-10-29T12:00:00.000Z");

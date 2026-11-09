@@ -13,12 +13,10 @@ import { isMemberPortalPath } from "@/lib/utils";
 export type AuthUser = {
   id: number;
   fullName: string;
-  // Nullable -- a bulk-created GNAT account has no confirmed email yet and logs in by phone
-  // instead. setupRequired is the server-enforced gate; pendingEmail lets the setup screen
-  // prefill a re-run instead of asking the person to retype it. See the backend's
-  // account-states table (middleware/authenticate.ts, modules/auth/auth.routes.ts).
+  // Nullable -- a bulk-created GNAT account has no email at creation and logs in by phone
+  // instead. Phone stays a valid login identifier forever, even after email is set. See the
+  // backend's simplified-onboarding plan.
   email: string | null;
-  pendingEmail?: string | null;
   setupRequired: boolean;
   role: string;
   // A region/district can legitimately appear in more than one admin's array (e.g. a shared
@@ -29,27 +27,18 @@ export type AuthUser = {
 
 export type LoginCredentials = { email: string; phone?: never } | { phone: string; email?: never };
 
-// Mirrors the backend's own isPending() (modules/users/user.routes.ts): setupRequired alone
-// misses S1 (setup already done, email still unconfirmed, setupRequired already false) -- any
-// code deciding whether to route someone back to /staff-setup needs this, not just
-// setupRequired on its own.
-export function isAccountPending(user: Pick<AuthUser, "setupRequired" | "email">): boolean {
-  return user.setupRequired || user.email === null;
-}
-
 type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
   login: (credentials: LoginCredentials, password: string) => Promise<AuthUser>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
   resetPassword: (token: string, password: string) => Promise<{ message: string }>;
-  completeSetup: (data: {
+  completeSetup: (data: { currentPassword: string; newPassword: string }) => Promise<AuthUser>;
+  setEmail: (data: {
     currentPassword: string;
-    newPassword?: string;
-    email?: string;
+    email: string;
+    confirmEmail: string;
   }) => Promise<AuthUser>;
-  confirmEmail: (token: string) => Promise<{ message: string }>;
-  resendVerificationEmail: () => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -159,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeSetup = useCallback(
-    async (data: { currentPassword: string; newPassword?: string; email?: string }) => {
+    async (data: { currentPassword: string; newPassword: string }) => {
       const res = await api.post("/auth/complete-setup", data);
       setAccessToken(res.data.accessToken);
       setUser(res.data.user);
@@ -169,18 +158,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [scheduleRefresh],
   );
 
-  const confirmEmail = useCallback(async (token: string) => {
-    const res = await api.post("/auth/confirm-email", { token });
-    return res.data as { message: string };
-  }, []);
-
-  const resendVerificationEmail = useCallback(async () => {
-    const res = await api.post("/auth/resend-verification-email");
-    setAccessToken(res.data.accessToken);
-    setUser(res.data.user);
-    scheduleRefresh(res.data.accessToken);
-    return res.data.user as AuthUser;
-  }, [scheduleRefresh]);
+  const setEmail = useCallback(
+    async (data: { currentPassword: string; email: string; confirmEmail: string }) => {
+      const res = await api.post("/auth/set-email", data);
+      // Not a credential change -- no new access token is issued, just a refreshed user object
+      // under the existing one.
+      setUser(res.data.user);
+      return res.data.user as AuthUser;
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
@@ -202,8 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword,
         resetPassword,
         completeSetup,
-        confirmEmail,
-        resendVerificationEmail,
+        setEmail,
         logout,
       }}
     >

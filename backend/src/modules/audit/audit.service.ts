@@ -36,8 +36,7 @@ export async function recordAudit(input: AuditInput) {
     // supply an explicit regionId/districtId, e.g. a plain login event) only has a single value
     // to fall back to when the actor has exactly one region/district. A multi-scope actor falls
     // back to null rather than arbitrarily picking the first of their regions/districts.
-    const actorRegionId =
-      input.actor?.regionIds?.length === 1 ? input.actor.regionIds[0]! : null;
+    const actorRegionId = input.actor?.regionIds?.length === 1 ? input.actor.regionIds[0]! : null;
     const actorDistrictId =
       input.actor?.districtIds?.length === 1 ? input.actor.districtIds[0]! : null;
     await prisma.auditLog.create({

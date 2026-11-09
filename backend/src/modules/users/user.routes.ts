@@ -3,17 +3,20 @@ import { Router, type Response } from "express";
 import type { ZodError } from "zod";
 
 import type { UserRole } from "../../generated/prisma/enums.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { invalidateStaffAuth } from "../../lib/auth-cache.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
-import { assertEmailAvailable, tempPasswordExpiryInstant } from "../../lib/account-setup.js";
+import {
+  assertEmailAvailable,
+  invalidatePasswordResetTokens,
+  tempPasswordExpiryInstant,
+} from "../../lib/account-setup.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { AppError } from "../../middleware/error-handler.js";
-import { env } from "../../config/env.js";
 import { recordAudit } from "../audit/audit.service.js";
-import { issuePendingEmail, sendPendingEmailVerification } from "../auth/auth.service.js";
 import {
   createUserSchema,
   updateUserPasswordSchema,
@@ -25,6 +28,11 @@ import {
 
 export const userRouter = Router();
 
+// Independent of (and a backstop under) the per-identifier login rate limiter -- see
+// auth.routes.ts. Shown here as a "Locked" badge so a mass lockout is visible at a glance
+// rather than inferred from support calls.
+const SETUP_LOCKOUT_THRESHOLD = 20;
+
 const staffManagers = authorizeRoles("SUPER_ADMIN", "NATIONAL_ADMIN");
 const publicUserSelect = {
   id: true,
@@ -32,6 +40,7 @@ const publicUserSelect = {
   email: true,
   phone: true,
   setupRequired: true,
+  setupFailedAttempts: true,
   role: true,
   isActive: true,
   regionIds: true,
@@ -45,6 +54,7 @@ type PublicUser = {
   email: string | null;
   phone: string | null;
   setupRequired: boolean;
+  setupFailedAttempts: number;
   role: UserRole;
   isActive: boolean;
   regionIds: number[];
@@ -52,13 +62,40 @@ type PublicUser = {
   createdAt: Date;
 };
 
-// An account is still "pending" -- no confirmed login identifier of its own besides phone yet --
-// whenever it hasn't replaced its temp password (setupRequired) or has no confirmed email
-// (email === null). Using setupRequired alone would miss the state where setup already
-// completed but the email is still unconfirmed (pendingEmail set, setupRequired false) --
-// see the account-states table in the phone-login plan.
-function isPending(user: { setupRequired: boolean; email: string | null }) {
-  return user.setupRequired || user.email === null;
+// Each user has a different setupArmedAt cutoff, so this can't be a plain groupBy with one
+// shared createdAt filter -- a raw DISTINCT ON join against the real per-user cutoff. Only
+// meaningful for phone-capable accounts whose setupArmedAt isn't null; everyone else maps to
+// nothing (shown as "--" by the caller). One query for a whole page, not one per row.
+async function fetchFirstLoginSinceArmed(
+  userIds: number[],
+): Promise<Map<number, { at: Date; ip: string | null }>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await prisma.$queryRaw<
+    { user_id: number; created_at: Date; ip_address: string | null }[]
+  >(
+    Prisma.sql`
+      SELECT DISTINCT ON (u.id) u.id AS user_id, al.created_at, al.ip_address
+      FROM users u
+      JOIN audit_logs al
+        ON al.entity_id = u.id::text
+        AND al.action = 'LOGIN_SUCCEEDED'
+        AND al.created_at >= u.setup_armed_at
+      WHERE u.id IN (${Prisma.join(userIds)}) AND u.setup_armed_at IS NOT NULL
+      ORDER BY u.id, al.created_at ASC
+    `,
+  );
+  return new Map(rows.map((row) => [row.user_id, { at: row.created_at, ip: row.ip_address }]));
+}
+
+function withSetupVisibility<T extends PublicUser>(
+  user: T,
+  firstLogin: { at: Date; ip: string | null } | undefined,
+) {
+  return {
+    ...user,
+    locked: user.setupFailedAttempts >= SETUP_LOCKOUT_THRESHOLD,
+    firstLoginSinceArmed: firstLogin ? { at: firstLogin.at, ip: firstLogin.ip } : null,
+  };
 }
 
 // regionIds/districtIds is just scalar ids on User -- there's no Prisma relation to `include`
@@ -142,7 +179,8 @@ async function resolveGeographicScope(
   }
 
   // DISTRICT_ADMIN
-  if (!districtIds?.length) throw new UserInputError("A district administrator requires a district");
+  if (!districtIds?.length)
+    throw new UserInputError("A district administrator requires a district");
   const districts = await prisma.district.findMany({ where: { id: { in: districtIds } } });
   if (districts.length !== districtIds.length) {
     throw new UserInputError("Selected district does not exist");
@@ -234,7 +272,12 @@ userRouter.get("/", async (request, response) => {
     }),
     cachedCount("users", where, () => prisma.user.count({ where })),
   ]);
-  const users = await Promise.all(rows.map(withGeographyNames));
+  const firstLogins = await fetchFirstLoginSinceArmed(rows.map((row) => row.id));
+  const users = await Promise.all(
+    rows.map(async (row) =>
+      withSetupVisibility(await withGeographyNames(row), firstLogins.get(row.id)),
+    ),
+  );
 
   response.json({
     success: true,
@@ -255,7 +298,11 @@ userRouter.get("/:id", async (request, response) => {
     response.status(404).json({ success: false, message: "User not found" });
     return;
   }
-  response.json({ success: true, data: await withGeographyNames(user) });
+  const firstLogins = await fetchFirstLoginSinceArmed([user.id]);
+  response.json({
+    success: true,
+    data: withSetupVisibility(await withGeographyNames(user), firstLogins.get(user.id)),
+  });
 });
 
 userRouter.post("/", async (request, response) => {
@@ -286,13 +333,12 @@ userRouter.post("/", async (request, response) => {
       parsed.data.regionIds,
       parsed.data.districtIds,
     );
-    // A phone-only account (no email) starts in S0 -- phone + a temp password, gated behind the
-    // setup wall until complete-setup replaces the password. See the account-states table in
-    // the phone-login plan.
+    // A phone-only account (no email) starts gated behind the setup wall until complete-setup
+    // replaces the password. See the simplified-onboarding plan.
     const isPhoneOnly = Boolean(parsed.data.phone) && !parsed.data.email;
     const user = await prisma.$transaction(async (tx) => {
-      // User schemas normalize email addresses to lowercase; checked (and any stale claim
-      // released) inside this transaction, same as every other write that sets email.
+      // User schemas normalize email addresses to lowercase; checked inside this transaction,
+      // same as every other write that sets email.
       if (parsed.data.email) await assertEmailAvailable(tx, parsed.data.email);
       return tx.user.create({
         data: {
@@ -301,6 +347,7 @@ userRouter.post("/", async (request, response) => {
           phone: parsed.data.phone ?? null,
           setupRequired: isPhoneOnly,
           tempPasswordExpiresAt: isPhoneOnly ? tempPasswordExpiryInstant() : null,
+          setupArmedAt: isPhoneOnly ? new Date() : null,
           passwordHash: await hashPassword(parsed.data.password),
           role: parsed.data.role,
           ...scope,
@@ -319,16 +366,20 @@ userRouter.post("/", async (request, response) => {
       regionId: legacyScalar(user.regionIds),
       districtId: legacyScalar(user.districtIds),
     });
-    response.status(201).json({ success: true, data: await withGeographyNames(user) });
+    response
+      .status(201)
+      .json({
+        success: true,
+        data: withSetupVisibility(await withGeographyNames(user), undefined),
+      });
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
       return;
     }
-    // AppError thrown by assertEmailAvailable (a genuine, already-live pendingEmail/email
-    // conflict) -- caught explicitly, same as UserInputError above, rather than left to the
-    // global error-handling middleware (this handler is also exercised directly in tests
-    // without going through that middleware).
+    // AppError thrown by assertEmailAvailable (a genuine email conflict) -- caught explicitly,
+    // same as UserInputError above, rather than left to the global error-handling middleware
+    // (this handler is also exercised directly in tests without going through that middleware).
     if (error instanceof AppError) {
       response
         .status(error.statusCode)
@@ -366,31 +417,16 @@ userRouter.patch("/:id", async (request, response) => {
     return;
   }
 
-  // Clearing a confirmed email is never allowed -- there's no legitimate admin workflow for
-  // reverting a confirmed account to phone-only, and allowing it would let the account drift
-  // back into matching the phone-login query's `email: null` clause (closed, by design, the
-  // moment an email is confirmed). Supplying a *new* value is handled below, inside the
-  // transaction, via the pending-vs-direct split. Already-null email + an explicit null patch is
-  // a no-op, not an error -- nothing to clear.
-  if (body.data.email === null && existing.email !== null) {
-    response
-      .status(400)
-      .json({ success: false, message: "Email cannot be cleared once confirmed" });
-    return;
-  }
-
-  // Pending condition covers S0/S0p/S1/S2a -- setupRequired alone would miss S1 (setup already
-  // replaced the password, but the email is still unconfirmed).
-  const pending = isPending(existing);
-  const writingDirectEmail = body.data.email != null && !pending;
-  const resultingEmail = writingDirectEmail ? body.data.email! : existing.email;
-  const resultingPending = existing.setupRequired || resultingEmail === null;
+  // An account can never end up with neither identifier -- symmetric in both directions now
+  // that an admin can freely clear a confirmed email (the old one-directional block existed
+  // only to stop phone login reopening, which is moot now that phone never closes; see the
+  // simplified-onboarding plan).
+  const resultingEmail = body.data.email !== undefined ? body.data.email : existing.email;
   const resultingPhone = body.data.phone !== undefined ? body.data.phone : existing.phone;
-  if (resultingPending && resultingPhone === null) {
+  if (resultingEmail === null && resultingPhone === null) {
     response.status(400).json({
       success: false,
-      message:
-        "This account has no confirmed email yet -- it needs a phone number to be reachable.",
+      message: "This account needs an email address or a phone number to be reachable.",
     });
     return;
   }
@@ -411,33 +447,22 @@ userRouter.patch("/:id", async (request, response) => {
           : existing.districtIds,
     );
 
-    let issuedVerificationToken: string | null = null;
     const user = await prisma.$transaction(async (tx) => {
-      if (body.data.email != null && pending) {
-        // Admin adding/changing an email on a pending account must not silently complete setup
-        // or bypass verification -- routes through the same pending-email path as self-service
-        // setup. This write extends pendingEmailExpiresAt, so it also revokes every refresh
-        // token for this user: without that, a dormant token that outlived the old window could
-        // otherwise come back to life the moment this write refreshes it.
-        issuedVerificationToken = await issuePendingEmail(tx, existing.id, body.data.email);
-        await tx.refreshToken.updateMany({
-          where: { userId: existing.id, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-      } else if (writingDirectEmail) {
-        await assertEmailAvailable(tx, body.data.email!, { excludeUserId: existing.id });
-        // Writing a confirmed email directly also clears any dangling pendingEmail/token --
-        // tidiness, not required for correctness.
-        await tx.userEmailVerificationToken.deleteMany({ where: { userId: existing.id } });
+      if (body.data.email !== undefined) {
+        if (body.data.email !== null) {
+          await assertEmailAvailable(tx, body.data.email, { excludeUserId: existing.id });
+        }
+        // Whenever this write changes or clears a previously-set email, an unconsumed reset
+        // link already sent to the OLD address must stop working -- a no-op if there wasn't
+        // one.
+        if (existing.email !== null) await invalidatePasswordResetTokens(tx, existing.id);
       }
 
       return tx.user.update({
         where: { id: existing.id },
         data: {
           ...(body.data.fullName !== undefined ? { fullName: body.data.fullName } : {}),
-          ...(writingDirectEmail
-            ? { email: body.data.email, pendingEmail: null, pendingEmailExpiresAt: null }
-            : {}),
+          ...(body.data.email !== undefined ? { email: body.data.email } : {}),
           ...(body.data.phone !== undefined ? { phone: body.data.phone } : {}),
           ...(body.data.role !== undefined ? { role: body.data.role } : {}),
           ...scope,
@@ -446,15 +471,6 @@ userRouter.patch("/:id", async (request, response) => {
       });
     });
     await invalidateStaffAuth(user.id);
-
-    if (issuedVerificationToken && body.data.email) {
-      sendPendingEmailVerification(
-        env.FRONTEND_ORIGIN,
-        user.id,
-        body.data.email,
-        issuedVerificationToken,
-      );
-    }
 
     await recordAudit({
       request,
@@ -468,16 +484,19 @@ userRouter.patch("/:id", async (request, response) => {
       regionId: legacyScalar(user.regionIds),
       districtId: legacyScalar(user.districtIds),
     });
-    response.json({ success: true, data: await withGeographyNames(user) });
+    const firstLogins = await fetchFirstLoginSinceArmed([user.id]);
+    response.json({
+      success: true,
+      data: withSetupVisibility(await withGeographyNames(user), firstLogins.get(user.id)),
+    });
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
       return;
     }
-    // AppError thrown by assertEmailAvailable (a genuine, already-live pendingEmail/email
-    // conflict) -- caught explicitly, same as UserInputError above, rather than left to the
-    // global error-handling middleware (this handler is also exercised directly in tests
-    // without going through that middleware).
+    // AppError thrown by assertEmailAvailable (a genuine email conflict) -- caught explicitly,
+    // same as UserInputError above, rather than left to the global error-handling middleware
+    // (this handler is also exercised directly in tests without going through that middleware).
     if (error instanceof AppError) {
       response
         .status(error.statusCode)
@@ -555,7 +574,11 @@ userRouter.patch("/:id/status", async (request, response) => {
     regionId: legacyScalar(user.regionIds),
     districtId: legacyScalar(user.districtIds),
   });
-  response.json({ success: true, data: await withGeographyNames(user) });
+  const firstLogins = await fetchFirstLoginSinceArmed([user.id]);
+  response.json({
+    success: true,
+    data: withSetupVisibility(await withGeographyNames(user), firstLogins.get(user.id)),
+  });
 });
 
 userRouter.patch("/:id/password", async (request, response) => {
@@ -570,28 +593,40 @@ userRouter.patch("/:id/password", async (request, response) => {
     return;
   }
 
-  // An admin-chosen password is a temp password by definition -- re-arm setupRequired whenever
-  // the account hasn't reached full S2 yet (email === null covers S0/S0p/S1; setupRequired
-  // alone would miss S2a, where this fresh password would otherwise be checked against a stale
-  // old tempPasswordExpiresAt and rejected the moment it's used). A normal reset on a fully
-  // set-up (S2) account stays a normal reset, unchanged.
-  const reArm = existing.email === null || existing.setupRequired;
+  // An admin resetting a phone-capable account's password is typically responding to an
+  // incident (wrong person got the SMS, lost access) -- re-arms setupRequired and clears
+  // whatever email is attached, cutting off that email as a login/reset path for whoever
+  // currently holds the account. Deliberately tied to "has a phone at all," not to how the
+  // account originated -- a classic admin who later gets a phone added inherits this too, by
+  // design, since the same insider-claiming risk now applies to them. A classic email-only
+  // admin (phone === null) is unaffected -- plain reset, as before.
+  const reArm = existing.phone !== null;
+  const clearingEmail = reArm && existing.email !== null;
 
-  await prisma.$transaction([
-    prisma.user.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
       where: { id: existing.id },
       data: {
         passwordHash: await hashPassword(body.data.password),
         ...(reArm
-          ? { setupRequired: true, tempPasswordExpiresAt: tempPasswordExpiryInstant() }
+          ? {
+              setupRequired: true,
+              tempPasswordExpiresAt: tempPasswordExpiryInstant(),
+              setupArmedAt: new Date(),
+              setupFailedAttempts: 0,
+            }
           : {}),
+        ...(clearingEmail ? { email: null } : {}),
       },
-    }),
-    prisma.refreshToken.updateMany({
+    });
+    // Same reset-token leak as set-email/admin PATCH /users/:id -- a reset link already sent
+    // to the cleared address must stop working the instant the email is cleared.
+    if (clearingEmail) await invalidatePasswordResetTokens(tx, existing.id);
+    await tx.refreshToken.updateMany({
       where: { userId: existing.id, revokedAt: null },
       data: { revokedAt: new Date() },
-    }),
-  ]);
+    });
+  });
   await invalidateStaffAuth(existing.id);
   await recordAudit({
     request,
@@ -600,6 +635,7 @@ userRouter.patch("/:id/password", async (request, response) => {
     entityType: "USER",
     entityId: existing.id,
     description: `Reset password and revoked sessions for ${existing.fullName}`,
+    ...(clearingEmail ? { beforeData: { email: existing.email }, afterData: { email: null } } : {}),
     regionId: legacyScalar(existing.regionIds),
     districtId: legacyScalar(existing.districtIds),
   });

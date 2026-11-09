@@ -18,7 +18,6 @@ const staff = {
   regionIds: [],
   fullName: "Staff",
   email: "staff@example.test",
-  pendingEmail: null,
   setupRequired: false,
 };
 const member = { id: 7, controllerId: "TEST7", fullName: "Member", status: "ACTIVE" as const };

@@ -1,6 +1,7 @@
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import type { Request, Response } from "express";
 import { logger } from "../lib/logger.js";
+import { normalizeGhanaPhone } from "../lib/phone.js";
 
 const jsonRateLimitHandler = (limiter: string) => (request: Request, response: Response) => {
   const resetTime = (
@@ -36,13 +37,53 @@ export const apiRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("api"),
 });
 
+// A blunt per-IP ceiling, loosened from the original 5 -- Ghanaian mobile carriers commonly
+// share a small public-IP pool via carrier-grade NAT, so a tight per-IP number alone risks
+// blocking bursts of legitimate people right after a credentials SMS goes out. The real
+// per-account protection is loginIdentifierRateLimiter below; this is just the network-wide
+// backstop underneath it.
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 5,
+  limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   handler: jsonRateLimitHandler("staff-login"),
+});
+
+// Keyed on the normalized identifier alone (no IP component) -- the point is to stop one
+// account being brute-forced from many different IPs, which loginRateLimiter's per-IP keying
+// can't do. keyGenerator runs on the raw request body before the zod schema does, so it has to
+// apply the exact same normalization the schema would (normalizeGhanaPhone / lowercase) itself,
+// or 0244.../+233244... and different email casings would each get their own bucket, silently
+// defeating the limit. Also must produce a key regardless of whether the identifier belongs to
+// a real account -- skipping that would let a timing/429 difference leak which phone numbers
+// have accounts. Falls back to the raw trimmed value if normalization ever throws, rather than
+// 500ing the request over a rate-limiter key.
+export const loginIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (request) => {
+    const body = request.body as { email?: unknown; phone?: unknown } | undefined;
+    if (typeof body?.email === "string" && body.email.trim()) {
+      return `email:${body.email.trim().toLowerCase()}`;
+    }
+    if (typeof body?.phone === "string" && body.phone.trim()) {
+      const raw = body.phone.trim();
+      let normalized: string;
+      try {
+        normalized = normalizeGhanaPhone(raw) ?? raw;
+      } catch {
+        normalized = raw;
+      }
+      return `phone:${normalized}`;
+    }
+    return "unknown";
+  },
+  handler: jsonRateLimitHandler("staff-login-identifier"),
 });
 
 export const forgotPasswordRateLimiter = rateLimit({
@@ -85,17 +126,16 @@ export const completeSetupIpRateLimiter = rateLimit({
   handler: jsonRateLimitHandler("staff-complete-setup-network"),
 });
 
-// Tighter than completeSetupRateLimiter -- a resend has no other input to validate (no
-// password, no new email), so the only cost of abuse is spamming the recipient's real inbox.
-// Same user-keyed reasoning as above; completeSetupIpRateLimiter is reused underneath it as the
-// network-wide ceiling rather than duplicating a second one.
-export const resendVerificationRateLimiter = rateLimit({
+// Same user-keyed reasoning as completeSetupRateLimiter -- a live session on a shared/
+// cybercafé computer shouldn't get unlimited password guesses against this endpoint just
+// because it isn't the login route (set-email also requires currentPassword).
+export const setEmailRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 3,
+  limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (_request, response) => String(response.locals.user?.id ?? "unknown"),
-  handler: jsonRateLimitHandler("staff-resend-verification"),
+  handler: jsonRateLimitHandler("staff-set-email"),
 });
 
 export const refreshRateLimiter = rateLimit({

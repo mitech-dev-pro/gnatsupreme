@@ -14,7 +14,7 @@ jobs:
       # (see backend/src/test/fixtures.ts) and never opens a real database connection, so
       # these only need to satisfy backend/src/config/env.ts's Zod validation at startup.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-      JWT_ACCESS_SECRET: ci-only-placeholder-secret-00000000000000000000000000000000
+      JWT_ACCESS_SECRET: ci-only-placeholder-secret-0000000000000000000000000000000000000000
       FRONTEND_ORIGIN: http://localhost:3000
     steps:
       - uses: actions/checkout@v4

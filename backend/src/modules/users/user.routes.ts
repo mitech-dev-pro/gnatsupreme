@@ -8,11 +8,7 @@ import { prisma } from "../../lib/prisma.js";
 import { invalidateStaffAuth } from "../../lib/auth-cache.js";
 import { cachedCount } from "../../lib/cached-count.js";
 import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
-import {
-  assertEmailAvailable,
-  invalidatePasswordResetTokens,
-  tempPasswordExpiryInstant,
-} from "../../lib/account-setup.js";
+import { assertEmailAvailable, invalidatePasswordResetTokens } from "../../lib/account-setup.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { AppError } from "../../middleware/error-handler.js";
@@ -346,7 +342,6 @@ userRouter.post("/", async (request, response) => {
           email: parsed.data.email ?? null,
           phone: parsed.data.phone ?? null,
           setupRequired: isPhoneOnly,
-          tempPasswordExpiresAt: isPhoneOnly ? tempPasswordExpiryInstant() : null,
           setupArmedAt: isPhoneOnly ? new Date() : null,
           passwordHash: await hashPassword(parsed.data.password),
           role: parsed.data.role,
@@ -366,12 +361,10 @@ userRouter.post("/", async (request, response) => {
       regionId: legacyScalar(user.regionIds),
       districtId: legacyScalar(user.districtIds),
     });
-    response
-      .status(201)
-      .json({
-        success: true,
-        data: withSetupVisibility(await withGeographyNames(user), undefined),
-      });
+    response.status(201).json({
+      success: true,
+      data: withSetupVisibility(await withGeographyNames(user), undefined),
+    });
   } catch (error) {
     if (error instanceof UserInputError) {
       response.status(400).json({ success: false, message: error.message });
@@ -611,7 +604,6 @@ userRouter.patch("/:id/password", async (request, response) => {
         ...(reArm
           ? {
               setupRequired: true,
-              tempPasswordExpiresAt: tempPasswordExpiryInstant(),
               setupArmedAt: new Date(),
               setupFailedAttempts: 0,
             }

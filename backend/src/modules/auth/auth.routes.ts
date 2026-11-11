@@ -8,11 +8,7 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { invalidateStaffAuth } from "../../lib/auth-cache.js";
 import { uniqueViolationField, uniqueFieldLabel } from "../../lib/prisma-errors.js";
-import {
-  assertEmailAvailable,
-  invalidatePasswordResetTokens,
-  isExpired,
-} from "../../lib/account-setup.js";
+import { assertEmailAvailable, invalidatePasswordResetTokens } from "../../lib/account-setup.js";
 import {
   authenticate,
   authenticateAllowPendingSetup,
@@ -146,11 +142,6 @@ authRouter.post(
             where: { phone: parsed.data.phone ?? "__invalid__" },
             omit: { passwordHash: false },
           });
-
-      // A still-temp password (setupRequired) expires after TEMP_PASSWORD_TTL_DAYS unclaimed --
-      // closes the account to login exactly like a lookup miss. The decoy-hash verify below
-      // still runs regardless, so expiry state is never observable via timing.
-      if (user?.setupRequired && isExpired(user.tempPasswordExpiresAt)) user = null;
 
       // Hard lockout: once a setupRequired account has racked up SETUP_LOCKOUT_THRESHOLD failed
       // attempts, login is rejected outright regardless of the password supplied -- still runs
@@ -345,7 +336,7 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
     const session = await prisma.refreshToken.findUnique({
       where: { tokenHash: currentTokenHash },
       include: {
-        user: { select: { ...publicUserSelect, isActive: true, tempPasswordExpiresAt: true } },
+        user: { select: { ...publicUserSelect, isActive: true } },
       },
     });
 
@@ -355,24 +346,6 @@ authRouter.post("/refresh", refreshRateLimiter, requireXhrHeader, async (request
       session.expiresAt <= new Date() ||
       !session.user.isActive
     ) {
-      response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
-      response.status(401).json({ success: false, message: "Refresh session is invalid" });
-      return;
-    }
-
-    // /refresh is a second path into a live session, not just login -- refresh tokens rotate to
-    // a brand-new full TTL on every call (see refreshTokenExpiresAt), so without this check a
-    // session could slide forever past an account's own expiry. This is a backstop, not the
-    // primary defense -- the primary defense is that every write extending an expiry window also
-    // revokes every refresh token for that user. Revoking the one token presented here still
-    // matters: it kills the specific token that gets caught actively trying to refresh past
-    // expiry, immediately, rather than leaving it live until some later write happens to sweep it
-    // up.
-    if (session.user.setupRequired && isExpired(session.user.tempPasswordExpiresAt)) {
-      await prisma.refreshToken.updateMany({
-        where: { id: session.id, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
       response.clearCookie(env.REFRESH_COOKIE_NAME, refreshCookieOptions);
       response.status(401).json({ success: false, message: "Refresh session is invalid" });
       return;
@@ -510,7 +483,6 @@ authRouter.post(
         data: {
           passwordHash: await hashPassword(parsed.data.newPassword),
           setupRequired: false,
-          tempPasswordExpiresAt: null,
           setupFailedAttempts: 0,
         },
       });

@@ -8,7 +8,6 @@ import { confirm, input } from "@inquirer/prompts";
 
 import { prisma } from "../src/lib/prisma.js";
 import { normalizeGhanaPhone } from "../src/lib/phone.js";
-import { tempPasswordExpiryInstant } from "../src/lib/account-setup.js";
 import { uniqueViolationField } from "../src/lib/prisma-errors.js";
 import { staffPasswordSchema } from "../src/modules/users/user.schemas.js";
 import { recordAudit } from "../src/modules/audit/audit.service.js";
@@ -347,7 +346,6 @@ async function main() {
           phone: c.phone,
           email: null,
           setupRequired: true,
-          tempPasswordExpiresAt: tempPasswordExpiryInstant(),
           setupArmedAt: new Date(),
           passwordHash,
           role: c.role,

@@ -189,7 +189,6 @@ function phoneAccount(overrides: Partial<Record<string, unknown>> = {}) {
     fullName: "Phone Admin",
     email: null,
     setupRequired: true,
-    tempPasswordExpiresAt: new Date(Date.now() + 60_000),
     setupFailedAttempts: 0,
     passwordHash: testPasswordHash,
     isActive: true,
@@ -226,7 +225,6 @@ test("login by phone still works after an email has been set -- phone never clos
   stub(t, prisma.user, "findFirst", async () =>
     phoneAccount({
       setupRequired: false,
-      tempPasswordExpiresAt: null,
       email: "staff@example.test",
     }),
   );
@@ -242,19 +240,6 @@ test("login by phone still works after an email has been set -- phone never clos
   );
   assert.equal(res.code, 200);
   assert.equal((res.body as { user: { email: string } }).user.email, "staff@example.test");
-});
-
-test("login by phone is rejected the instant tempPasswordExpiresAt passes", async (t) => {
-  stub(t, prisma.user, "findFirst", async () =>
-    phoneAccount({ tempPasswordExpiresAt: new Date(Date.now() - 1_000) }),
-  );
-  stub(t, prisma.auditLog, "create", async () => ({}));
-  const res = response();
-  await postHandler(authRouter, "/login")(
-    { body: { phone: "0244000000", password: "Str0ng!TestPassw0rd" } },
-    res,
-  );
-  assert.equal(res.code, 401);
 });
 
 test("login increments setupFailedAttempts on a wrong password while setupRequired", async (t) => {
@@ -315,42 +300,6 @@ test("login hard-locks a setupRequired account at the failed-attempt threshold, 
   assert.equal(update.mock.callCount(), 1);
 });
 
-test("/refresh rejects an expired pending session and revokes the presented token", async (t) => {
-  stub(t, prisma.refreshToken, "findUnique", async () => ({
-    id: 10,
-    userId: 4,
-    revokedAt: null,
-    expiresAt: new Date(Date.now() + 60_000),
-    user: {
-      id: 4,
-      fullName: "Phone Admin",
-      email: null,
-      setupRequired: true,
-      tempPasswordExpiresAt: new Date(Date.now() - 1_000),
-      isActive: true,
-      role: "DISTRICT_ADMIN",
-      regionIds: [],
-      districtIds: [],
-    },
-  }));
-  const revoke = stub(
-    t,
-    prisma.refreshToken,
-    "updateMany",
-    async (args: { where: { id: number; revokedAt: null } }) => {
-      assert.deepEqual(args.where, { id: 10, revokedAt: null });
-      return { count: 1 };
-    },
-  );
-  const res = response();
-  await postHandler(authRouter, "/refresh")(
-    { cookies: { gnat_refresh_token: "sometoken" }, get: () => "XMLHttpRequest" } as never,
-    res,
-  );
-  assert.equal(res.code, 401);
-  assert.equal(revoke.mock.callCount(), 1);
-});
-
 test("complete-setup succeeds, clears setupRequired, and rejects the shared temp password as the new one", async (t) => {
   stubCache(t);
   stub(t, prisma.user, "findUnique", async () => ({
@@ -363,7 +312,6 @@ test("complete-setup succeeds, clears setupRequired, and rejects the shared temp
   );
   const update = stub(t, prisma.user, "update", async (args: { data: Record<string, unknown> }) => {
     assert.equal(args.data.setupRequired, false);
-    assert.equal(args.data.tempPasswordExpiresAt, null);
     assert.equal(args.data.setupFailedAttempts, 0);
     return {};
   });

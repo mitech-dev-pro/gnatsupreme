@@ -1,24 +1,6 @@
 import type { Prisma } from "../generated/prisma/client.js";
 import { AppError } from "../middleware/error-handler.js";
 
-// Shared by every write that extends User.tempPasswordExpiresAt -- however an account got
-// there, it has 7 days of reachability from the last time it was armed. Deliberately short:
-// the simplified onboarding scheme trades a random-word temp password's entropy for
-// typability (see the account-states plan), so a short window matters more here than it did
-// for the old per-account random-character passwords.
-export const TEMP_PASSWORD_TTL_DAYS = 7;
-
-export function tempPasswordExpiryInstant(): Date {
-  return new Date(Date.now() + TEMP_PASSWORD_TTL_DAYS * 24 * 60 * 60 * 1_000);
-}
-
-// User.tempPasswordExpiresAt stores the expiry instant directly (not an issue time) -- every
-// caller does a plain isExpired(column), never TTL math at the call site. A missing expiry
-// reads as already-expired (fails closed).
-export function isExpired(at: Date | null): boolean {
-  return at === null || at.getTime() <= Date.now();
-}
-
 // Called inside the caller's own transaction by every write path that sets User.email
 // (self-service set-email, admin update) -- no "pending" concept exists anymore, so this is
 // just a plain uniqueness check, not a stale-claim release.

@@ -57,6 +57,11 @@ test("creating a user with an email already in use is rejected", async (t) => {
   );
   stub(t, prisma.user, "updateMany", async () => ({ count: 0 }));
   stub(t, prisma.user, "findFirst", async () => ({ id: 9 }));
+  // resolveGeographicScope runs before the email-uniqueness check, so a DISTRICT_ADMIN create
+  // still needs this stubbed -- without it, the call falls through to a real, unstubbed
+  // district.findMany and only "passes" by accident against whatever a local dev database
+  // happens to contain (and fails outright with no real database reachable, as in CI).
+  stub(t, prisma.district, "findMany", async () => [{ id: 4, regionId: 2 }]);
   const res = response("SUPER_ADMIN");
   await postHandler(userRouter, "/")(
     {

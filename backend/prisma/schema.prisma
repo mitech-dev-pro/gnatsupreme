@@ -297,13 +297,11 @@ model User {
   // temp password an admin just re-armed) -- gates every route except the setup
   // allowlist, see middleware/authenticate.ts's authenticateAllowPendingSetup.
   setupRequired               Boolean                       @default(false) @map("setup_required")
-  // Expiry instant (not an issue time) for the temp password -- compared directly via
-  // isExpired(), never with TTL math at the call site.
-  tempPasswordExpiresAt       DateTime?                     @map("temp_password_expires_at")
   // Set every time setupRequired is armed (bulk-create, admin reset) and never cleared --
   // the stored instant a "first login since this account was last armed" report needs.
-  // tempPasswordExpiresAt gets cleared on completion, and the TTL constant it's derived
-  // from can change over time, so neither can stand in for this after the fact.
+  // Temp passwords deliberately don't expire (leadership call: a secretary who doesn't log
+  // in within some window shouldn't be silently locked out) -- setupFailedAttempts' hard
+  // lockout and the per-identifier login rate limiter are what caps guessing instead.
   setupArmedAt                DateTime?                     @map("setup_armed_at")
   // Hard lockout counter, independent of (and a backstop under) the per-identifier login
   // rate limiter -- caps total guesses against one account for its whole life in the

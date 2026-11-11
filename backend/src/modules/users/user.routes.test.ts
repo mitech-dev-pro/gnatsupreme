@@ -381,7 +381,6 @@ test("an admin password reset on a phone-capable account re-arms setup and clear
   );
   const update = stub(t, prisma.user, "update", async (args: { data: Record<string, unknown> }) => {
     assert.equal(args.data.setupRequired, true);
-    assert.ok(args.data.tempPasswordExpiresAt instanceof Date);
     assert.ok(args.data.setupArmedAt instanceof Date);
     assert.equal(args.data.setupFailedAttempts, 0);
     assert.equal(args.data.email, null);

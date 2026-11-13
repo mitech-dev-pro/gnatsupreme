@@ -28,7 +28,9 @@ export async function findReviewableChangeRequest(id: number, actor: Authenticat
   });
 }
 
-type ChangeRequestWithMember = NonNullable<Awaited<ReturnType<typeof findReviewableChangeRequest>>>;
+export type ChangeRequestWithMember = NonNullable<
+  Awaited<ReturnType<typeof findReviewableChangeRequest>>
+>;
 
 // Shared by both the single-item and bulk review routes -- every validation check and the
 // approve/return/reject transaction itself must stay byte-identical between the two, or a

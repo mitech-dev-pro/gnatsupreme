@@ -85,7 +85,10 @@ export async function memberGhanaCardConflict(
 }
 
 // Real duplicate-spouse-claim: same card belongs to a DIFFERENT Spouse row -- two families can't
-// both claim the same person as their spouse. Stays blocking.
+// both claim the same person as their spouse. Stays blocking. Selects enough about the
+// conflicting record (its own member) that a caller can report exactly who already holds the
+// card, not just that a conflict exists -- every current caller only does a truthy check, so this
+// is additive and doesn't change their behavior.
 export async function spouseGhanaCardConflict(
   ghanaCardId: string | null | undefined,
   exclusions: { spouseId?: number } = {},
@@ -94,7 +97,11 @@ export async function spouseGhanaCardConflict(
   if (!ghanaCardId) return null;
   return db.spouse.findFirst({
     where: { ghanaCardId, ...(exclusions.spouseId ? { id: { not: exclusions.spouseId } } : {}) },
-    select: { id: true },
+    select: {
+      id: true,
+      fullName: true,
+      member: { select: { id: true, controllerId: true, fullName: true } },
+    },
   });
 }
 

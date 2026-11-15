@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request, Response } from "express";
+import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { stub, routeHandler } from "../../test/fixtures.js";
 import { AppError } from "../../middleware/error-handler.js";
@@ -307,4 +308,79 @@ test("bulk review skips stale versions while committing the other decision", asy
   assert.equal(result.failed, 1);
   assert.match(result.results[1]!.message!, /request changed/);
   assert.equal(writes.mock.callCount(), 1);
+});
+
+test("approving a MEMBER_DETAILS change proposing a phone already in use gets a clean 409, not a raw Prisma error", async (t) => {
+  mocks(t);
+  stub(t, prisma.memberChangeRequest, "findFirst", async () => ({
+    ...original,
+    status: "PENDING",
+    proposedData: { phone: "0241234567" },
+    member: {
+      fullName: "Member",
+      phone: "0241111111",
+      beneficiaries: [],
+      districtId: 9,
+      district: { regionId: 3 },
+    },
+  }));
+  stub(t, prisma.memberChangeRequest, "updateMany", async () => ({ count: 1 }));
+  stub(t, prisma.member, "update", async () => {
+    throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "test",
+      meta: { target: ["phone"] },
+    });
+  });
+  const layer = changeRequestRouter.stack.find((entry) => entry.route?.path === "/:id/review");
+  const handle = layer!.route!.stack.at(-1)!.handle;
+  await assert.rejects(
+    handle(
+      { params: { id: "42" }, body: { action: "APPROVE" } } as unknown as Request,
+      { ...response(), locals: { user: { id: 1, role: "SUPER_ADMIN" } } } as unknown as Response,
+      () => {},
+    ),
+    { statusCode: 409, message: /Phone number is already in use/i },
+  );
+});
+
+test("approving a SPOUSE change with a duplicate Ghana Card ID reports who already holds it", async (t) => {
+  mocks(t);
+  stub(t, prisma.memberChangeRequest, "findFirst", async () => ({
+    ...original,
+    type: "SPOUSE",
+    status: "PENDING",
+    proposedData: { fullName: "New Spouse", ghanaCardId: "GHA-123456789-0" },
+    member: {
+      fullName: "Member",
+      ghanaCardId: "GHA-999999999-9",
+      beneficiaries: [],
+      districtId: 9,
+      district: { regionId: 3 },
+    },
+  }));
+  stub(t, prisma.spouse, "findUnique", async () => null);
+  stub(t, prisma.spouse, "findFirst", async () => ({
+    id: 55,
+    fullName: "Existing Spouse",
+    member: { id: 88, controllerId: "GNAT2020088", fullName: "Other Member" },
+  }));
+  const layer = changeRequestRouter.stack.find((entry) => entry.route?.path === "/:id/review");
+  const handle = layer!.route!.stack.at(-1)!.handle;
+  await assert.rejects(
+    handle(
+      { params: { id: "42" }, body: { action: "APPROVE" } } as unknown as Request,
+      { ...response(), locals: { user: { id: 1, role: "SUPER_ADMIN" } } } as unknown as Response,
+      () => {},
+    ),
+    {
+      statusCode: 409,
+      message: /already in use/i,
+      details: {
+        existingSpouseId: 55,
+        existingSpouseName: "Existing Spouse",
+        member: { id: 88, controllerId: "GNAT2020088", fullName: "Other Member" },
+      },
+    },
+  );
 });

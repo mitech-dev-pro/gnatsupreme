@@ -11,6 +11,7 @@ import { cachedCount } from "../../lib/cached-count.js";
 import { prisma } from "../../lib/prisma.js";
 import { authenticate, type AuthenticatedUser } from "../../middleware/authenticate.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
+import { AppError } from "../../middleware/error-handler.js";
 import { recordAudit } from "../audit/audit.service.js";
 import { memberScope } from "../members/member.access.js";
 import { auditLinkChanges, relinkSpousesForMember } from "../members/member.service.js";
@@ -873,7 +874,13 @@ changeRequestRouter.post(
       return;
     }
     const actor = user(response);
-    const results: Array<{ id: number; success: boolean; message?: string; status?: string }> = [];
+    const results: Array<{
+      id: number;
+      success: boolean;
+      message?: string;
+      details?: unknown;
+      status?: string;
+    }> = [];
     for (const id of body.data.changeRequestIds) {
       try {
         const item = await findReviewableChangeRequest(id, actor);
@@ -921,6 +928,9 @@ changeRequestRouter.post(
           id,
           success: false,
           message: error instanceof Error ? error.message : "Review failed",
+          ...(error instanceof AppError && error.details !== undefined
+            ? { details: error.details }
+            : {}),
         });
       }
     }

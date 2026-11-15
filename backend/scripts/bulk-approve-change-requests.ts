@@ -8,6 +8,7 @@ import {
 } from "../src/modules/workflows/change-request.decision.js";
 import { notifyChangeReviewed } from "../src/modules/workflows/change-request.notifications.js";
 import type { AuthenticatedUser } from "../src/middleware/authenticate.js";
+import { AppError } from "../src/middleware/error-handler.js";
 import type { ChangeRequestType } from "../src/generated/prisma/enums.js";
 
 // Approves every PENDING member change request, system-wide -- the same applyChangeRequestDecision
@@ -111,7 +112,7 @@ async function main() {
   const requestSource = { ip: null, userAgent: "bulk-approve-change-requests script" };
 
   let succeeded = 0;
-  const failed: { id: number; memberName: string; message: string }[] = [];
+  const failed: { id: number; memberName: string; message: string; details?: unknown }[] = [];
   for (const item of pending) {
     try {
       const reviewed = await applyChangeRequestDecision(
@@ -139,12 +140,18 @@ async function main() {
         id: item.id,
         memberName: item.member.fullName,
         message: error instanceof Error ? error.message : "Approval failed",
+        ...(error instanceof AppError && error.details !== undefined
+          ? { details: error.details }
+          : {}),
       });
     }
   }
 
   console.log(`\n${succeeded} approved, ${failed.length} failed.`);
-  for (const f of failed) console.log(`  #${f.id}  ${f.memberName}  ${f.message}`);
+  for (const f of failed) {
+    console.log(`  #${f.id}  ${f.memberName}  ${f.message}`);
+    if (f.details !== undefined) console.log(`    ${JSON.stringify(f.details)}`);
+  }
 }
 
 main()

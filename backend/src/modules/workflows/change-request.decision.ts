@@ -2,6 +2,7 @@ import { AppError } from "../../middleware/error-handler.js";
 import type { AuthenticatedUser } from "../../middleware/authenticate.js";
 import { invalidateMemberAuth } from "../../lib/auth-cache.js";
 import { prisma } from "../../lib/prisma.js";
+import { uniqueFieldLabel, uniqueViolationField } from "../../lib/prisma-errors.js";
 import { type AuditRequestSource } from "../audit/audit.service.js";
 import { reserveChangeReview } from "./change-request.concurrency.js";
 import { memberScope } from "../members/member.access.js";
@@ -57,11 +58,23 @@ export async function applyChangeRequestDecision(
       where: { memberId: item.memberId },
       select: { id: true, ghanaCardId: true },
     });
-    if (
-      (data.ghanaCardId != null && data.ghanaCardId === item.member.ghanaCardId) ||
-      (await spouseGhanaCardConflict(data.ghanaCardId, { spouseId: existingSpouse?.id }))
-    ) {
-      throw new AppError(409, "The proposed spouse Ghana Card ID is already in use");
+    if (data.ghanaCardId != null && data.ghanaCardId === item.member.ghanaCardId) {
+      throw new AppError(409, "The proposed spouse Ghana Card ID matches the member's own card");
+    }
+    const conflict = await spouseGhanaCardConflict(data.ghanaCardId, {
+      spouseId: existingSpouse?.id,
+    });
+    if (conflict) {
+      throw new AppError(
+        409,
+        "The proposed spouse Ghana Card ID is already in use",
+        "SPOUSE_GHANA_CARD_CONFLICT",
+        {
+          existingSpouseId: conflict.id,
+          existingSpouseName: conflict.fullName,
+          member: conflict.member,
+        },
+      );
     }
   }
   if (
@@ -85,74 +98,88 @@ export async function applyChangeRequestDecision(
   let reviewed: Awaited<ReturnType<typeof prisma.memberChangeRequest.findUnique>> = null;
   let linkChanges: Awaited<ReturnType<typeof relinkSpousesForMember>> = [];
   if (action === "APPROVE") {
-    await prisma.$transaction(async (transaction) => {
-      await reserveChangeReview(transaction, item, actor);
-      if (item.type === "MEMBER_DETAILS") {
-        const data = memberDetailsChangeSchema.parse(item.proposedData);
-        const updatedMember = await transaction.member.update({
-          where: { id: item.memberId },
+    // Only ghanaCardId is pre-checked above (memberGhanaCardConflict) -- phone has no equivalent
+    // pre-check, so a MEMBER_DETAILS change proposing a phone already in use on another member
+    // would otherwise throw the raw Prisma P2002 straight out of this function instead of a
+    // friendly, catchable AppError. Same conversion member.routes.ts's PATCH /:id already does
+    // for the same race.
+    try {
+      await prisma.$transaction(async (transaction) => {
+        await reserveChangeReview(transaction, item, actor);
+        if (item.type === "MEMBER_DETAILS") {
+          const data = memberDetailsChangeSchema.parse(item.proposedData);
+          const updatedMember = await transaction.member.update({
+            where: { id: item.memberId },
+            data: {
+              ...data,
+              ...(Object.prototype.hasOwnProperty.call(data, "phone") &&
+              data.phone !== item.member.phone
+                ? { phoneVerifiedAt: null }
+                : {}),
+            },
+          });
+          if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
+            linkChanges = await relinkSpousesForMember(
+              transaction,
+              item.memberId,
+              updatedMember.ghanaCardId,
+            );
+          }
+        }
+        if (item.type === "SPOUSE") {
+          const data = spouseSchema.parse(item.proposedData);
+          const upsertedSpouse = await transaction.spouse.upsert({
+            where: { memberId: item.memberId },
+            update: data,
+            create: { ...data, memberId: item.memberId },
+          });
+          await transaction.member.update({
+            where: { id: item.memberId },
+            data: { spouseDeclarationStatus: "HAS_SPOUSE" },
+          });
+          const change = await reconcileSpouseLink(
+            transaction,
+            upsertedSpouse.id,
+            upsertedSpouse.ghanaCardId,
+            item.memberId,
+            existingSpouse?.ghanaCardId,
+          );
+          if (change) linkChanges = [change];
+        }
+        if (item.type === "BENEFICIARY_ADD")
+          await transaction.beneficiary.create({
+            data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId },
+          });
+        if (item.type === "BENEFICIARY_UPDATE")
+          await transaction.beneficiary.update({
+            where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
+            data: beneficiarySchema.parse(item.proposedData),
+          });
+        if (item.type === "BENEFICIARY_REMOVE") {
+          if (item.member.beneficiaries.length <= 1)
+            throw new AppError(409, "A member must retain at least one beneficiary");
+          await transaction.beneficiary.delete({
+            where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
+          });
+        }
+        reviewed = await transaction.memberChangeRequest.update({
+          where: { id: item.id },
           data: {
-            ...data,
-            ...(Object.prototype.hasOwnProperty.call(data, "phone") &&
-            data.phone !== item.member.phone
-              ? { phoneVerifiedAt: null }
-              : {}),
+            status: "APPROVED",
+            reviewedById: actor.id,
+            reviewNote: note,
+            reviewedAt: new Date(),
           },
         });
-        if (Object.prototype.hasOwnProperty.call(data, "ghanaCardId")) {
-          linkChanges = await relinkSpousesForMember(
-            transaction,
-            item.memberId,
-            updatedMember.ghanaCardId,
-          );
-        }
-      }
-      if (item.type === "SPOUSE") {
-        const data = spouseSchema.parse(item.proposedData);
-        const upsertedSpouse = await transaction.spouse.upsert({
-          where: { memberId: item.memberId },
-          update: data,
-          create: { ...data, memberId: item.memberId },
-        });
-        await transaction.member.update({
-          where: { id: item.memberId },
-          data: { spouseDeclarationStatus: "HAS_SPOUSE" },
-        });
-        const change = await reconcileSpouseLink(
-          transaction,
-          upsertedSpouse.id,
-          upsertedSpouse.ghanaCardId,
-          item.memberId,
-          existingSpouse?.ghanaCardId,
-        );
-        if (change) linkChanges = [change];
-      }
-      if (item.type === "BENEFICIARY_ADD")
-        await transaction.beneficiary.create({
-          data: { ...beneficiarySchema.parse(item.proposedData), memberId: item.memberId },
-        });
-      if (item.type === "BENEFICIARY_UPDATE")
-        await transaction.beneficiary.update({
-          where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
-          data: beneficiarySchema.parse(item.proposedData),
-        });
-      if (item.type === "BENEFICIARY_REMOVE") {
-        if (item.member.beneficiaries.length <= 1)
-          throw new AppError(409, "A member must retain at least one beneficiary");
-        await transaction.beneficiary.delete({
-          where: { id: item.targetBeneficiaryId!, memberId: item.memberId },
-        });
-      }
-      reviewed = await transaction.memberChangeRequest.update({
-        where: { id: item.id },
-        data: {
-          status: "APPROVED",
-          reviewedById: actor.id,
-          reviewNote: note,
-          reviewedAt: new Date(),
-        },
       });
-    });
+    } catch (error) {
+      const violatedField = uniqueViolationField(error);
+      if (violatedField === null) throw error;
+      throw new AppError(
+        409,
+        `${uniqueFieldLabel(violatedField)} is already in use by another record`,
+      );
+    }
     await invalidateMemberAuth(item.memberId);
     await auditLinkChanges(request, actor, linkChanges);
   } else {

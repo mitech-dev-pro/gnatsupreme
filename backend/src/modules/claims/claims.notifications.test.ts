@@ -26,10 +26,7 @@ for (const action of ["APPROVE", "RETURN", "REJECT"] as const) {
         assert.equal(args.create.memberId, 7);
         assert.equal(args.create.userId, undefined);
         assert.ok(args.create.message.includes(review.note));
-        assert.equal(
-          args.create.actionUrl,
-          action === "RETURN" ? "/member/claims/42/resubmit" : "/member/claims#claim-42",
-        );
+        assert.equal(args.create.actionUrl, "/member/claims#claim-42");
         if (action === "APPROVE") {
           assert.match(args.create.title, /forwarded/);
           assert.match(args.create.message, /not approval of payment/);

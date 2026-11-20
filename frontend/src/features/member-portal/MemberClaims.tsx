@@ -1,4 +1,3 @@
-import ClaimDraftList from "@/features/claims/ClaimDraftList";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ClaimDetailModal from "@/components/claims/ClaimDetailModal";
@@ -123,7 +122,7 @@ export default function MemberClaims() {
             My Claims
           </h2>
           <p className="mt-1 text-sm text-text-muted">
-            Claims submitted by you or staff on your behalf.
+            Claims filed on your behalf by your GNAT office.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -133,21 +132,13 @@ export default function MemberClaims() {
           >
             Claim History
           </Link>
-          <Link
-            to="/member/claims/new"
-            className="inline-flex min-h-11 items-center rounded-lg bg-action-primary px-4 text-sm font-bold text-text-on-action no-underline hover:bg-(--action-primary-hover)"
-          >
-            File a claim
-          </Link>
         </div>
       </div>
-      <ClaimDraftList audience="member" />
-      <h2 className="text-lg font-bold text-text-strong">Submitted claims</h2>
       {sorted.length > 0 && (
         <div
           className="space-y-3 rounded-xl border border-border-default bg-(--surface-raised) p-4"
           role="group"
-          aria-label="Filter submitted claims"
+          aria-label="Filter claims"
         >
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SelectField
@@ -231,7 +222,7 @@ export default function MemberClaims() {
         </p>
       ) : sorted.length === 0 && !error ? (
         <p className="rounded-xl border border-border-default bg-(--surface-raised) p-6 text-sm text-text-muted">
-          You haven't submitted any claims yet.
+          You don't have any claims yet.
         </p>
       ) : sorted.length > 0 && filtered.length === 0 ? (
         <p className="text-sm text-text-muted">No claims match your filters.</p>
@@ -325,14 +316,6 @@ export default function MemberClaims() {
                         >
                           View details
                         </button>
-                        {claim.status === "RETURNED" && (
-                          <Link
-                            to={`/member/claims/${claim.id}/resubmit`}
-                            className="min-h-11 content-center text-sm font-semibold text-ink underline underline-offset-4"
-                          >
-                            Edit &amp; resubmit
-                          </Link>
-                        )}
                       </div>
                     </td>
                   </tr>

@@ -93,7 +93,7 @@ it("keeps local details and the last assessment visible when Claims Portal is un
   ).toBe(true);
 });
 
-it("offers the existing correction route only for returned claims", async () => {
+it("shows the review note for a returned claim without offering a self-service resubmit", async () => {
   vi.mocked(api.get).mockResolvedValue({
     data: { data: { ...claim, status: "RETURNED", reviewNote: "Replace the report" } },
   });
@@ -102,9 +102,8 @@ it("offers the existing correction route only for returned claims", async () => 
       <ClaimDetailModal audience="member" submissionId={1} onClose={vi.fn()} />
     </MemoryRouter>,
   );
-  const edit = await screen.findByRole("link", { name: "Edit and resubmit" });
-  expect(edit).toHaveAttribute("href", "/member/claims/1/resubmit");
-  expect(screen.getByText("Replace the report")).toBeInTheDocument();
+  expect(await screen.findByText("Replace the report")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Edit and resubmit" })).not.toBeInTheDocument();
 });
 
 it("downloads attached files through the owned member claim endpoint", async () => {

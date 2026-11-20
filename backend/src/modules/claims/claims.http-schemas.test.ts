@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { submissionSchema, reviewSchema, querySchema } from "./claims.http-schemas.js";
-import { memberClaimSubmissionSchema } from "../member-portal/member-portal.claims.schemas.js";
 
 const death = {
   memberId: 123,
@@ -24,22 +23,16 @@ const death = {
   paymentDetails: { payeeName: "Test Claimant" },
 };
 
-test("shared fields retain the different staff and member death eligibility rules", () => {
+test("a staff DEATH submission is not restricted to a spouse claimant", () => {
   assert.equal(submissionSchema.safeParse(death).success, true);
-  assert.equal(memberClaimSubmissionSchema.safeParse(death).success, false);
-  const spouse = memberClaimSubmissionSchema.safeParse({ ...death, claimantType: "SPOUSE" });
-  assert.equal(spouse.success, true);
-  if (spouse.success) assert.equal("memberId" in spouse.data, false);
 });
 
-test("both claim entrypoints reject a malformed contact phone but allow it to be omitted", () => {
+test("submissionSchema rejects a malformed contact phone but allows it to be omitted", () => {
   const invalid = {
     ...death,
-    claimantType: "SPOUSE",
     claimantContact: { ...death.claimantContact, primaryPhone: "12" },
   };
   assert.equal(submissionSchema.safeParse(invalid).success, false);
-  assert.equal(memberClaimSubmissionSchema.safeParse(invalid).success, false);
 
   // Payee name and phone are optional at submission -- an empty phone and no paymentDetails pass.
   const sparse = {
@@ -48,10 +41,6 @@ test("both claim entrypoints reject a malformed contact phone but allow it to be
     paymentDetails: {},
   };
   assert.equal(submissionSchema.safeParse(sparse).success, true);
-  assert.equal(
-    memberClaimSubmissionSchema.safeParse({ ...sparse, claimantType: "SPOUSE" }).success,
-    true,
-  );
 });
 
 test("review notes and review query remain explicit", () => {

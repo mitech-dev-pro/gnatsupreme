@@ -60,7 +60,10 @@ export function claimStage(
     return {
       label: "Returned for correction",
       tone: "warning",
-      next: "The member must correct and resubmit this claim for GNAT review.",
+      next:
+        audience === "member"
+          ? "Contact your GNAT office to have this claim corrected and refiled."
+          : "The member cannot resubmit this -- file a corrected claim on their behalf.",
     };
   if (claim.status === "FAILED")
     return {
@@ -72,23 +75,27 @@ export function claimStage(
     claim.deliveryState === "ACCEPTED" ||
     claim.status === "SUBMITTED" ||
     claim.status === "SYNCHRONIZED";
+  // Members see one plain "Processing" label for every non-actionable in-progress state --
+  // whether GNAT hasn't reviewed it yet, has forwarded it, or Claims Portal has confirmed
+  // receipt is internal pipeline detail that was previously leaking through as "submitted" /
+  // "awaiting review" language with nothing for the member to act on either way.
   if (audience === "member") {
     if (accepted)
       return {
-        label: "Submitted for assessment",
+        label: "Processing",
         tone: "info",
-        next: "Your claim has been forwarded for assessment. We’ll let you know as soon as there’s a decision.",
+        next: "Your claim is being processed. We’ll let you know as soon as there’s a decision.",
       };
     if (claim.source === "MEMBER_PORTAL" && !claim.reviewedAt)
       return {
-        label: "Awaiting GNAT review",
+        label: "Processing",
         tone: "info",
-        next: "GNAT staff must review this claim before it can move forward.",
+        next: "Your claim is being processed by your GNAT office.",
       };
     return {
-      label: "Being processed",
+      label: "Processing",
       tone: "info",
-      next: "GNAT is handling this claim. No action is needed from you right now.",
+      next: "Your claim is being processed. No action is needed from you right now.",
     };
   }
   if (claim.deliveryState === "UNKNOWN")

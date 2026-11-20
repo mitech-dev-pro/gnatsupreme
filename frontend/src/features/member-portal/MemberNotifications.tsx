@@ -159,11 +159,7 @@ export default function MemberNotifications() {
                     }}
                     className="mt-1.5 inline-block text-xs font-bold text-action-primary no-underline hover:underline"
                   >
-                    {action.includes("/requests#")
-                      ? "View request"
-                      : action.endsWith("/resubmit")
-                        ? "Correct and resubmit"
-                        : "View claim"}
+                    {action.includes("/requests#") ? "View request" : "View claim"}
                   </Link>
                 )}
                 {item.type === "PROFILE_COMPLETION_REQUIRED" && (

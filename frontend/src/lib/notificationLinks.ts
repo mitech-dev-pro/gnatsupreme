@@ -5,9 +5,7 @@ export function claimNotificationLink(
 ) {
   if (!value) return null;
   const allowed =
-    audience === "staff"
-      ? /^\/claims\/[1-9]\d*$/
-      : /^\/member\/claims(?:#claim-[1-9]\d*|\/[1-9]\d*\/resubmit)$/;
+    audience === "staff" ? /^\/claims\/[1-9]\d*$/ : /^\/member\/claims#claim-[1-9]\d*$/;
   const changeRequest =
     audience === "staff"
       ? /^\/change-requests\?request=[1-9]\d*$/

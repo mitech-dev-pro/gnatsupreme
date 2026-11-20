@@ -25,7 +25,7 @@ test("member notification links and unread counts are restricted to their owner"
     assert.equal(args.where?.memberId, 7);
     assert.equal(args.where?.channel, "IN_APP");
     assert.equal(args.select?.actionUrl, true);
-    return [{ id: 1, actionUrl: "/member/claims/42/resubmit" }];
+    return [{ id: 1, actionUrl: "/member/claims#claim-42" }];
   });
   stub(t, prisma.notification, "count", async (args: Prisma.NotificationCountArgs) => {
     assert.deepEqual(args.where, { memberId: 7, channel: "IN_APP", readAt: null });

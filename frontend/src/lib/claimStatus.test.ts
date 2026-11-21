@@ -42,21 +42,19 @@ describe("claim stages", () => {
   });
   it("never names the external delivery pipeline or its states to a member", () => {
     const member = { audience: "member" as const };
-    // NOT_SENT, SENDING, FAILED and UNKNOWN delivery states all collapse to the same
-    // non-actionable "being processed" label for a member -- none of them are things the member
-    // can or should act on, unlike for staff.
+    // NOT_SENT, SENDING, FAILED, UNKNOWN delivery states, a pending GNAT review and a confirmed
+    // Claims Portal receipt all collapse to the same plain "Processing" label for a member --
+    // none of that pipeline detail is something the member can or should act on, unlike staff.
     for (const deliveryState of ["NOT_SENT", "SENDING", "FAILED", "UNKNOWN"]) {
       expect(claimStage({ ...claim, reviewedAt: "2026-10-29", deliveryState }, member).label).toBe(
-        "Being processed",
+        "Processing",
       );
     }
-    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }, member).label).toBe(
-      "Submitted for assessment",
-    );
+    expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }, member).label).toBe("Processing");
     expect(claimStage({ ...claim, deliveryState: "ACCEPTED" }, member).next).not.toMatch(
       /claims portal/i,
     );
-    expect(claimStage(claim, member).label).toBe("Awaiting GNAT review");
+    expect(claimStage(claim, member).label).toBe("Processing");
     expect(claimStage({ ...claim, provider: "SIMULATION" }, member).next).not.toMatch(
       /claims portal/i,
     );

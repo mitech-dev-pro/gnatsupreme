@@ -6,7 +6,6 @@ import MemberClaims, { portalReference } from "./MemberClaims";
 import type { ClaimItem } from "./MemberHome.shared";
 
 vi.mock("@/lib/api", () => ({ default: { get: vi.fn() } }));
-vi.mock("@/features/claims/ClaimDraftList", () => ({ default: () => null }));
 vi.mock("@/components/claims/ClaimDetailModal", () => ({
   default: ({
     submissionId,
@@ -71,10 +70,6 @@ it("shows numbered member and staff submissions, sorting equal dates by descendi
   expect(within(rows[1]).getByText("Spouse")).toBeVisible();
   expect(within(rows[1]).getByText("Returned for correction")).toBeVisible();
   expect(within(rows[1]).getByText("Review note: Replace the report")).toBeVisible();
-  expect(within(rows[1]).getByRole("link", { name: "Edit & resubmit" })).toHaveAttribute(
-    "href",
-    "/member/claims/12/resubmit",
-  );
   expect(within(rows[2]).getAllByText("Member")).toHaveLength(2);
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   const secondPage = within(table).getAllByRole("row");
@@ -147,7 +142,7 @@ it("orders dates before IDs and refreshes the stage after the member details mod
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Update assessment" }));
-  expect(await within(table).findByText("Submitted for assessment")).toBeVisible();
+  expect(await within(table).findByText("Processing")).toBeVisible();
   expect(screen.getByText("Claims Portal: Awaiting Approval")).toBeVisible();
   expect(screen.getByText("CLM-000001")).toBeVisible();
   expect(screen.queryByText("lookup-99")).not.toBeInTheDocument();
@@ -191,10 +186,10 @@ it("distinguishes a local load failure from no claims, and allows retry", async 
   vi.mocked(api.get).mockRejectedValueOnce(new Error("offline"));
   show();
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your claims");
-  expect(screen.queryByText("You haven't submitted any claims yet.")).not.toBeInTheDocument();
+  expect(screen.queryByText("You don't have any claims yet.")).not.toBeInTheDocument();
   vi.mocked(api.get).mockResolvedValueOnce({ data: { data: [] } });
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("You haven't submitted any claims yet.")).toBeVisible();
+  expect(await screen.findByText("You don't have any claims yet.")).toBeVisible();
   expect(screen.getByRole("link", { name: "Claim History" })).toHaveAttribute(
     "href",
     "/member/claims/history",

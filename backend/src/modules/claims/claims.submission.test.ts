@@ -7,7 +7,6 @@ import { writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Redis } from "ioredis";
 import { claimsRouter } from "./claims.routes.js";
-import { memberPortalRouter } from "../member-portal/member-portal.routes.js";
 import { prisma } from "../../lib/prisma.js";
 import { claimsProvider } from "./mankrado.provider.js";
 import { memberUploadDirectory } from "../files/file.storage.js";
@@ -109,7 +108,7 @@ async function fixture(t: TestContext, role: string, inaccessible = false) {
     "findMany",
     async ({ where }: Prisma.StoredFileFindManyArgs & { where: Prisma.StoredFileWhereInput }) => {
       assert.equal(where.memberId, 123);
-      if (role === "MEMBER") assert.equal(where.uploadedByMemberId, 123);
+      assert.equal(where.uploadedByMemberId, undefined);
       return [
         {
           id: 1,
@@ -248,20 +247,5 @@ test("district administrator cannot submit for an inaccessible member", async (t
   await postHandler(claimsRouter, "/submissions")(f.request, res);
   assert.equal(res.code, 404);
   assert.equal(f.creates(), 0);
-  assert.equal(f.remote.mock.callCount(), 0);
-});
-test("member submits only for their authenticated policy, awaits review, and repeated requests do not duplicate", async (t) => {
-  const f = await fixture(t, "MEMBER");
-  const req = { ...f.request, body: { ...payload, memberId: 999 } };
-  const res = response("MEMBER");
-  await postHandler(memberPortalRouter, "/claims")(req, res);
-  assert.equal(res.code, 201);
-  assert.equal(responseData(res.body).memberId, 123);
-  assert.equal(responseData(res.body).submittedByMemberId, 123);
-  assert.equal(responseData(res.body).source, "MEMBER_PORTAL");
-  assert.equal(responseData(res.body).status, "PENDING");
-  assert.equal(responseData(res.body).deliveryState, "NOT_SENT");
-  await postHandler(memberPortalRouter, "/claims")(req, response("MEMBER"));
-  assert.equal(f.creates(), 1);
   assert.equal(f.remote.mock.callCount(), 0);
 });

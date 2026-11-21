@@ -12,7 +12,7 @@ const notification = {
   type: "CLAIM_RETURNED",
   readAt: null,
   createdAt: "2026-10-29T16:00:00Z",
-  actionUrl: "/member/claims/42/resubmit",
+  actionUrl: "/member/claims#claim-42",
 };
 beforeEach(() => {
   vi.mocked(api.get).mockReset();
@@ -22,7 +22,7 @@ function Location() {
   const location = useLocation();
   return <output>{location.pathname + location.hash}</output>;
 }
-it("shows the review reason, opens correction and marks the notification as read", async () => {
+it("shows the review reason, opens the claim and marks the notification as read", async () => {
   vi.mocked(api.get).mockResolvedValue({ data: { data: [notification], unreadCount: 1 } });
   vi.mocked(api.patch).mockResolvedValue({});
   render(
@@ -32,8 +32,8 @@ it("shows the review reason, opens correction and marks the notification as read
     </MemoryRouter>,
   );
   await screen.findByText(/Add a clearer report/);
-  await userEvent.click(screen.getByRole("link", { name: "Correct and resubmit" }));
-  expect(screen.getByText("/member/claims/42/resubmit")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("link", { name: "View claim" }));
+  expect(screen.getByText("/member/claims#claim-42")).toBeInTheDocument();
   await waitFor(() =>
     expect(api.patch).toHaveBeenCalledWith("/member-portal/notifications/1/read"),
   );

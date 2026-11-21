@@ -395,7 +395,7 @@ test("review return records the decision atomically without sending a claim", as
     "upsert",
     async (args: Prisma.NotificationUpsertArgs) => {
       assert.equal(args.create.memberId, 7);
-      assert.equal(args.create.actionUrl, "/member/claims/1/resubmit");
+      assert.equal(args.create.actionUrl, "/member/claims#claim-1");
       assert.match(args.create.message, /Replace document/);
       return {};
     },

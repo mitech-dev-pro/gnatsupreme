@@ -16,7 +16,6 @@ import {
 } from "@/lib/claimDocuments";
 import { formatCurrency } from "@/lib/currency";
 import { getApiError } from "@/lib/errorExtract";
-import { Link } from "react-router-dom";
 
 type ClaimDocument = {
   id: number;
@@ -277,17 +276,6 @@ export default function ClaimDetailModal({
                     }}
                   />
                 )}
-                {audience === "member" &&
-                  detail.status === "RETURNED" &&
-                  detail.deliveryState === "NOT_SENT" && (
-                    <Link
-                      to={`/member/claims/${detail.id}/resubmit`}
-                      onClick={onClose}
-                      className="mb-4 inline-block rounded-lg border border-action-primary px-3 py-2 text-sm font-bold text-action-primary hover:bg-info-soft"
-                    >
-                      Edit and resubmit
-                    </Link>
-                  )}
                 {detail.errorMessage && (
                   <div className="mb-4">
                     <Alert tone="error">{detail.errorMessage}</Alert>

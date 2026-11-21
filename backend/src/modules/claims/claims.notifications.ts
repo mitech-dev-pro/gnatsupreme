@@ -19,7 +19,7 @@ export async function notifyClaimReview(input: ClaimReviewNotification) {
       ? {
           title: "Claim returned for correction",
           message:
-            "GNAT returned your claim for correction. Review the reason, update your claim and resubmit it.",
+            "GNAT returned your claim for correction. Review the reason and contact your GNAT office to have it corrected and refiled.",
         }
       : input.action === "REJECT"
         ? {
@@ -48,10 +48,9 @@ export async function notifyClaimReview(input: ClaimReviewNotification) {
       }[input.action],
       title: content.title,
       message: `${content.message}${input.note?.trim() ? ` Review note: ${input.note.trim()}` : ""}`,
-      actionUrl:
-        input.action === "RETURN"
-          ? `/member/claims/${input.claimId}/resubmit`
-          : `/member/claims#claim-${input.claimId}`,
+      // Members can no longer resubmit a returned claim themselves -- staff handle the
+      // correction, so every outcome points at the claim detail page, not a self-service action.
+      actionUrl: `/member/claims#claim-${input.claimId}`,
       idempotencyKey:
         input.action === "APPROVE" && accepted
           ? `claim-forwarded:${input.claimId}`

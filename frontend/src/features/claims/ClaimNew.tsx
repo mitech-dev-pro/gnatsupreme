@@ -50,7 +50,7 @@ type MemberLookup = {
   spouse: { id: number; fullName: string; ghanaCardId: string | null } | null;
 };
 
-const PAGE_LABELS = ["Policy and identification", "Payment and declaration"];
+const PAGE_LABELS = ["Policy and identification", "Declaration"];
 
 export default function ClaimNew() {
   const navigate = useNavigate();

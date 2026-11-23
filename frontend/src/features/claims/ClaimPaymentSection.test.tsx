@@ -39,7 +39,8 @@ describe("claim payment and submission controls", () => {
       const user = userEvent.setup();
       const submit = vi.fn();
       render(<Form source={source} submit={submit} />);
-      expect(screen.getByLabelText(/Payee name/)).not.toBeRequired();
+      expect(screen.queryByLabelText(/Payee name/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Payment option/)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/Contact for claim follow-up/)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Submit claim" })).toBeDisabled();

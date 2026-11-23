@@ -1,4 +1,3 @@
-// InputField is only needed by the Payment option section, commented out below.
 import { /* InputField, */ TextareaField } from "@/components/ui/FormField";
 import { SectionTitle } from "./ClaimFormLayout";
 
@@ -12,9 +11,6 @@ type Props = {
   setNotes: (value: string) => void;
 };
 
-// paymentDetails and updatePayment stay in Props (and are still passed by callers) so the
-// Payment option section below can be restored by uncommenting it. Payment method is still
-// sent as CHEQUE by the callers; only the on-screen section is hidden.
 export function ClaimPaymentSection({
   source,
   // paymentDetails,
@@ -26,7 +22,7 @@ export function ClaimPaymentSection({
 }: Props) {
   return (
     <>
-      {/* Payment option hidden for now -- claims are submitted after the declaration alone.
+      {/* 
       <SectionTitle>Payment option</SectionTitle>
       <p className="mb-4 text-[12.5px] font-semibold text-ink">
         Approved claims are paid by cheque.

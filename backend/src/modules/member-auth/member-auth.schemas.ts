@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { beneficiarySchema, spouseSchema } from "../members/member.schemas.js";
 
-// Not digits-only -- see member.schemas.ts's memberFields.controllerId for why (non-teaching
-// staff IDs are alphanumeric, sharing the same ID space as teaching staff's numeric IDs).
 const controllerIdSchema = z
   .string()
   .trim()

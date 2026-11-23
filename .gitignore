@@ -9,3 +9,5 @@ uploads/
 /backend/.windsurf/
 /Demo.html
 /temp
+# Local-only demo data for the training slides (contains a demo password)
+/backend/scripts/.demo-walkthrough-seed.ts

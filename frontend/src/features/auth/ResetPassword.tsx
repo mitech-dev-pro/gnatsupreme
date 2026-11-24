@@ -22,7 +22,7 @@ export default function ResetPassword() {
   // (staffPasswordSchema); members only require 8+ (memberPasswordSchema). The server is the
   // source of truth either way -- this just avoids a pointless round trip for an obviously
   // too-short password.
-  const minLength = isStaff ? 12 : 8;
+  const minLength = 8;
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

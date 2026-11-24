@@ -739,7 +739,7 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
       provider: "Claims System",
       member: { is: memberScope(user) },
     },
-    select: { id: true, member: { select: { controllerId: true } } },
+    select: { id: true, externalClaimId: true, member: { select: { controllerId: true } } },
   });
   if (!claim) {
     response.status(404).json({ success: false, message: "Claim not found" });
@@ -748,7 +748,7 @@ claimsRouter.get("/claimdetails/:externalId", async (request, response) => {
   try {
     const details = await refreshClaimAssessment(
       claim.id,
-      externalId.data,
+      claim.externalClaimId!,
       claim.member.controllerId,
     );
     response.json({ success: true, data: details });

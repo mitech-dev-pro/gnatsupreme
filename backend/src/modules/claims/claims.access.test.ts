@@ -100,6 +100,7 @@ test("authorized history is returned but mismatched member data is rejected", as
 test("detail sync stores external status without changing local review status", async (t) => {
   stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
     id: 1,
+    externalClaimId: "MK-1",
     member: { controllerId: "123456" },
   }));
   t.mock.method(claimsProvider, "details", async () => ({
@@ -335,6 +336,7 @@ for (const failure of ["unavailable", "wrong-member", "wrong-reference"]) {
   test(`assessment snapshot is not overwritten when the provider is ${failure}`, async (t) => {
     stub(t, prisma.externalClaimSubmission, "findFirst", async () => ({
       id: 1,
+      externalClaimId: "42",
       member: { controllerId: "123456" },
     }));
     t.mock.method(claimsProvider, "details", async () => {

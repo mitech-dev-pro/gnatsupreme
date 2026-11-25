@@ -298,7 +298,7 @@ export default function ClaimDetailModal({
                         : "Available after Claims Portal confirms receipt")
                     }
                   />
-                  <Row label="Policy holder" value={detail.member.fullName} />
+                  <Row label="Member Name" value={detail.member.fullName} />
                   <Row label="Staff ID" value={detail.member.controllerId} />
                   <Row label="Claim type" value={labelize(detail.claimType)} />
                   <Row

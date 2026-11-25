@@ -458,7 +458,7 @@ export default function ClaimNew() {
             File a claim
           </h1>
           <p className="mt-1 text-[12.5px] leading-relaxed text-text-muted">
-            Find the policy holder before entering claim information.
+            Find the member before entering claim information.
           </p>
           <div className="my-5 rounded-lg bg-brand-navy px-4 py-3 text-[12.5px] font-semibold text-text-on-action">
             Provide the member's Staff ID to continue.
@@ -560,7 +560,7 @@ export default function ClaimNew() {
               >
                 <SectionTitle>Member on record</SectionTitle>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <ReadOnlyField label="Policy holder" value={member?.fullName ?? ""} />
+                  <ReadOnlyField label="Member Name" value={member?.fullName ?? ""} />
                   <ReadOnlyField
                     label="Staff ID / policy number"
                     value={`${member?.controllerId} [${member?.status}]`}

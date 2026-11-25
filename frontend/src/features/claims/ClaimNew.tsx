@@ -562,7 +562,7 @@ export default function ClaimNew() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <ReadOnlyField label="Member Name" value={member?.fullName ?? ""} />
                   <ReadOnlyField
-                    label="Staff ID / policy number"
+                    label="Staff ID / Controller ID"
                     value={`${member?.controllerId} [${member?.status}]`}
                   />
                   <ReadOnlyField
